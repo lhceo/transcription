@@ -903,7 +903,7 @@ class App(_AppBase):  # type: ignore[misc]
         body.configure(state="normal" if edit_mode else "disabled")
 
         if edit_mode:
-            body.bind("<KeyRelease>", lambda e, i=idx, b=body: self._autosave_card(i, b))
+            body.bind("<KeyRelease>", lambda e, i=idx, b=body: (self._autosave_card(i, b), _auto_height(b=b)))
             body.bind("<Shift-Return>", lambda e, i=idx, b=body: self._split_segment(i, b))
             body.bind("<FocusIn>", lambda e, b=body: setattr(self, "_focused_editor", b))
             self._card_editors[idx] = body
