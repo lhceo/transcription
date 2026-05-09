@@ -442,6 +442,7 @@ class App(_AppBase):  # type: ignore[misc]
         self._engine = TranscriptionEngine()
         self._segments: list[Segment] = []
         self._current_file: Optional[str] = None
+        self._project_path: Optional[str] = None
         self._queue: queue.Queue = queue.Queue()
         self._running = False
         self._edit_mode = False
@@ -639,6 +640,15 @@ class App(_AppBase):  # type: ignore[misc]
         )
         self._open_proj_btn.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
+        self._saveas_proj_btn = ctk.CTkButton(
+            proj_frame, text="別名で保存",
+            text_color=_TEXT, hover_color=_BG_CARD,
+            command=self._save_project_as,
+            **_pbtn,
+        )
+        self._saveas_proj_btn.grid(row=1, column=0, columnspan=2, pady=(4, 0), sticky="ew")
+        self._saveas_proj_btn.grid_remove()
+
     def _build_right(self):
         right = ctk.CTkFrame(self, corner_radius=0, fg_color=_BG_RIGHT)
         right.grid(row=0, column=1, sticky="nsew")
@@ -732,6 +742,8 @@ class App(_AppBase):  # type: ignore[misc]
             return
         if self._edit_mode:
             self._exit_edit_mode(save=False)
+        self._project_path = None
+        self._saveas_proj_btn.grid_remove()
 
         token = self._hf_token.get().strip() or os.environ.get("HF_TOKEN", "")
         if self._use_diarization.get() and not token:
@@ -1153,21 +1165,7 @@ class App(_AppBase):  # type: ignore[misc]
 
     # ── Project save / load ────────────────────────────────────────────
 
-    def _save_project(self):
-        if not self._segments:
-            return
-        stem = Path(self._current_file).stem if self._current_file else "project"
-        path = filedialog.asksaveasfilename(
-            defaultextension=".transcription",
-            initialfile=f"{stem}.transcription",
-            filetypes=[
-                ("Transcription Project", "*.transcription"),
-                ("JSON", "*.json"),
-                ("すべてのファイル", "*.*"),
-            ],
-        )
-        if not path:
-            return
+    def _write_project(self, path: str):
         project = {
             "version": 1,
             "audio_file": self._current_file or "",
@@ -1184,7 +1182,46 @@ class App(_AppBase):  # type: ignore[misc]
             ],
         }
         Path(path).write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
-        messagebox.showinfo("保存完了", f"プロジェクトを保存しました:\n{path}")
+
+    def _save_project(self):
+        if not self._segments:
+            return
+        if self._project_path:
+            self._write_project(self._project_path)
+            self._show_toast("上書き保存が完了しました。")
+        else:
+            self._save_project_as()
+
+    def _save_project_as(self):
+        if not self._segments:
+            return
+        stem = Path(self._current_file).stem if self._current_file else "project"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".transcription",
+            initialfile=f"{stem}.transcription",
+            filetypes=[
+                ("Transcription Project", "*.transcription"),
+                ("JSON", "*.json"),
+                ("すべてのファイル", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        self._write_project(path)
+        self._project_path = path
+        self._saveas_proj_btn.grid()
+
+    def _show_toast(self, message: str):
+        toast = tk.Label(
+            self,
+            text=message,
+            bg="#1E293B",
+            fg="#FFFFFF",
+            font=("Helvetica Neue", 13),
+            padx=24, pady=14,
+        )
+        toast.place(relx=0.5, rely=0.5, anchor="center")
+        self.after(2500, toast.destroy)
 
     def _load_project(self):
         path = filedialog.askopenfilename(
@@ -1203,6 +1240,7 @@ class App(_AppBase):  # type: ignore[misc]
             return
 
         self._current_file = data.get("audio_file") or None
+        self._project_path = path
         self._speaker_names = data.get("speaker_names", {})
         self._speaker_colors = {}
         self._segments = [
@@ -1221,6 +1259,7 @@ class App(_AppBase):  # type: ignore[misc]
         if self._segments:
             self._render(self._segments)
             self._set_export_state("normal")
+            self._saveas_proj_btn.grid()
             self._start_btn.configure(state="normal" if self._current_file else "disabled")
             self._progress_label.configure(
                 text=f"プロジェクト読み込み完了  ({len(self._segments)} ブロック)"
