@@ -1242,6 +1242,35 @@ class App(_AppBase):  # type: ignore[misc]
         # Hide the cards-area scrollbar while there's nothing to scroll.
         self._set_cards_scrollbar(False)
 
+    def _capture_scroll_fraction(self) -> float:
+        """Return the cards canvas's current top-of-view fraction (0.0–1.0).
+        Used to preserve scroll position across re-renders so the user
+        doesn't get jumped back to the first card on every edit toggle."""
+        try:
+            return float(self._cards_container._parent_canvas.yview()[0])
+        except (tk.TclError, AttributeError, IndexError, ValueError):
+            return 0.0
+
+    def _restore_scroll_fraction(self, frac: float) -> None:
+        """Re-apply a scroll fraction after a re-render. Deferred via
+        after_idle so Tk has a chance to lay out the new widgets and update
+        the canvas scrollregion before we call yview_moveto."""
+        if frac <= 0:
+            return
+
+        def _do(f: float = frac) -> None:
+            try:
+                cv = self._cards_container._parent_canvas
+                cv.update_idletasks()
+                cv.yview_moveto(f)
+            except (tk.TclError, AttributeError):
+                pass
+
+        try:
+            self.after_idle(_do)
+        except tk.TclError:
+            pass
+
     def _set_cards_scrollbar(self, visible: bool) -> None:
         """Show or hide the CTkScrollableFrame's scrollbar and gate the
         keyboard scroll keys so they only act when there's content.
@@ -1652,6 +1681,9 @@ class App(_AppBase):  # type: ignore[misc]
         # Capture the pre-edit state so the entire edit session can be undone
         # as a single document-level step on exit.
         self._pre_edit_snapshot = self._snapshot()
+        # Preserve scroll position so the user stays where they were in
+        # the transcript after the cards re-render in edit mode.
+        scroll_frac = self._capture_scroll_fraction()
         self._edit_mode = True
         self._render_edit_mode()
         self._edit_toggle.set_on(True)
@@ -1661,6 +1693,7 @@ class App(_AppBase):  # type: ignore[misc]
         self._export_btn.pack_forget()
         self._edit_bar.pack(side="left", padx=(8, 0))
         self._update_undo_buttons()
+        self._restore_scroll_fraction(scroll_frac)
 
     def _render_edit_mode(self):
         self._clear_text()
@@ -1687,6 +1720,9 @@ class App(_AppBase):  # type: ignore[misc]
                 self._update_undo_buttons()
         self._pre_edit_snapshot = None
 
+        # Snapshot scroll position before the cards are destroyed and rebuilt.
+        scroll_frac = self._capture_scroll_fraction()
+
         self._edit_mode = False
         self._focused_editor = None
         self._edit_toggle.set_on(False)
@@ -1698,6 +1734,7 @@ class App(_AppBase):  # type: ignore[misc]
         for btn in (self._export_btn, self._save_proj_btn):
             btn.configure(state="normal")
         self._update_undo_buttons()
+        self._restore_scroll_fraction(scroll_frac)
         # Move keyboard focus off the (now-destroyed) Text editors back to a
         # neutral widget so wheel events keep flowing to the cards canvas.
         try:
