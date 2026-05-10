@@ -19,11 +19,17 @@ bash scripts/build_app.sh
 
 これで以下が自動実行されます：
 
-1. `bundled/ffmpeg/ffmpeg` が無ければ evermeet.cx から static binary をダウンロード
+1. `bundled/ffmpeg/ffmpeg` が無ければ、`scripts/download_ffmpeg.sh` 経由で
+   evermeet.cx の **特定バージョン** をダウンロード。バイナリの SHA-256 が
+   `scripts/download_ffmpeg.sh` 内にハードコードしたハッシュと一致しなければ
+   インストールを拒否（バンドル前の改ざん検知）
 2. venv に `py2app` が無ければインストール
 3. 前回の `build/` `dist/` を削除
 4. `python setup.py py2app` 実行
 5. 結果は `dist/Noto.app`
+
+ffmpeg のバージョンを上げたいときは、`scripts/download_ffmpeg.sh` の冒頭にある
+`FFMPEG_VERSION` と `FFMPEG_SHA256` を更新してから再ビルドします。
 
 ビルド時間：初回 5〜10 分、依存をキャッシュした 2 回目以降は 2〜3 分。
 
