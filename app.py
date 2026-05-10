@@ -1379,76 +1379,7 @@ class App(_AppBase):  # type: ignore[misc]
                 except tk.TclError:
                     pass
 
-            # Return キー押下時の特別処理:
-            # ・通常 Tk が \n を挿入するだけだが、それだと kinsoku 折り返しの
-            #   古い \n が残ったまま「短い行」が見えてしまうリグレッションが
-            #   起きる（Configure イベントが発火しないため _rewrap が走らない）。
-            # ・ここで明示的に「ユーザー段落区切り」として処理し、再フローする。
-            #   カーソルは新段落の先頭に置く（多くのテキストエディタ準拠）。
-            def _on_return(e, b=body, c=card, st=wrap_state, f=font_obj, idx=idx):
-                # Width が未確定なら何もせず Tk のデフォルトに任せる
-                width = c.winfo_width() - 28
-                if width <= 60:
-                    return None
-
-                # 1. 現在のカーソル位置（widget 内文字オフセット）を取得
-                try:
-                    insert_idx = b.index("insert")
-                    widget_off = int(b.count("1.0", insert_idx, "chars")[0])
-                except (TypeError, IndexError, ValueError):
-                    widget_off = 0
-
-                # 2. タグ付き \n（自動折り返し）を除いた raw テキストを得る
-                raw = _strip_word_joiners(_strip_kinsoku_newlines(b))
-
-                # 3. widget_off → raw_off に変換（カーソル位置より前にある
-                #    タグ付き \n の数を引く）
-                tagged_before = 0
-                ranges = b.tag_ranges(_KINSOKU_NL_TAG)
-                for i in range(0, len(ranges), 2):
-                    try:
-                        s_off = int(b.count("1.0", ranges[i], "chars")[0])
-                    except (TypeError, IndexError, ValueError):
-                        continue
-                    if s_off < widget_off:
-                        tagged_before += 1
-                raw_off = max(0, min(widget_off - tagged_before, len(raw)))
-
-                # 4. raw に \n を挿入して新しい段落構造を作る
-                new_raw = raw[:raw_off] + "\n" + raw[raw_off:]
-
-                # 5. 各段落を再禁則折り返しして再構成
-                paragraphs = new_raw.split("\n")
-                wrapped_parts = [_wrap_kinsoku(p, f, width) for p in paragraphs]
-                wrapped = "\n".join(wrapped_parts)
-
-                # 6. body の中身を入れ替えて自動折り返しタグを付け直す
-                b.delete("1.0", "end")
-                b.insert("1.0", wrapped)
-                _tag_kinsoku_newlines(b, wrapped, wrapped_parts)
-                try:
-                    b.edit_reset()
-                except tk.TclError:
-                    pass
-
-                # 7. カーソルを「新しいユーザー \n の直後（＝新段落の先頭）」へ
-                k = raw[:raw_off].count("\n")  # 新 \n より前にある段落数
-                new_widget_off = sum(len(p) for p in wrapped_parts[:k + 1]) + (k + 1)
-                b.mark_set("insert", f"1.0+{new_widget_off}c")
-                b.see("insert")
-
-                # 8. autosave + 高さ調整
-                self._autosave_card(idx, b)
-                _auto_height(b=b)
-
-                # 強制的にwidthキャッシュをリセットして次の Configure で
-                # 必要なら再フローが走るようにする
-                st["last_w"] = 0
-
-                return "break"  # Tk の通常 \n 挿入を抑止
-
             body.bind("<KeyRelease>", lambda e, i=idx, b=body: (self._autosave_card(i, b), _auto_height(b=b)))
-            body.bind("<Return>", _on_return)
             body.bind("<Shift-Return>", lambda e, i=idx, b=body: self._split_segment(i, b))
             body.bind("<FocusIn>", _on_focus_in)
             body.bind("<FocusOut>", _on_focus_out)
