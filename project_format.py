@@ -14,7 +14,23 @@ Public surface:
 
 from __future__ import annotations
 
+import re
+
 from transcribe_core import _join_segment_text
+
+
+# Collapses runs of 2+ newlines into a single newline. Used as a defensive
+# data sanitizer on load: an earlier version of the edit-mode Return-key
+# handler could append spurious \n's at the cursor position, accumulating
+# into \n\n or \n\n\n sequences in saved segment text. Those manifest as
+# wide visual gaps when the file is reopened. Collapsing them at load time
+# heals existing data and makes the bug self-correcting.
+_MULTI_NL = re.compile(r"\n{2,}")
+
+
+def collapse_multi_newlines(text: str) -> str:
+    """Collapse 2+ consecutive newlines into a single newline."""
+    return _MULTI_NL.sub("\n", text) if "\n\n" in text else text
 
 
 # .transcription project file schema version. Bump deliberately when the

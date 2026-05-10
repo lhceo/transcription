@@ -40,6 +40,7 @@ from project_format import (
     PROJECT_FILE_VERSION as _PROJECT_FILE_VERSION,
     migrate_project_data as _migrate_project_data,
     clean_legacy_join_text as _clean_legacy_join_text,
+    collapse_multi_newlines as _collapse_multi_newlines,
 )
 
 
@@ -1935,7 +1936,7 @@ class App(_AppBase):  # type: ignore[misc]
                     start=float(s["start"]),
                     end=float(s["end"]),
                     speaker=str(s["speaker"]),
-                    text=_clean_legacy_join_text(str(s["text"])),
+                    text=_collapse_multi_newlines(_clean_legacy_join_text(str(s["text"]))),
                     display_name=str(s.get("display_name", "")),
                 )
                 valid_segs.append(seg)
