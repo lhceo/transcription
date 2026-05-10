@@ -79,6 +79,58 @@ def _strip_word_joiners(text: str) -> str:
     return text.replace(_WORD_JOINER, "") if _WORD_JOINER in text else text
 
 
+# tk.Text tag name applied to newlines we inserted for kinsoku auto-wrap.
+# User-typed Return creates an untagged \n which we want to preserve on save.
+_KINSOKU_NL_TAG = "_kinsoku_nl"
+
+
+def _strip_kinsoku_newlines(body) -> str:
+    """Read the widget's text, removing only the auto-wrap \\n's we tagged
+    in _tag_kinsoku_newlines. User-typed Returns survive."""
+    text = body.get("1.0", "end-1c")
+    if "\n" not in text:
+        return text
+    ranges = body.tag_ranges(_KINSOKU_NL_TAG)
+    if not ranges:
+        return text
+    excluded: set[int] = set()
+    for i in range(0, len(ranges), 2):
+        try:
+            s_off = int(body.count("1.0", ranges[i], "chars")[0])
+            e_off = int(body.count("1.0", ranges[i + 1], "chars")[0])
+        except (TypeError, IndexError, ValueError):
+            continue
+        excluded.update(range(s_off, e_off))
+    return "".join(c for i, c in enumerate(text) if i not in excluded)
+
+
+def _tag_kinsoku_newlines(body, wrapped: str, wrapped_parts: list) -> None:
+    """After we've inserted `wrapped` (= wrapped_parts joined with user
+    `\\n`s), tag every kinsoku-inserted `\\n` so a later
+    _strip_kinsoku_newlines knows which to drop on save.
+
+    `wrapped_parts` is the per-paragraph kinsoku-wrapped pieces — their
+    lengths are what define where the user-typed `\\n` boundaries land in
+    the assembled `wrapped` string.
+    """
+    body.tag_remove(_KINSOKU_NL_TAG, "1.0", "end")
+    if "\n" not in wrapped:
+        return
+    user_nl_offsets: set[int] = set()
+    cursor = 0
+    for part in wrapped_parts[:-1]:
+        cursor += len(part)
+        user_nl_offsets.add(cursor)
+        cursor += 1  # the user \n itself
+    for offset, ch in enumerate(wrapped):
+        if ch == "\n" and offset not in user_nl_offsets:
+            body.tag_add(
+                _KINSOKU_NL_TAG,
+                f"1.0+{offset}c",
+                f"1.0+{offset + 1}c",
+            )
+
+
 def _wrap_kinsoku(text: str, font, max_width_px: int) -> str:
     """Wrap text into multiple lines respecting Japanese kinsoku rules.
     Returns text with explicit '\\n' inserted; the caller should set the
@@ -1372,13 +1424,19 @@ class App(_AppBase):  # type: ignore[misc]
             if w <= 60 or abs(w - st["last_w"]) < 4:
                 return
             st["last_w"] = w
-            raw = _strip_word_joiners(b.get("1.0", "end-1c")).replace("\n", "")
-            wrapped = _wrap_kinsoku(raw, f, w - 28)
+            # 既存の自動挿入 \n はタグから判別して除去、ユーザー手入力の \n は
+            # 残したまま、各「論理段落」ごとに再禁則折り返しする。
+            raw = _strip_word_joiners(_strip_kinsoku_newlines(b))
+            paragraphs = raw.split("\n")
+            wrapped_parts = [_wrap_kinsoku(p, f, w - 28) for p in paragraphs]
+            wrapped = "\n".join(wrapped_parts)
             was_disabled = b.cget("state") == "disabled"
             if was_disabled:
                 b.configure(state="normal")
             b.delete("1.0", "end")
             b.insert("1.0", wrapped)
+            # ユーザー手入力 \n（段落区切り）以外の \n にタグ付け。
+            _tag_kinsoku_newlines(b, wrapped, wrapped_parts)
             if was_disabled:
                 b.configure(state="disabled")
             # プログラムによる再フローも undo 履歴に積まないようリセット。
@@ -1647,9 +1705,14 @@ class App(_AppBase):  # type: ignore[misc]
 
     @staticmethod
     def _read_clean(body) -> str:
-        """Read the editor's current text, stripping the soft-wrap newlines
-        and word-joiners we inserted for kinsoku display."""
-        return _strip_word_joiners(body.get("1.0", "end").strip()).replace("\n", "")
+        """Read the editor's current text. Strips:
+          - U+2060 word joiners (legacy edit-mode kinsoku marker)
+          - Newlines we tagged as auto-wrap (_KINSOKU_NL_TAG)
+        and PRESERVES user-typed newlines so Return-key edits round-trip."""
+        text = _strip_word_joiners(_strip_kinsoku_newlines(body))
+        # Trim only leading/trailing whitespace (incl. the trailing \n that Tk
+        # stores at end-1c boundaries); keep interior user-typed \n's.
+        return text.strip()
 
     def _sync_edits_to_segments(self):
         for idx, body in self._card_editors.items():
