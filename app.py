@@ -68,15 +68,19 @@ def _read_audio_duration(path: str) -> float:
     return 0.0
 
 
-_KINSOKU_NO_BREAK_BEFORE = set("。、．，！？)）」』〕｝!?,.…・ー")
-_KINSOKU_NO_BREAK_AFTER = set("(（「『〔｛")
-_WORD_JOINER = "⁠"  # U+2060: invisible no-break marker (legacy data sanitizer)
-
-
-def _strip_word_joiners(text: str) -> str:
-    """Remove any U+2060 markers that may have been written into earlier
-    project files when we briefly tried using them for edit-mode wrap."""
-    return text.replace(_WORD_JOINER, "") if _WORD_JOINER in text else text
+# Kinsoku helpers live in kinsoku.py. Re-bind them under the leading-underscore
+# names this module has historically used so the call sites below need no
+# changes.
+from kinsoku import (
+    KINSOKU_NO_BREAK_BEFORE as _KINSOKU_NO_BREAK_BEFORE,
+    KINSOKU_NO_BREAK_AFTER as _KINSOKU_NO_BREAK_AFTER,
+    WORD_JOINER as _WORD_JOINER,
+    KINSOKU_NL_TAG as _KINSOKU_NL_TAG,
+    strip_word_joiners as _strip_word_joiners,
+    strip_kinsoku_newlines as _strip_kinsoku_newlines,
+    tag_kinsoku_newlines as _tag_kinsoku_newlines,
+    wrap_kinsoku as _wrap_kinsoku,
+)
 
 
 # .transcription project file schema version. Bump deliberately when the
@@ -105,106 +109,6 @@ def _migrate_project_data(data: dict, from_version: int) -> dict:
             f"(supported: {_PROJECT_FILE_VERSION})"
         )
     return data
-
-
-# tk.Text tag name applied to newlines we inserted for kinsoku auto-wrap.
-# User-typed Return creates an untagged \n which we want to preserve on save.
-#
-# DESIGN NOTE: We considered embedding marker characters (e.g. U+200B + \n)
-# instead of using tags. Marker chars get separated when users edit around
-# them, which silently breaks the strip step. Tags survive arbitrary edits
-# because Tk shrinks/extends them with the underlying text — no manual
-# bookkeeping needed. The tradeoff is that we make a few extra Tcl calls
-# per save (acceptable: typical segments are < 1000 chars).
-_KINSOKU_NL_TAG = "_kinsoku_nl"
-
-
-def _strip_kinsoku_newlines(body) -> str:
-    """Read the widget's text, removing only the auto-wrap \\n's we tagged
-    in _tag_kinsoku_newlines. User-typed Returns survive."""
-    text = body.get("1.0", "end-1c")
-    if "\n" not in text:
-        return text
-    ranges = body.tag_ranges(_KINSOKU_NL_TAG)
-    if not ranges:
-        return text
-    excluded: set[int] = set()
-    for i in range(0, len(ranges), 2):
-        try:
-            s_off = int(body.count("1.0", ranges[i], "chars")[0])
-            e_off = int(body.count("1.0", ranges[i + 1], "chars")[0])
-        except (TypeError, IndexError, ValueError):
-            continue
-        excluded.update(range(s_off, e_off))
-    return "".join(c for i, c in enumerate(text) if i not in excluded)
-
-
-def _tag_kinsoku_newlines(body, wrapped: str, wrapped_parts: list) -> None:
-    """After we've inserted `wrapped` (= wrapped_parts joined with user
-    `\\n`s), tag every kinsoku-inserted `\\n` so a later
-    _strip_kinsoku_newlines knows which to drop on save.
-
-    `wrapped_parts` is the per-paragraph kinsoku-wrapped pieces — their
-    lengths are what define where the user-typed `\\n` boundaries land in
-    the assembled `wrapped` string.
-    """
-    body.tag_remove(_KINSOKU_NL_TAG, "1.0", "end")
-    if "\n" not in wrapped:
-        return
-    user_nl_offsets: set[int] = set()
-    cursor = 0
-    for part in wrapped_parts[:-1]:
-        cursor += len(part)
-        user_nl_offsets.add(cursor)
-        cursor += 1  # the user \n itself
-    for offset, ch in enumerate(wrapped):
-        if ch == "\n" and offset not in user_nl_offsets:
-            body.tag_add(
-                _KINSOKU_NL_TAG,
-                f"1.0+{offset}c",
-                f"1.0+{offset + 1}c",
-            )
-
-
-def _wrap_kinsoku(text: str, font, max_width_px: int) -> str:
-    """Wrap text into multiple lines respecting Japanese kinsoku rules.
-    Returns text with explicit '\\n' inserted; the caller should set the
-    Text widget's wrap mode to 'none'."""
-    if not text or max_width_px <= 0:
-        return text
-    lines = []
-    current: list[str] = []
-    width = 0
-    for c in text:
-        if c == "\n":
-            lines.append("".join(current))
-            current = []
-            width = 0
-            continue
-        cw = font.measure(c)
-        if current and width + cw > max_width_px:
-            # Want to break before c. Check kinsoku.
-            if c in _KINSOKU_NO_BREAK_BEFORE and len(current) >= 2:
-                # Push last char of current to next line, keep punctuation with it
-                last = current.pop()
-                lines.append("".join(current))
-                current = [last, c]
-                width = font.measure(last) + cw
-            elif current[-1] in _KINSOKU_NO_BREAK_AFTER and len(current) >= 2:
-                last = current.pop()
-                lines.append("".join(current))
-                current = [last, c]
-                width = font.measure(last) + cw
-            else:
-                lines.append("".join(current))
-                current = [c]
-                width = cw
-        else:
-            current.append(c)
-            width += cw
-    if current:
-        lines.append("".join(current))
-    return "\n".join(lines)
 
 # ─── Drag-and-drop (optional) ─────────────────────────────────────────────────
 try:
