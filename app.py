@@ -1363,7 +1363,14 @@ class App(_AppBase):  # type: ignore[misc]
             except tk.TclError:
                 pass
             _auto_height(b=b)
-        card.bind("<Configure>", _rewrap)
+        # 表示モードでだけ kinsoku を効かせる。編集モードで _rewrap を走らせると
+        # 「Return キーを押した直後に、ユーザーの意図しない位置に古い kinsoku 改行
+        # が残ったまま見える」という体感バグが発生していた（編集モード中の
+        # widget 内容は kinsoku 計算時から content が変わっているのに、kinsoku が
+        # 入れた \n が再計算されないため）。編集モードでは Tk の wrap="char" に
+        # 折り返しを任せ、kinsoku は表示モードに戻った瞬間に再適用する。
+        if not edit_mode:
+            card.bind("<Configure>", _rewrap)
 
         if edit_mode:
             def _on_focus_in(e, b=body, c=card):
