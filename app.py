@@ -569,6 +569,16 @@ class App(_AppBase):  # type: ignore[misc]
         # Gates both the scrollbar visibility and the keyboard scroll keys.
         self._cards_scrollable = False
 
+        # Document-level undo/redo (snapshot stacks of (segments, speaker_names)).
+        # _dirty tracks whether the in-memory state diverges from the file on
+        # disk (or whether the user has anything worth saving at all).
+        self._undo_stack: list[dict] = []
+        self._redo_stack: list[dict] = []
+        self._dirty: bool = False
+        # Snapshot taken when entering edit mode, so a single edit session
+        # collapses into one undo step on exit.
+        self._pre_edit_snapshot: Optional[dict] = None
+
         # speaker label → display colour (assigned on first appearance)
         self._speaker_colors: dict[str, str] = {}
         # speaker label → editable display name (persisted per file)
@@ -816,29 +826,34 @@ class App(_AppBase):  # type: ignore[misc]
         self._copy_btn = CopyButton(bar, command=self._copy_to_clipboard, bg=_BG_RIGHT)
         self._copy_btn.pack(side="right", padx=(4, 0))
 
-        # Edit-mode toolbar (hidden by default, shown when in edit mode)
-        self._edit_bar = ctk.CTkFrame(bar, fg_color="transparent")
+        # Undo / Redo buttons live in the main toolbar so they're available
+        # both during and after editing. State is gated by stack contents.
+        self._redo_btn = ctk.CTkButton(
+            bar, text="↷", width=32, height=30, corner_radius=8,
+            fg_color="#FFFFFF", text_color=_TEXT,
+            border_width=1, border_color=_BORDER,
+            hover_color=_BG_CARD,
+            font=ctk.CTkFont(size=14),
+            command=self._redo, state="disabled",
+        )
+        self._redo_btn.pack(side="right", padx=(4, 8))
 
         self._undo_btn = ctk.CTkButton(
-            self._edit_bar, text="↩ 操作を元に戻す", width=140, height=30, corner_radius=8,
+            bar, text="↩", width=32, height=30, corner_radius=8,
             fg_color="#FFFFFF", text_color=_TEXT,
             border_width=1, border_color=_BORDER,
             hover_color=_BG_CARD,
-            command=self._undo,
+            font=ctk.CTkFont(size=14),
+            command=self._undo, state="disabled",
         )
-        self._undo_btn.pack(side="left", padx=(0, 6))
+        self._undo_btn.pack(side="right", padx=(4, 0))
 
-        self._redo_btn = ctk.CTkButton(
-            self._edit_bar, text="↷ 操作をやり直す", width=140, height=30, corner_radius=8,
-            fg_color="#FFFFFF", text_color=_TEXT,
-            border_width=1, border_color=_BORDER,
-            hover_color=_BG_CARD,
-            command=self._redo,
-        )
-        self._redo_btn.pack(side="left", padx=(0, 12))
-
+        # Edit-mode auxiliary bar (only the autosave hint now; undo/redo are
+        # always-visible on the main toolbar).
+        self._edit_bar = ctk.CTkFrame(bar, fg_color="transparent")
         self._autosave_hint = ctk.CTkLabel(
-            self._edit_bar, text="💡 変更内容は自動的に保存されます",
+            self._edit_bar,
+            text="💡 編集はセッション内で反映されます。ファイルに保存するには「保存」を押してください",
             font=ctk.CTkFont(size=12),
             text_color="#94A3B8",
         )
@@ -885,9 +900,83 @@ class App(_AppBase):  # type: ignore[misc]
         self._current_file = None
         self._start_btn.configure(state="disabled")
 
-    def _confirm_discard_edits(self, message: str) -> bool:
-        """Ask the user before throwing away an unsaved edit-mode session."""
-        return messagebox.askyesno("確認", message)
+    def _ask_save_discard_cancel(self, title: str, message: str) -> str:
+        """Show a 3-button modal: 保存して続行 / 保存せず続行 / キャンセル.
+        Returns one of 'save', 'discard', 'cancel'."""
+        result = {"value": "cancel"}
+        dlg = ctk.CTkToplevel(self)
+        dlg.title(title)
+        dlg.geometry("440x190")
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.lift()
+        dlg.focus_force()
+        # Center over parent
+        try:
+            self.update_idletasks()
+            x = self.winfo_rootx() + (self.winfo_width() - 440) // 2
+            y = self.winfo_rooty() + (self.winfo_height() - 190) // 2
+            dlg.geometry(f"+{max(0, x)}+{max(0, y)}")
+        except tk.TclError:
+            pass
+
+        ctk.CTkLabel(
+            dlg, text=message, wraplength=400, justify="left",
+            font=ctk.CTkFont(size=13),
+        ).pack(padx=24, pady=(24, 16), anchor="w")
+
+        btn_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_frame.pack(padx=20, pady=(0, 20), fill="x")
+
+        def _set(v: str):
+            result["value"] = v
+            dlg.destroy()
+
+        ctk.CTkButton(
+            btn_frame, text="保存して続行",
+            command=lambda: _set("save"),
+            fg_color=_ACCENT, hover_color=_ACCENT_HOV, text_color="#FFFFFF",
+            width=120, height=32, corner_radius=8,
+        ).pack(side="right", padx=(6, 0))
+        ctk.CTkButton(
+            btn_frame, text="保存せず続行",
+            command=lambda: _set("discard"),
+            fg_color="#FFFFFF", hover_color=_BG_CARD, text_color=_TEXT,
+            border_width=1, border_color=_BORDER,
+            width=120, height=32, corner_radius=8,
+        ).pack(side="right", padx=(6, 0))
+        ctk.CTkButton(
+            btn_frame, text="キャンセル",
+            command=lambda: _set("cancel"),
+            fg_color="transparent", hover_color=_BG_CARD,
+            text_color=_TEXT_MUTED,
+            width=100, height=32, corner_radius=8,
+        ).pack(side="left")
+
+        dlg.protocol("WM_DELETE_WINDOW", lambda: _set("cancel"))
+        self.wait_window(dlg)
+        return result["value"]
+
+    def _confirm_destructive_op(self, what: str) -> bool:
+        """Common gate for 'replace current state' actions (new transcription,
+        load project, app close). Returns True if it's OK to proceed.
+        Shows the 3-button save/discard/cancel dialog when there are unsaved
+        changes; otherwise short-circuits to True."""
+        if not self._dirty:
+            return True
+        message = f"未保存の変更があります。{what}前にどうしますか？"
+        choice = self._ask_save_discard_cancel("未保存の変更", message)
+        if choice == "save":
+            # Exit edit mode first so the latest edits are flushed to segments.
+            if self._edit_mode:
+                self._exit_edit_mode(save=True)
+            return self._save_project()
+        if choice == "discard":
+            if self._edit_mode:
+                self._exit_edit_mode(save=False)
+            return True
+        return False  # cancel
 
     def _start(self):
         if self._running or not self._current_file:
@@ -904,14 +993,9 @@ class App(_AppBase):  # type: ignore[misc]
             self._on_file_cleared()
             return
 
-        # 編集モード中なら先に確認
-        if self._edit_mode:
-            if not self._confirm_discard_edits(
-                "編集中ですが新しい文字起こしを始めますか？\n"
-                "現在の編集内容は失われます。"
-            ):
-                return
-            self._exit_edit_mode(save=False)
+        # 未保存の変更があれば 3択ダイアログ
+        if not self._confirm_destructive_op("新しい文字起こしを始める"):
+            return
 
         self._project_path = None
         self._saveas_proj_btn.grid_remove()
@@ -1049,6 +1133,10 @@ class App(_AppBase):  # type: ignore[misc]
         self._load_speaker_names()
         self._render(segments)
         self._set_export_state("normal")
+        # New transcription is unsaved; clear history (no point undoing back
+        # into the empty placeholder state).
+        self._clear_history()
+        self._set_dirty(True)
 
     def _on_error(self, error: str):
         self._running = False
@@ -1063,7 +1151,21 @@ class App(_AppBase):  # type: ignore[misc]
 
     # ── App lifecycle ──────────────────────────────────────────────────
     def _on_close(self):
-        """Persist window geometry and exit cleanly."""
+        """Persist window geometry and exit cleanly. If there are unsaved
+        changes, prompt the user with a 3-button save/discard/cancel dialog."""
+        if self._dirty:
+            if self._edit_mode:
+                self._exit_edit_mode(save=True)
+            choice = self._ask_save_discard_cancel(
+                "未保存の変更",
+                "編集内容が保存されていません。アプリを閉じる前にどうしますか？"
+            )
+            if choice == "save":
+                if not self._save_project():
+                    return  # 保存ダイアログをキャンセルされた → 閉じない
+            elif choice == "cancel":
+                return
+            # discard はそのまま閉じる処理に進む
         try:
             cfg = _load_config()
             cfg["window_geometry"] = self.geometry()
@@ -1409,6 +1511,7 @@ class App(_AppBase):  # type: ignore[misc]
             name = entry.get().strip()
             if not name:
                 return
+            self._push_history()
             seg.display_name = name
             dlg.destroy()
             self._render(self._segments)
@@ -1417,6 +1520,7 @@ class App(_AppBase):  # type: ignore[misc]
             name = entry.get().strip()
             if not name:
                 return
+            self._push_history()
             self._speaker_names[seg.speaker] = name
             for s in self._segments:
                 if s.speaker == seg.speaker:
@@ -1474,6 +1578,9 @@ class App(_AppBase):  # type: ignore[misc]
             self._enter_edit_mode()
 
     def _enter_edit_mode(self):
+        # Capture the pre-edit state so the entire edit session can be undone
+        # as a single document-level step on exit.
+        self._pre_edit_snapshot = self._snapshot()
         self._edit_mode = True
         self._render_edit_mode()
         self._edit_toggle.set_on(True)
@@ -1482,6 +1589,7 @@ class App(_AppBase):  # type: ignore[misc]
         self._copy_btn.pack_forget()
         self._export_btn.pack_forget()
         self._edit_bar.pack(side="left", padx=(8, 0))
+        self._update_undo_buttons()
 
     def _render_edit_mode(self):
         self._clear_text()
@@ -1497,6 +1605,17 @@ class App(_AppBase):  # type: ignore[misc]
     def _exit_edit_mode(self, save: bool = True):
         if save:
             self._sync_edits_to_segments()
+        # If the edit session changed anything, push the pre-edit snapshot
+        # to the undo stack so the whole session collapses to one undo step.
+        if save and self._pre_edit_snapshot is not None:
+            current = self._snapshot()
+            if not self._snapshots_equal(self._pre_edit_snapshot, current):
+                self._undo_stack.append(self._pre_edit_snapshot)
+                self._redo_stack.clear()
+                self._set_dirty(True)
+                self._update_undo_buttons()
+        self._pre_edit_snapshot = None
+
         self._edit_mode = False
         self._focused_editor = None
         self._edit_toggle.set_on(False)
@@ -1507,6 +1626,7 @@ class App(_AppBase):  # type: ignore[misc]
             self._render(self._segments)
         for btn in (self._export_btn, self._save_proj_btn):
             btn.configure(state="normal")
+        self._update_undo_buttons()
         # Move keyboard focus off the (now-destroyed) Text editors back to a
         # neutral widget so wheel events keep flowing to the cards canvas.
         try:
@@ -1529,21 +1649,96 @@ class App(_AppBase):  # type: ignore[misc]
         if idx < len(self._segments):
             self._segments[idx].text = self._read_clean(body)
 
+    # ── Document-level undo / redo (snapshot history) ─────────────────
+    def _snapshot(self) -> dict:
+        """Capture a deep copy of the editable state."""
+        return {
+            "segments": [
+                Segment(
+                    start=s.start, end=s.end, speaker=s.speaker,
+                    text=s.text, display_name=s.display_name,
+                )
+                for s in self._segments
+            ],
+            "speaker_names": dict(self._speaker_names),
+        }
+
+    @staticmethod
+    def _snapshots_equal(a: dict, b: dict) -> bool:
+        if a is None or b is None:
+            return False
+        if a["speaker_names"] != b["speaker_names"]:
+            return False
+        sa, sb = a["segments"], b["segments"]
+        if len(sa) != len(sb):
+            return False
+        for x, y in zip(sa, sb):
+            if (x.text != y.text or x.start != y.start or x.end != y.end
+                    or x.speaker != y.speaker or x.display_name != y.display_name):
+                return False
+        return True
+
+    def _apply_snapshot(self, snap: dict) -> None:
+        self._segments = list(snap["segments"])
+        self._speaker_names = dict(snap["speaker_names"])
+        if self._edit_mode:
+            self._render_edit_mode()
+        else:
+            self._render(self._segments)
+
+    def _push_history(self, snap: Optional[dict] = None) -> None:
+        """Push the given (or current) snapshot to the undo stack and clear
+        the redo stack. Use BEFORE applying a change."""
+        if snap is None:
+            snap = self._snapshot()
+        self._undo_stack.append(snap)
+        self._redo_stack.clear()
+        self._set_dirty(True)
+        self._update_undo_buttons()
+
+    def _clear_history(self) -> None:
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._update_undo_buttons()
+
+    def _set_dirty(self, dirty: bool) -> None:
+        self._dirty = dirty
+        # Title bar dirty marker (matches macOS conventions: bullet prefix).
+        try:
+            base = "Noto"
+            self.title(f"● {base}" if dirty else base)
+        except tk.TclError:
+            pass
+
+    def _update_undo_buttons(self) -> None:
+        # 編集モード中は document-level undo を無効化（Cmd+Z は Tk が文字単位の
+        # undo を Text ウィジェットで処理するのでそちらを使ってもらう）。
+        try:
+            in_edit = self._edit_mode
+            self._undo_btn.configure(
+                state="normal" if (self._undo_stack and not in_edit) else "disabled"
+            )
+            self._redo_btn.configure(
+                state="normal" if (self._redo_stack and not in_edit) else "disabled"
+            )
+        except (tk.TclError, AttributeError):
+            pass
+
     def _undo(self):
-        w = self._focused_editor
-        if w:
-            try:
-                w.edit_undo()
-            except tk.TclError:
-                pass
+        if self._edit_mode or not self._undo_stack:
+            return
+        self._redo_stack.append(self._snapshot())
+        self._apply_snapshot(self._undo_stack.pop())
+        self._set_dirty(True)
+        self._update_undo_buttons()
 
     def _redo(self):
-        w = self._focused_editor
-        if w:
-            try:
-                w.edit_redo()
-            except tk.TclError:
-                pass
+        if self._edit_mode or not self._redo_stack:
+            return
+        self._undo_stack.append(self._snapshot())
+        self._apply_snapshot(self._redo_stack.pop())
+        self._set_dirty(True)
+        self._update_undo_buttons()
 
     def _split_segment(self, idx: int, body: tk.Text):
         cursor = body.index("insert")
@@ -1602,18 +1797,25 @@ class App(_AppBase):  # type: ignore[misc]
         }
         Path(path).write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _save_project(self):
+    def _save_project(self) -> bool:
+        """Returns True on successful save, False if canceled or no segments."""
         if not self._segments:
-            return
+            return False
         if self._project_path:
-            self._write_project(self._project_path)
+            try:
+                self._write_project(self._project_path)
+            except Exception as exc:
+                messagebox.showerror("保存エラー", f"保存に失敗しました:\n{exc}")
+                return False
             self._show_toast("上書き保存が完了しました。")
-        else:
-            self._save_project_as()
+            self._set_dirty(False)
+            return True
+        return self._save_project_as()
 
-    def _save_project_as(self):
+    def _save_project_as(self) -> bool:
+        """Returns True on successful save, False if canceled or no segments."""
         if not self._segments:
-            return
+            return False
         stem = Path(self._current_file).stem if self._current_file else "project"
         path = filedialog.asksaveasfilename(
             defaultextension=".transcription",
@@ -1625,10 +1827,16 @@ class App(_AppBase):  # type: ignore[misc]
             ],
         )
         if not path:
-            return
-        self._write_project(path)
+            return False
+        try:
+            self._write_project(path)
+        except Exception as exc:
+            messagebox.showerror("保存エラー", f"保存に失敗しました:\n{exc}")
+            return False
         self._project_path = path
         self._saveas_proj_btn.grid()
+        self._set_dirty(False)
+        return True
 
     def _show_toast(self, message: str):
         toast = tk.Label(
@@ -1643,10 +1851,8 @@ class App(_AppBase):  # type: ignore[misc]
         self.after(2500, toast.destroy)
 
     def _load_project(self):
-        # 編集中の未保存変更がある場合は確認
-        if self._edit_mode and not self._confirm_discard_edits(
-            "編集中ですが別のプロジェクトを開きますか？\n編集内容は失われる可能性があります。"
-        ):
+        # 未保存の変更があれば 3択ダイアログ
+        if not self._confirm_destructive_op("別のプロジェクトを開く"):
             return
 
         path = filedialog.askopenfilename(
@@ -1733,6 +1939,9 @@ class App(_AppBase):  # type: ignore[misc]
             )
         else:
             self._show_placeholder("セグメントが見つかりませんでした。")
+        # Loaded state is the on-disk truth; reset history and dirty flag.
+        self._clear_history()
+        self._set_dirty(False)
 
     # ── Export ─────────────────────────────────────────────────────────
 
