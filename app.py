@@ -120,8 +120,20 @@ except ImportError:
     _HAS_DND = False
     _AppBase = ctk.CTk  # type: ignore
 
+# Persistent settings (config.json + macOS Keychain) live in app_config.py.
+# Re-bind under the historical leading-underscore names so call sites are
+# unchanged.
+from app_config import (
+    CONFIG_PATH as _CONFIG_PATH,
+    load_config as _load_config,
+    save_config as _save_config,
+    KEYCHAIN_SERVICE as _KEYCHAIN_SERVICE,
+    KEYCHAIN_USER_HF as _KEYCHAIN_USER_HF,
+    load_hf_token as _load_hf_token,
+    save_hf_token as _save_hf_token,
+)
+
 # ─── Constants ─────────────────────────────────────────────────────────────────
-_CONFIG_PATH = Path.home() / ".transcription_app" / "config.json"
 
 _MODELS = [
     ("large-v3  (高精度・標準)", "mlx-community/whisper-large-v3-mlx"),
@@ -179,89 +191,6 @@ def _trim_filename(name: str, limit: int = 22) -> str:
     sfx = p.suffix
     keep = limit - len(sfx) - 1
     return p.stem[:max(keep, 4)] + "…" + sfx
-
-
-def _load_config() -> dict:
-    if not _CONFIG_PATH.exists():
-        return {}
-    try:
-        data = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError("config root is not a dict")
-        return data
-    except Exception:
-        # 壊れた JSON は捨てる前に .broken にリネームして退避。
-        # 次回保存時に新しいファイルが作られるが、復旧したい時のために残す。
-        try:
-            backup = _CONFIG_PATH.with_suffix(".broken.json")
-            _CONFIG_PATH.replace(backup)
-        except Exception:
-            pass
-        return {}
-
-
-def _save_config(cfg: dict) -> None:
-    _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    cfg.setdefault("version", 1)
-    # アトミックに書く: tmp → rename。途中でアプリが落ちても本ファイルが壊れない。
-    tmp = _CONFIG_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_CONFIG_PATH)
-
-
-# HF Token は config.json に平文ではなく macOS Keychain に保存する。
-# Service 名は .app の bundle identifier に揃える（Keychain Access.app で
-# 見たときに用途が分かりやすいように）。
-_KEYCHAIN_SERVICE = "co.lionheart.noto"
-_KEYCHAIN_USER_HF = "hf_token"
-
-
-def _load_hf_token() -> str:
-    """HF Token の取得順序:
-    1. macOS Keychain
-    2. 旧 config.json の平文（あれば Keychain へ移行して config から削除）
-    3. 環境変数 HF_TOKEN
-    4. 空文字
-    """
-    try:
-        import keyring  # type: ignore
-        tok = keyring.get_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF)
-        if tok:
-            return tok
-    except Exception:
-        pass
-
-    # 旧形式（config.json に平文保存）の救済 + Keychain へ移行
-    cfg = _load_config()
-    legacy = cfg.get("hf_token")
-    if isinstance(legacy, str) and legacy:
-        if _save_hf_token(legacy):
-            cfg.pop("hf_token", None)
-            try:
-                _save_config(cfg)
-            except Exception:
-                pass
-        return legacy
-
-    return os.environ.get("HF_TOKEN", "")
-
-
-def _save_hf_token(token: str) -> bool:
-    """HF Token を macOS Keychain に保存。空文字なら既存エントリを削除。
-    keyring が使えない環境では False を返す（呼び出し元で fallback 可）。"""
-    try:
-        import keyring  # type: ignore
-        if token:
-            keyring.set_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF, token)
-        else:
-            try:
-                keyring.delete_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF)
-            except Exception:
-                # 既存エントリが無い場合の PasswordDeleteError は無視
-                pass
-        return True
-    except Exception:
-        return False
 
 
 # ─── Upload icon (Canvas) ──────────────────────────────────────────────────────
