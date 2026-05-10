@@ -109,6 +109,13 @@ def _migrate_project_data(data: dict, from_version: int) -> dict:
 
 # tk.Text tag name applied to newlines we inserted for kinsoku auto-wrap.
 # User-typed Return creates an untagged \n which we want to preserve on save.
+#
+# DESIGN NOTE: We considered embedding marker characters (e.g. U+200B + \n)
+# instead of using tags. Marker chars get separated when users edit around
+# them, which silently breaks the strip step. Tags survive arbitrary edits
+# because Tk shrinks/extends them with the underlying text — no manual
+# bookkeeping needed. The tradeoff is that we make a few extra Tcl calls
+# per save (acceptable: typical segments are < 1000 chars).
 _KINSOKU_NL_TAG = "_kinsoku_nl"
 
 
@@ -1006,6 +1013,13 @@ class App(_AppBase):  # type: ignore[misc]
 
         # Keyboard scrolling fallback (works alongside customtkinter's wheel).
         # Gated by self._cards_scrollable so it only fires once results render.
+        #
+        # IMPLEMENTATION NOTE: We reach into customtkinter's private
+        # ``_parent_canvas`` because CTkScrollableFrame does not expose a
+        # public scroll API. requirements.txt pins customtkinter 5.2.2 so
+        # this attribute name is stable; if it changes in a future release,
+        # the binding becomes a no-op (KeyError suppressed by getattr-style
+        # access elsewhere; here we accept an AttributeError will surface).
         def _kbd_scroll(step, what):
             if self._cards_scrollable:
                 self._cards_container._parent_canvas.yview_scroll(step, what)
@@ -1339,7 +1353,15 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _set_cards_scrollbar(self, visible: bool) -> None:
         """Show or hide the CTkScrollableFrame's scrollbar and gate the
-        keyboard scroll keys so they only act when there's content."""
+        keyboard scroll keys so they only act when there's content.
+
+        IMPLEMENTATION NOTE: customtkinter does not expose a public API to
+        toggle the scrollbar visibility on CTkScrollableFrame, so we reach
+        into the private ``_scrollbar`` attribute. This is brittle across
+        major customtkinter releases — requirements.txt pins 5.2.2 to keep
+        the structure stable. If the attribute disappears in a future
+        release, this method silently degrades (no-op) thanks to getattr
+        and the try/except below."""
         self._cards_scrollable = visible
         sb = getattr(self._cards_container, "_scrollbar", None)
         if sb is None:
