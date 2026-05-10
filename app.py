@@ -454,6 +454,14 @@ class DropZone(ctk.CTkFrame):
 
 class App(_AppBase):  # type: ignore[misc]
 
+    # 編集履歴の最大保持数。これを超えると古い方から落ちていく。
+    # 実装はリスト先頭からの pop(0) なので O(N) になるが、上限が小さい
+    # ので問題にならない。
+    _UNDO_HISTORY_LIMIT = 50
+    # タイピング・バーストの debounce 時間（ミリ秒）。最後のキー入力から
+    # この時間が経つと、未確定のバーストを 1 件の Undo エントリとして確定する。
+    _BURST_DEBOUNCE_MS = 1000
+
     def __init__(self):
         super().__init__()
         ctk.set_appearance_mode("light")
@@ -493,12 +501,21 @@ class App(_AppBase):  # type: ignore[misc]
         # Document-level undo/redo (snapshot stacks of (segments, speaker_names)).
         # _dirty tracks whether the in-memory state diverges from the file on
         # disk (or whether the user has anything worth saving at all).
+        # 履歴は最大 _UNDO_HISTORY_LIMIT 件で循環。これ以上溜まると古い方から
+        # 押し出される（Word / Google Docs 等と同等の標準的な挙動）。
         self._undo_stack: list[dict] = []
         self._redo_stack: list[dict] = []
         self._dirty: bool = False
-        # Snapshot taken when entering edit mode, so a single edit session
-        # collapses into one undo step on exit.
-        self._pre_edit_snapshot: Optional[dict] = None
+        # ── タイピング・バーストの追跡 ────────────────────────────────────
+        # 連続したキー入力を 1 つの編集操作として扱うための状態。1 秒の
+        # 無入力で確定（debounce）するか、別カードにフォーカスが移った瞬間
+        # に確定する。確定したタイミングで _burst_pre_state を _undo_stack に
+        # 積む。これにより「カード A で編集 → カード B で編集 → A で編集」が
+        # 3 ステップに分かれる、Word 等と同じ感覚の Undo になる。
+        self._burst_active: bool = False
+        self._burst_card_idx: Optional[int] = None
+        self._burst_pre_state: Optional[dict] = None
+        self._burst_timer: Optional[str] = None
 
         # speaker label → display colour (assigned on first appearance)
         self._speaker_colors: dict[str, str] = {}
@@ -808,6 +825,15 @@ class App(_AppBase):  # type: ignore[misc]
             ("<space>", 1, "pages"),
         ):
             self.bind_all(ev, lambda e, s=step, w=what: _kbd_scroll(s, w))
+
+        # Cmd+Z / Cmd+Shift+Z（macOS）と Ctrl+Z / Ctrl+Y（他 OS）はそれぞれ
+        # Tk の <<Undo>> / <<Redo>> 仮想イベントに変換される。これを bind_all
+        # で全ウィジェットから拾い、必ずアプリ全体スナップショット式の
+        # _undo / _redo を呼ぶようにする。tk.Text のクラス標準が持つ
+        # per-widget edit_undo は使わない（過去のように「フォーカスが当たって
+        # いるカードしか戻らない」という体感を避けるため）。
+        self.bind_all("<<Undo>>", lambda e: self._undo())
+        self.bind_all("<<Redo>>", lambda e: self._redo())
 
         self._show_placeholder("ファイルを選択して「文字起こし開始」ボタンを押してください。")
 
@@ -1386,7 +1412,17 @@ class App(_AppBase):  # type: ignore[misc]
                 except tk.TclError:
                     pass
 
-            body.bind("<KeyRelease>", lambda e, i=idx, b=body: (self._autosave_card(i, b), _auto_height(b=b)))
+            # KeyPress でバースト開始判定（pre-state 捕捉）。KeyRelease は autosave +
+            # debounce タイマーリセット。両方を組み合わせることで、連続入力を 1 件の
+            # Undo エントリにまとめつつ、別カードへ移動した瞬間に確定できる。
+            body.bind("<KeyPress>", lambda e, i=idx: self._on_burst_keypress(i))
+            body.bind(
+                "<KeyRelease>",
+                lambda e, i=idx, b=body: (
+                    self._on_burst_keyrelease(i, b),
+                    _auto_height(b=b),
+                ),
+            )
             body.bind("<Shift-Return>", lambda e, i=idx, b=body: self._split_segment(i, b))
             body.bind("<FocusIn>", _on_focus_in)
             body.bind("<FocusOut>", _on_focus_out)
@@ -1590,9 +1626,8 @@ class App(_AppBase):  # type: ignore[misc]
             self._enter_edit_mode()
 
     def _enter_edit_mode(self):
-        # Capture the pre-edit state so the entire edit session can be undone
-        # as a single document-level step on exit.
-        self._pre_edit_snapshot = self._snapshot()
+        # 旧仕様では編集セッション全体を 1 件にまとめるため pre_edit_snapshot を
+        # 取っていたが、現在はキー入力ごとのバースト追跡に切り替えたので不要。
         # Preserve scroll position so the user stays where they were in
         # the transcript after the cards re-render in edit mode.
         scroll_frac = self._capture_scroll_fraction()
@@ -1621,16 +1656,10 @@ class App(_AppBase):  # type: ignore[misc]
     def _exit_edit_mode(self, save: bool = True):
         if save:
             self._sync_edits_to_segments()
-        # If the edit session changed anything, push the pre-edit snapshot
-        # to the undo stack so the whole session collapses to one undo step.
-        if save and self._pre_edit_snapshot is not None:
-            current = self._snapshot()
-            if not self._snapshots_equal(self._pre_edit_snapshot, current):
-                self._undo_stack.append(self._pre_edit_snapshot)
-                self._redo_stack.clear()
-                self._set_dirty(True)
-                self._update_undo_buttons()
-        self._pre_edit_snapshot = None
+        # 編集モードを抜ける前に、進行中のタイピング・バーストを 1 件として確定。
+        # これでセッション中に行った各バースト（カード A 編集、カード B 編集、etc.）
+        # はすべて個別の Undo エントリとして undo_stack に積まれている状態になる。
+        self._finalize_burst()
 
         # Snapshot scroll position before the cards are destroyed and rebuilt.
         scroll_frac = self._capture_scroll_fraction()
@@ -1713,10 +1742,15 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _push_history(self, snap: Optional[dict] = None) -> None:
         """Push the given (or current) snapshot to the undo stack and clear
-        the redo stack. Use BEFORE applying a change."""
+        the redo stack. Use BEFORE applying a discrete change (e.g. speaker
+        rename). Pending typing bursts are finalized first so their history
+        is not swallowed by the upcoming change."""
+        self._finalize_burst()
         if snap is None:
             snap = self._snapshot()
         self._undo_stack.append(snap)
+        if len(self._undo_stack) > self._UNDO_HISTORY_LIMIT:
+            self._undo_stack.pop(0)
         self._redo_stack.clear()
         self._set_dirty(True)
         self._update_undo_buttons()
@@ -1724,6 +1758,17 @@ class App(_AppBase):  # type: ignore[misc]
     def _clear_history(self) -> None:
         self._undo_stack.clear()
         self._redo_stack.clear()
+        # 進行中バーストも巻き取って捨てる（新しいファイル等を開いた時に
+        # 旧ファイルの編集履歴が漏れて積まれないように）。
+        if self._burst_timer:
+            try:
+                self.after_cancel(self._burst_timer)
+            except tk.TclError:
+                pass
+            self._burst_timer = None
+        self._burst_active = False
+        self._burst_card_idx = None
+        self._burst_pre_state = None
         self._update_undo_buttons()
 
     def _set_dirty(self, dirty: bool) -> None:
@@ -1734,50 +1779,105 @@ class App(_AppBase):  # type: ignore[misc]
             pass
 
     def _update_undo_buttons(self) -> None:
-        # 編集モード中は Tk の文字単位 undo（Cmd+Z 相当）を行うため、
-        # ボタンは常に有効化する。表示モードではスナップショットスタックの
-        # 中身に応じて有効/無効を切り替える。
+        # 編集モード／表示モードに関わらず、グローバルなスナップショット
+        # スタックの中身でボタンの有効/無効を切り替える。バーストが進行中
+        # （ユーザーが入力中だがまだ debounce 確定していない）の場合も
+        # Cmd+Z で finalize → undo できるので、その状態も「Undo 可能」として
+        # 扱う。
         try:
-            if self._edit_mode:
-                self._undo_btn.configure(state="normal")
-                self._redo_btn.configure(state="normal")
-            else:
-                self._undo_btn.configure(
-                    state="normal" if self._undo_stack else "disabled"
-                )
-                self._redo_btn.configure(
-                    state="normal" if self._redo_stack else "disabled"
-                )
+            has_pending = (
+                self._burst_active and self._burst_pre_state is not None
+            )
+            self._undo_btn.configure(
+                state="normal" if (self._undo_stack or has_pending) else "disabled"
+            )
+            self._redo_btn.configure(
+                state="normal" if self._redo_stack else "disabled"
+            )
         except (tk.TclError, AttributeError):
             pass
 
-    def _undo(self):
-        if self._edit_mode:
-            # 編集モード中はフォーカス中の Text ウィジェットに文字単位 undo を試行。
-            if self._focused_editor:
-                try:
-                    self._focused_editor.edit_undo()
-                except tk.TclError:
-                    pass
+    # ── タイピング・バースト管理 ─────────────────────────────────────────
+    def _on_burst_keypress(self, card_idx: int) -> None:
+        """編集モードのテキストカード上で **キーが押される直前** に呼ばれる。
+        バーストが始まっていなければ pre-state（編集前のスナップショット）を
+        ここで捕捉する。KeyRelease ではなく KeyPress を使うのは、KeyRelease の
+        時点では既に widget の内容が変わっており、pre-state を取れないため。"""
+        if self._burst_active and self._burst_card_idx != card_idx:
+            # 別のカードに移って打ち始めた → 直前のバーストを 1 件として確定
+            self._finalize_burst()
+        if not self._burst_active:
+            # 直前にウィジェットへ書かれた内容が seg.text に未反映だと、
+            # snapshot が古い状態を写してしまう。先に sync しておく。
+            self._sync_edits_to_segments()
+            self._burst_pre_state = self._snapshot()
+            self._burst_active = True
+            self._burst_card_idx = card_idx
+            self._update_undo_buttons()
+
+    def _on_burst_keyrelease(self, card_idx: int, body: tk.Text) -> None:
+        """編集モードのテキストカード上で **キーを離した直後** に呼ばれる。
+        seg.text への autosave と debounce タイマーのリセットを行う。"""
+        self._autosave_card(card_idx, body)
+        if self._burst_timer:
+            try:
+                self.after_cancel(self._burst_timer)
+            except tk.TclError:
+                pass
+        self._burst_timer = self.after(
+            self._BURST_DEBOUNCE_MS, self._finalize_burst
+        )
+
+    def _finalize_burst(self) -> None:
+        """進行中のタイピング・バーストを 1 件の Undo エントリとして確定。
+        debounce タイマー満了／別カードへフォーカス移動／編集モード退出／
+        Undo・Redo 直前に呼ばれる。pre-state と現在の状態が同じなら何もしない
+        （余計な空エントリを積まないため）。"""
+        if self._burst_timer:
+            try:
+                self.after_cancel(self._burst_timer)
+            except tk.TclError:
+                pass
+            self._burst_timer = None
+        if not self._burst_active or self._burst_pre_state is None:
+            self._burst_active = False
+            self._burst_card_idx = None
+            self._burst_pre_state = None
             return
+        # 確定前にウィジェット内容を seg.text に反映
+        self._sync_edits_to_segments()
+        current = self._snapshot()
+        if not self._snapshots_equal(self._burst_pre_state, current):
+            self._undo_stack.append(self._burst_pre_state)
+            if len(self._undo_stack) > self._UNDO_HISTORY_LIMIT:
+                self._undo_stack.pop(0)
+            self._redo_stack.clear()
+            self._set_dirty(True)
+        self._burst_active = False
+        self._burst_card_idx = None
+        self._burst_pre_state = None
+        self._update_undo_buttons()
+
+    def _undo(self):
+        # 進行中バーストを先に確定。これが終わってから undo_stack を見るので、
+        # 「打っている最中の Cmd+Z」も「直前のバーストを取り消す」挙動になる。
+        self._finalize_burst()
         if not self._undo_stack:
             return
-        self._redo_stack.append(self._snapshot())
+        current = self._snapshot()
+        self._redo_stack.append(current)
         self._apply_snapshot(self._undo_stack.pop())
         self._set_dirty(True)
         self._update_undo_buttons()
 
     def _redo(self):
-        if self._edit_mode:
-            if self._focused_editor:
-                try:
-                    self._focused_editor.edit_redo()
-                except tk.TclError:
-                    pass
-            return
+        self._finalize_burst()
         if not self._redo_stack:
             return
-        self._undo_stack.append(self._snapshot())
+        current = self._snapshot()
+        self._undo_stack.append(current)
+        if len(self._undo_stack) > self._UNDO_HISTORY_LIMIT:
+            self._undo_stack.pop(0)
         self._apply_snapshot(self._redo_stack.pop())
         self._set_dirty(True)
         self._update_undo_buttons()
