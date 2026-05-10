@@ -79,6 +79,34 @@ def _strip_word_joiners(text: str) -> str:
     return text.replace(_WORD_JOINER, "") if _WORD_JOINER in text else text
 
 
+# .transcription project file schema version. Bump deliberately when the
+# on-disk shape changes incompatibly, and add a branch in _migrate_project_data.
+_PROJECT_FILE_VERSION = 1
+
+
+def _migrate_project_data(data: dict, from_version: int) -> dict:
+    """Bring a project file forward to the current schema. Currently we only
+    have version 1, so this is essentially identity; the structure is in
+    place so future format changes can land without rewriting load logic.
+
+    Returns the migrated dict (may be the same object). Raises ValueError on
+    an irrecoverable mismatch."""
+    v = from_version
+    if v == _PROJECT_FILE_VERSION:
+        return data
+    if v < 1:
+        # Treat legacy / version-less files as v1.
+        v = 1
+    # Future migrations would chain here, e.g.:
+    #   if v == 1: data = _migrate_v1_to_v2(data); v = 2
+    if v != _PROJECT_FILE_VERSION:
+        raise ValueError(
+            f"unhandled project schema version {from_version} "
+            f"(supported: {_PROJECT_FILE_VERSION})"
+        )
+    return data
+
+
 # tk.Text tag name applied to newlines we inserted for kinsoku auto-wrap.
 # User-typed Return creates an untagged \n which we want to preserve on save.
 _KINSOKU_NL_TAG = "_kinsoku_nl"
@@ -1872,7 +1900,7 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _write_project(self, path: str):
         project = {
-            "version": 1,
+            "version": _PROJECT_FILE_VERSION,
             "audio_file": self._current_file or "",
             "speaker_names": self._speaker_names,
             "segments": [
@@ -1962,6 +1990,31 @@ class App(_AppBase):  # type: ignore[misc]
         except Exception as exc:
             messagebox.showerror("エラー", f"プロジェクトを読み込めませんでした:\n{exc}")
             return
+
+        # スキーマバージョンの確認 → 必要なら migrate。
+        try:
+            file_version = int(data.get("version", _PROJECT_FILE_VERSION))
+        except (TypeError, ValueError):
+            file_version = _PROJECT_FILE_VERSION
+        if file_version > _PROJECT_FILE_VERSION:
+            messagebox.showerror(
+                "新しい形式のプロジェクトファイル",
+                "このプロジェクトファイルはより新しいバージョンの Noto で"
+                "保存されています。\n\n"
+                f"・ファイルのバージョン: {file_version}\n"
+                f"・このアプリが対応しているバージョン: {_PROJECT_FILE_VERSION}\n\n"
+                "Noto を最新版に更新してから再度お試しください。"
+            )
+            return
+        if file_version < _PROJECT_FILE_VERSION:
+            try:
+                data = _migrate_project_data(data, file_version)
+            except Exception as exc:
+                messagebox.showerror(
+                    "プロジェクトの読み込みエラー",
+                    f"古い形式のプロジェクトファイルを変換できませんでした:\n{exc}"
+                )
+                return
 
         # セグメントを1件ずつ厳密に検証。壊れたセグメントは飛ばすが、
         # 正常なセグメントは読み込めるように。
