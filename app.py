@@ -244,36 +244,23 @@ _ACCEPTED_EXTS = {
     ".ogg", ".flac", ".mov", ".avi", ".mkv", ".webm", ".wma",
 }
 
-# 15 distinct colours — modern Tailwind palette, one per display-name label
-_SPEAKER_COLORS = [
-    "#3B82F6",  # blue
-    "#10B981",  # emerald
-    "#F59E0B",  # amber
-    "#EF4444",  # red
-    "#8B5CF6",  # violet
-    "#06B6D4",  # cyan
-    "#F97316",  # orange
-    "#EC4899",  # pink
-    "#6366F1",  # indigo
-    "#14B8A6",  # teal
-    "#84CC16",  # lime
-    "#A855F7",  # purple
-    "#0EA5E9",  # sky
-    "#D946EF",  # fuchsia
-    "#78716C",  # warm-gray
-]
-
-# Light-theme palette
-_BG_LEFT    = "#FFFFFF"
-_BG_RIGHT   = "#F1F5F9"
-_BG_CARD    = "#F8FAFC"
-_BG_CARD_H  = "#EFF6FF"  # card background on hover (light accent blue)
-_ACCENT     = "#3B82F6"
-_ACCENT_HOV = "#2563EB"
-_BORDER     = "#E2E8F0"
-_BORDER_H   = "#93C5FD"  # card border on hover (medium accent blue)
-_TEXT       = "#1E293B"
-_TEXT_MUTED = "#94A3B8"
+# Theme colors / palettes are kept in theme.py. We re-bind them to the
+# leading-underscore names this module has historically used so the ~95
+# call sites below need no changes — a re-skin still only requires editing
+# theme.py.
+from theme import (
+    BG_LEFT as _BG_LEFT,
+    BG_RIGHT as _BG_RIGHT,
+    BG_CARD as _BG_CARD,
+    BG_CARD_H as _BG_CARD_H,
+    ACCENT as _ACCENT,
+    ACCENT_HOV as _ACCENT_HOV,
+    BORDER as _BORDER,
+    BORDER_H as _BORDER_H,
+    TEXT as _TEXT,
+    TEXT_MUTED as _TEXT_MUTED,
+    SPEAKER_COLORS as _SPEAKER_COLORS,
+)
 
 _LEFT_WIDTH = 300
 
