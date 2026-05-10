@@ -82,13 +82,27 @@ def segments_to_json(segments: list) -> str:
 
 def _extract_audio(input_path: str, output_path: str) -> None:
     """Convert any audio/video to 16 kHz mono WAV for Whisper."""
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(
+            f"音声ファイルが見つかりません:\n{input_path}\n"
+            "ファイルが移動・削除されている可能性があります。"
+        )
     cmd = [
         "ffmpeg", "-i", input_path,
         "-ar", "16000", "-ac", "1",
         "-c:a", "pcm_s16le",
         "-y", output_path,
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "ffmpeg が見つかりません。\n"
+            "ターミナルで `brew install ffmpeg` を実行してインストールしてください。\n"
+            "（既にインストール済みの場合は PATH の設定を確認してください）"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"ffmpeg の実行に失敗しました: {exc}") from exc
     if r.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{r.stderr[-2000:]}")
 
@@ -154,15 +168,35 @@ class TranscriptionEngine:
     def _load_pipeline(self, hf_token: str) -> None:
         if self._pipeline is not None and self._pipeline_token == hf_token:
             return
-        from pyannote.audio import Pipeline  # type: ignore
-        import torch  # type: ignore
+        try:
+            from pyannote.audio import Pipeline  # type: ignore
+            import torch  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "話者分離に必要なライブラリ (pyannote.audio / torch) が"
+                "見つかりません。再インストールが必要です。"
+            ) from exc
 
-        self._pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            token=hf_token,
-        )
-        if torch.backends.mps.is_available():
-            self._pipeline = self._pipeline.to(torch.device("mps"))
+        try:
+            self._pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                token=hf_token,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "話者分離モデルの読み込みに失敗しました。\n"
+                "・HuggingFace Token が正しいか確認してください\n"
+                "・ネットワーク接続を確認してください\n"
+                f"（詳細: {exc}）"
+            ) from exc
+
+        # MPS (Apple Silicon GPU) を試し、使えなければ CPU フォールバック。
+        # Intel Mac やバージョン非互換のときも落ちないように。
+        try:
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self._pipeline = self._pipeline.to(torch.device("mps"))
+        except Exception:
+            pass  # CPU で続行
         self._pipeline_token = hf_token
 
     def transcribe(
@@ -178,11 +212,36 @@ class TranscriptionEngine:
             if progress_callback:
                 progress_callback(msg, pct)
 
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(
+                f"\u6307\u5b9a\u3055\u308c\u305f\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093:\n{file_path}"
+            )
+
         token = hf_token or os.environ.get("HF_TOKEN") or None
+        if use_diarization and not token:
+            raise RuntimeError(
+                "\u8a71\u8005\u5206\u96e2\u3092\u4f7f\u3046\u306b\u306f HuggingFace Token \u304c\u5fc5\u8981\u3067\u3059\u3002\n"
+                "\u30fb\u8a2d\u5b9a\u3067 HuggingFace Token \u3092\u5165\u529b\u3059\u308b\u304b\n"
+                "\u30fb\u30bf\u30fc\u30df\u30ca\u30eb\u3067 `export HF_TOKEN=hf_xxx` \u3092\u5b9f\u884c\u3057\u3066\u304b\u3089\n"
+                "  \u30a2\u30d7\u30ea\u3092\u518d\u8d77\u52d5\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+            )
 
         _progress("\u97f3\u58f0\u3092\u62bd\u51fa\u4e2d\u2026", 5)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        # tempfile.TemporaryDirectory() \u306f\u901a\u5e38 /tmp \u306a\u3069\u3092\u4f7f\u3046\u304c\u3001\u30b5\u30f3\u30c9\u30dc\u30c3\u30af\u30b9\u3084
+        # \u66f8\u304d\u8fbc\u307f\u6a29\u9650\u306e\u306a\u3044\u74b0\u5883\u3067\u5931\u6557\u3059\u308b\u3053\u3068\u304c\u3042\u308b\u305f\u3081\u3001~/.transcription_app/tmp
+        # \u306b\u660e\u793a\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\u3002
+        tmp_root = None
+        try:
+            tmp_ctx = tempfile.TemporaryDirectory()
+        except (OSError, PermissionError):
+            tmp_root = os.path.join(
+                os.path.expanduser("~"), ".transcription_app", "tmp"
+            )
+            os.makedirs(tmp_root, exist_ok=True)
+            tmp_ctx = tempfile.TemporaryDirectory(dir=tmp_root)
+
+        with tmp_ctx as tmpdir:
             audio_path = os.path.join(tmpdir, "audio.wav")
             _extract_audio(file_path, audio_path)
 

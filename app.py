@@ -204,17 +204,31 @@ def _trim_filename(name: str, limit: int = 22) -> str:
 
 
 def _load_config() -> dict:
-    if _CONFIG_PATH.exists():
+    if not _CONFIG_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("config root is not a dict")
+        return data
+    except Exception:
+        # 壊れた JSON は捨てる前に .broken にリネームして退避。
+        # 次回保存時に新しいファイルが作られるが、復旧したい時のために残す。
         try:
-            return json.loads(_CONFIG_PATH.read_text())
+            backup = _CONFIG_PATH.with_suffix(".broken.json")
+            _CONFIG_PATH.replace(backup)
         except Exception:
             pass
-    return {}
+        return {}
 
 
 def _save_config(cfg: dict) -> None:
     _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    cfg.setdefault("version", 1)
+    # アトミックに書く: tmp → rename。途中でアプリが落ちても本ファイルが壊れない。
+    tmp = _CONFIG_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_CONFIG_PATH)
 
 
 # ─── Upload icon (Canvas) ──────────────────────────────────────────────────────
@@ -525,8 +539,15 @@ class App(_AppBase):  # type: ignore[misc]
         ctk.set_default_color_theme("blue")
 
         self.title("Noto")
-        self.geometry("1020x700")
+        # 前回のウィンドウ形状（位置・サイズ）を復元。値が壊れていれば
+        # geometry() は ValueError を出すので無視してデフォルトに戻す。
+        saved_geom = _load_config().get("window_geometry", "")
+        try:
+            self.geometry(saved_geom or "1020x700")
+        except (tk.TclError, ValueError):
+            self.geometry("1020x700")
         self.minsize(800, 560)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._engine = TranscriptionEngine()
         self._segments: list[Segment] = []
@@ -593,11 +614,20 @@ class App(_AppBase):  # type: ignore[misc]
         scroll.grid(row=1, column=0, sticky="nsew")
         scroll.grid_columnconfigure(0, weight=1)
 
-        from PIL import Image as _PI, ImageTk
-        import io as _io2,base64 as _b2
-        _noto_pil=_PI.open(_io2.BytesIO(_b2.b64decode(_NOTO_LOGO_B64)))
-        _noto_img=ctk.CTkImage(light_image=_noto_pil,size=(90,33))
-        _noto_lbl=ctk.CTkLabel(scroll,image=_noto_img,text="",fg_color="transparent")
+        # PIL は配布バンドルから漏れる可能性があるので、import 失敗時は
+        # テキストラベルにフォールバックして UI 自体は起動できるようにする。
+        try:
+            from PIL import Image as _PI  # type: ignore
+            import io as _io2, base64 as _b2
+            _noto_pil = _PI.open(_io2.BytesIO(_b2.b64decode(_NOTO_LOGO_B64)))
+            _noto_img = ctk.CTkImage(light_image=_noto_pil, size=(90, 33))
+            _noto_lbl = ctk.CTkLabel(scroll, image=_noto_img, text="", fg_color="transparent")
+        except Exception:
+            _noto_lbl = ctk.CTkLabel(
+                scroll, text="Noto",
+                font=ctk.CTkFont(size=22, weight="bold"),
+                text_color=_ACCENT, fg_color="transparent",
+            )
         _noto_lbl.grid(row=0, column=0, padx=16, pady=(16, 4), sticky="w")
 
         self._drop_zone = DropZone(
@@ -855,11 +885,34 @@ class App(_AppBase):  # type: ignore[misc]
         self._current_file = None
         self._start_btn.configure(state="disabled")
 
+    def _confirm_discard_edits(self, message: str) -> bool:
+        """Ask the user before throwing away an unsaved edit-mode session."""
+        return messagebox.askyesno("確認", message)
+
     def _start(self):
         if self._running or not self._current_file:
             return
+
+        # 入力ファイルが消えている場合は明示的にエラー
+        if not Path(self._current_file).exists():
+            messagebox.showerror(
+                "ファイルが見つかりません",
+                f"音声ファイルが見つかりません:\n{self._current_file}\n\n"
+                "ファイルが移動・削除された可能性があります。"
+                "ファイルを選び直してください。"
+            )
+            self._on_file_cleared()
+            return
+
+        # 編集モード中なら先に確認
         if self._edit_mode:
+            if not self._confirm_discard_edits(
+                "編集中ですが新しい文字起こしを始めますか？\n"
+                "現在の編集内容は失われます。"
+            ):
+                return
             self._exit_edit_mode(save=False)
+
         self._project_path = None
         self._saveas_proj_btn.grid_remove()
 
@@ -1007,6 +1060,17 @@ class App(_AppBase):  # type: ignore[misc]
         self._stop_loading()
         self._show_placeholder("文字起こしに失敗しました。")
         messagebox.showerror("エラー", f"文字起こし中にエラーが発生しました:\n\n{error}")
+
+    # ── App lifecycle ──────────────────────────────────────────────────
+    def _on_close(self):
+        """Persist window geometry and exit cleanly."""
+        try:
+            cfg = _load_config()
+            cfg["window_geometry"] = self.geometry()
+            _save_config(cfg)
+        except Exception:
+            pass
+        self.destroy()
 
     # ── Results rendering ──────────────────────────────────────────────
 
@@ -1579,6 +1643,12 @@ class App(_AppBase):  # type: ignore[misc]
         self.after(2500, toast.destroy)
 
     def _load_project(self):
+        # 編集中の未保存変更がある場合は確認
+        if self._edit_mode and not self._confirm_discard_edits(
+            "編集中ですが別のプロジェクトを開きますか？\n編集内容は失われる可能性があります。"
+        ):
+            return
+
         path = filedialog.askopenfilename(
             filetypes=[
                 ("Transcription Project", "*.transcription"),
@@ -1590,24 +1660,66 @@ class App(_AppBase):  # type: ignore[misc]
             return
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("プロジェクトファイルの形式が不正です")
         except Exception as exc:
             messagebox.showerror("エラー", f"プロジェクトを読み込めませんでした:\n{exc}")
             return
 
-        self._current_file = data.get("audio_file") or None
-        self._project_path = path
-        self._speaker_names = data.get("speaker_names", {})
-        self._speaker_colors = {}
-        self._segments = [
-            Segment(
-                start=s["start"],
-                end=s["end"],
-                speaker=s["speaker"],
-                text=_clean_legacy_join_text(s["text"]),
-                display_name=s.get("display_name", ""),
+        # セグメントを1件ずつ厳密に検証。壊れたセグメントは飛ばすが、
+        # 正常なセグメントは読み込めるように。
+        raw_segments = data.get("segments", [])
+        if not isinstance(raw_segments, list):
+            messagebox.showerror(
+                "エラー",
+                "プロジェクトファイルの形式が不正です。\n"
+                "（segments がリスト形式ではありません）"
             )
-            for s in data.get("segments", [])
-        ]
+            return
+
+        valid_segs: list[Segment] = []
+        skipped = 0
+        for i, s in enumerate(raw_segments):
+            try:
+                if not isinstance(s, dict):
+                    raise TypeError("segment is not a dict")
+                seg = Segment(
+                    start=float(s["start"]),
+                    end=float(s["end"]),
+                    speaker=str(s["speaker"]),
+                    text=_clean_legacy_join_text(str(s["text"])),
+                    display_name=str(s.get("display_name", "")),
+                )
+                valid_segs.append(seg)
+            except (KeyError, TypeError, ValueError) as exc:
+                skipped += 1
+                print(f"[load_project] segment {i} skipped: {exc}", flush=True)
+
+        if skipped > 0:
+            messagebox.showwarning(
+                "一部のセグメントを読み込めませんでした",
+                f"{skipped} 件のセグメントが壊れていたため、無視しました。\n"
+                f"残りの {len(valid_segs)} 件は通常通り表示されます。"
+            )
+
+        self._current_file = data.get("audio_file") or None
+        # 音声ファイルが指定されているのに実体がない場合は通知（致命ではない）。
+        if self._current_file and not Path(self._current_file).exists():
+            messagebox.showwarning(
+                "音声ファイルが見つかりません",
+                f"プロジェクトに記録された音声ファイルが見つかりませんでした:\n"
+                f"{self._current_file}\n\n"
+                "編集と書き出しは可能ですが、再度文字起こしを行うには"
+                "ファイルを選び直してください。"
+            )
+            self._current_file = None
+
+        self._project_path = path
+        speaker_names = data.get("speaker_names", {})
+        self._speaker_names = speaker_names if isinstance(speaker_names, dict) else {}
+        self._speaker_colors = {}
+        self._segments = valid_segs
+
         if self._edit_mode:
             self._edit_mode = False
             self._edit_toggle.set_on(False)
