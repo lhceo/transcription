@@ -1289,12 +1289,11 @@ class App(_AppBase):  # type: ignore[misc]
         ).pack(side="left", padx=(8, 0))
 
         # Body text — tk.Text (kept for the spacing1/2/3 line-spacing options).
-        # On Tk 9 / macOS aqua, the Text class binding routes wheel events to
-        # a native scroll handler that swallows them even when there is no
-        # overflow, so we drop the "Text" bindtag in display mode to disable
-        # the class binding entirely. This keeps the visual rendering and
-        # spacing while letting wheel events fall through to bindings on
-        # the parent canvas (CTkScrollableFrame).
+        # The default Text class binding for <MouseWheel> calls yview on the
+        # widget itself; since each card auto-fits to its content, that means
+        # wheel events over a card go nowhere. We override <MouseWheel> at the
+        # widget level below (see ``_forward_wheel``) to forward the event to
+        # the outer CTkScrollableFrame canvas instead.
         # Both modes use manual kinsoku wrap (every line is a paragraph), so
         # spacing1+spacing3 ends up being the gap between lines. Match the two
         # modes so the visual rhythm stays the same when toggling edit mode.
@@ -1423,6 +1422,24 @@ class App(_AppBase):  # type: ignore[misc]
             _bind_hover(card)
 
         body.bind("<Configure>", _auto_height)
+
+        # tk.Text のクラス標準 <MouseWheel> は Text 自身を yview-scroll する
+        # 設計（Tk 8.6 の text.tcl 由来）だが、本アプリのカードは内部に
+        # 縦スクロール領域を持たない（_auto_height で行数ぴったりに伸ばす）。
+        # そのままだとカード上にカーソルがあるときホイール／トラックパッド
+        # 入力が「Text 自身に対する空打ち」となり、外側の CTkScrollableFrame
+        # まで届かずスクロール不能に見える。widget レベルで <MouseWheel> を
+        # 上書きして親キャンバスへ転送する。bindtags は触らないので、その
+        # 他のキー入力（矢印キー・選択など）の標準挙動は維持される。
+        def _forward_wheel(e, app=self):
+            try:
+                cv = app._cards_container._parent_canvas
+                cv.yview_scroll(-int(e.delta), "units")
+            except (tk.TclError, AttributeError):
+                pass
+            return "break"
+        body.bind("<MouseWheel>", _forward_wheel)
+
         body.grid(row=1, column=0, padx=2, pady=(0, 8), sticky="ew")
 
     # ── Speaker renaming ───────────────────────────────────────────────
