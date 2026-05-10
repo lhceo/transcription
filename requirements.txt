@@ -1,0 +1,24 @@
+# Pinned versions for reproducible builds.
+# Generated from the developer's working venv (Apple Silicon, Python 3.12,
+# Tk 8.6.16). Bumping any pinned version below should be done deliberately
+# and followed by a smoke test.
+
+# UI
+customtkinter==5.2.2
+
+# Transcription engine
+mlx==0.31.2
+mlx-whisper==0.4.3
+
+# Speaker diarization (large dependency tree)
+pyannote-audio==4.0.4
+torch==2.11.0
+
+# Audio metadata (used for ETA seeding)
+mutagen==1.47.0
+
+# Image decoding (Noto logo on the sidebar)
+pillow==12.2.0
+
+# Packaging — installed only for `python setup.py py2app`
+# py2app
