@@ -16,9 +16,10 @@ import os
 import queue
 import re
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, font as tkfont, messagebox
 from typing import Optional
 
 import customtkinter as ctk  # type: ignore
@@ -26,11 +27,97 @@ import customtkinter as ctk  # type: ignore
 from transcribe_core import (
     Segment,
     TranscriptionEngine,
+    _join_segment_text,
     format_time,
     segments_to_json,
     segments_to_srt,
     segments_to_txt,
 )
+
+
+def _clean_legacy_join_text(text: str) -> str:
+    """Strip the legacy U+3000 join character that older transcripts/projects
+    used between merged Whisper segments, re-joining with smart spacing."""
+    if "　" not in text:
+        return text
+    parts = text.split("　")
+    out = parts[0]
+    for p in parts[1:]:
+        out = _join_segment_text(out, p)
+    return out
+
+
+def _format_eta(seconds: float) -> str:
+    """Format remaining seconds as 'N分' or 'H時間M分'. Always at least 1分."""
+    minutes = max(1, int(round(seconds / 60)))
+    if minutes >= 60:
+        h, m = divmod(minutes, 60)
+        return f"{h}時間{m}分" if m else f"{h}時間"
+    return f"{minutes}分"
+
+
+def _read_audio_duration(path: str) -> float:
+    """Return audio duration in seconds, or 0 if it can't be determined."""
+    try:
+        from mutagen import File as _MFile  # type: ignore
+        af = _MFile(path)
+        if af and hasattr(af, "info") and hasattr(af.info, "length"):
+            return float(af.info.length)
+    except Exception:
+        pass
+    return 0.0
+
+
+_KINSOKU_NO_BREAK_BEFORE = set("。、．，！？)）」』〕｝!?,.…・ー")
+_KINSOKU_NO_BREAK_AFTER = set("(（「『〔｛")
+_WORD_JOINER = "⁠"  # U+2060: invisible no-break marker (legacy data sanitizer)
+
+
+def _strip_word_joiners(text: str) -> str:
+    """Remove any U+2060 markers that may have been written into earlier
+    project files when we briefly tried using them for edit-mode wrap."""
+    return text.replace(_WORD_JOINER, "") if _WORD_JOINER in text else text
+
+
+def _wrap_kinsoku(text: str, font, max_width_px: int) -> str:
+    """Wrap text into multiple lines respecting Japanese kinsoku rules.
+    Returns text with explicit '\\n' inserted; the caller should set the
+    Text widget's wrap mode to 'none'."""
+    if not text or max_width_px <= 0:
+        return text
+    lines = []
+    current: list[str] = []
+    width = 0
+    for c in text:
+        if c == "\n":
+            lines.append("".join(current))
+            current = []
+            width = 0
+            continue
+        cw = font.measure(c)
+        if current and width + cw > max_width_px:
+            # Want to break before c. Check kinsoku.
+            if c in _KINSOKU_NO_BREAK_BEFORE and len(current) >= 2:
+                # Push last char of current to next line, keep punctuation with it
+                last = current.pop()
+                lines.append("".join(current))
+                current = [last, c]
+                width = font.measure(last) + cw
+            elif current[-1] in _KINSOKU_NO_BREAK_AFTER and len(current) >= 2:
+                last = current.pop()
+                lines.append("".join(current))
+                current = [last, c]
+                width = font.measure(last) + cw
+            else:
+                lines.append("".join(current))
+                current = [c]
+                width = cw
+        else:
+            current.append(c)
+            width += cw
+    if current:
+        lines.append("".join(current))
+    return "\n".join(lines)
 
 # ─── Drag-and-drop (optional) ─────────────────────────────────────────────────
 try:
@@ -93,9 +180,11 @@ _SPEAKER_COLORS = [
 _BG_LEFT    = "#FFFFFF"
 _BG_RIGHT   = "#F1F5F9"
 _BG_CARD    = "#F8FAFC"
+_BG_CARD_H  = "#EFF6FF"  # card background on hover (light accent blue)
 _ACCENT     = "#3B82F6"
 _ACCENT_HOV = "#2563EB"
 _BORDER     = "#E2E8F0"
+_BORDER_H   = "#93C5FD"  # card border on hover (medium accent blue)
 _TEXT       = "#1E293B"
 _TEXT_MUTED = "#94A3B8"
 
@@ -202,7 +291,7 @@ class CopyButton(tk.Canvas):
         self._draw_rrect(1, 1, self._W - 1, self._H - 1, 8, bg, _BORDER)
         if self._checked:
             self.create_text(self._W // 2, self._H // 2, text="\u2713",
-                             font=("Helvetica Neue", 13, "bold"), fill="#22C55E")
+                             font=("Hiragino Sans", 13, "bold"), fill="#22C55E")
             return
         cx, cy = self._W // 2, self._H // 2
         img=self._img_n if self._enabled else self._img_g
@@ -449,6 +538,16 @@ class App(_AppBase):  # type: ignore[misc]
         self._card_editors: dict[int, tk.Text] = {}
         self._focused_editor: Optional[tk.Text] = None
 
+        # ETA tracking for the transcription progress
+        self._transcribe_start: Optional[float] = None
+        self._eta_smoothed: Optional[float] = None
+        self._eta_last_pct: int = 0
+        self._eta_last_update: float = 0.0
+
+        # Whether the cards area currently has results to scroll through.
+        # Gates both the scrollbar visibility and the keyboard scroll keys.
+        self._cards_scrollable = False
+
         # speaker label → display colour (assigned on first appearance)
         self._speaker_colors: dict[str, str] = {}
         # speaker label → editable display name (persisted per file)
@@ -610,12 +709,19 @@ class App(_AppBase):  # type: ignore[misc]
 
         self._progress_bar = ctk.CTkProgressBar(left, progress_color=_ACCENT, fg_color=_BORDER)
         self._progress_bar.set(0)
-        self._progress_bar.grid(row=4, column=0, padx=12, pady=(2, 8), sticky="ew")
+        self._progress_bar.grid(row=4, column=0, padx=12, pady=(2, 4), sticky="ew")
         self._progress_bar.grid_remove()
+
+        self._eta_label = ctk.CTkLabel(
+            left, text="", font=ctk.CTkFont(size=11),
+            text_color=_TEXT_MUTED,
+        )
+        self._eta_label.grid(row=5, column=0, padx=16, pady=(0, 6), sticky="w")
+        self._eta_label.grid_remove()
 
         # Project save / open
         proj_frame = ctk.CTkFrame(left, fg_color="transparent")
-        proj_frame.grid(row=5, column=0, padx=12, pady=(0, 14), sticky="ew")
+        proj_frame.grid(row=6, column=0, padx=12, pady=(0, 14), sticky="ew")
         proj_frame.grid_columnconfigure((0, 1), weight=1)
 
         _pbtn = dict(
@@ -718,6 +824,18 @@ class App(_AppBase):  # type: ignore[misc]
         self._cards_container.grid(row=1, column=0, padx=16, pady=(0, 16), sticky="nsew")
         self._cards_container.grid_columnconfigure(0, weight=1)
 
+        # Keyboard scrolling fallback (works alongside customtkinter's wheel).
+        # Gated by self._cards_scrollable so it only fires once results render.
+        def _kbd_scroll(step, what):
+            if self._cards_scrollable:
+                self._cards_container._parent_canvas.yview_scroll(step, what)
+        for ev, step, what in (
+            ("<Up>", -3, "units"), ("<Down>", 3, "units"),
+            ("<Prior>", -1, "pages"), ("<Next>", 1, "pages"),
+            ("<space>", 1, "pages"),
+        ):
+            self.bind_all(ev, lambda e, s=step, w=what: _kbd_scroll(s, w))
+
         self._show_placeholder("ファイルを選択して「文字起こし開始」ボタンを押してください。")
 
     # ── Handlers ──────────────────────────────────────────────────────
@@ -770,7 +888,23 @@ class App(_AppBase):  # type: ignore[misc]
         self._progress_bar.set(0)
         self._progress_bar.grid()
         self._progress_label.configure(text="開始中…")
-        self._clear_text()
+        self._show_loading("文字起こし中…")
+
+        # ETA: seed from audio duration so we have something before the first
+        # progress callback. The 0.5x multiplier matches roughly observed
+        # large-v3 + diarization on Apple Silicon; it's only an initial guess
+        # that gets refined by the linear extrapolation below.
+        self._transcribe_start = time.time()
+        self._eta_last_pct = 0
+        self._eta_last_update = self._transcribe_start
+        audio_dur = _read_audio_duration(self._current_file)
+        self._eta_smoothed = (audio_dur * 0.5) if audio_dur > 0 else None
+        if self._eta_smoothed is not None:
+            self._eta_label.configure(text=f"処理完了まで約{_format_eta(self._eta_smoothed)}")
+            self._eta_label.grid()
+        else:
+            self._eta_label.configure(text="")
+            self._eta_label.grid_remove()
 
         threading.Thread(target=self._worker, daemon=True).start()
 
@@ -800,13 +934,55 @@ class App(_AppBase):  # type: ignore[misc]
                 if kind == "progress":
                     self._progress_label.configure(text=msg[1])
                     self._progress_bar.set(msg[2] / 100)
+                    self._update_eta(msg[2])
+                    self._update_loading_message(msg[1])
                 elif kind == "done":
                     self._on_done(msg[1])
                 elif kind == "error":
                     self._on_error(msg[1])
         except queue.Empty:
             pass
+        if self._running:
+            self._tick_eta()
         self.after(100, self._poll)
+
+    def _update_eta(self, pct: int) -> None:
+        """Refresh the ETA estimate when a fresh progress percentage arrives.
+        Linear extrapolation blended with the previous smoothed value to keep
+        the displayed minutes stable across the lumpy progress callbacks the
+        engine emits (5 / 12 / 20 / 50 / 92 / 100)."""
+        if pct >= 100:
+            self._eta_label.grid_remove()
+            return
+        if pct < 5 or self._transcribe_start is None:
+            return
+        now = time.time()
+        elapsed = now - self._transcribe_start
+        raw = elapsed * (100 - pct) / pct
+        if self._eta_smoothed is None:
+            self._eta_smoothed = raw
+        else:
+            # Heavier weight on history early on (when pct is small the linear
+            # estimate is noisy); converge faster once we're past 50%.
+            alpha = 0.5 if pct >= 50 else 0.25
+            self._eta_smoothed = alpha * raw + (1 - alpha) * self._eta_smoothed
+        self._eta_last_pct = pct
+        self._eta_last_update = now
+        self._eta_label.configure(text=f"処理完了まで約{_format_eta(self._eta_smoothed)}")
+        self._eta_label.grid()
+
+    def _tick_eta(self) -> None:
+        """Decay ETA between progress callbacks so the displayed time keeps
+        ticking down naturally during the long Whisper phase."""
+        if self._eta_smoothed is None or self._transcribe_start is None:
+            return
+        now = time.time()
+        dt = now - self._eta_last_update
+        if dt < 1:
+            return
+        self._eta_last_update = now
+        self._eta_smoothed = max(60.0, self._eta_smoothed - dt)
+        self._eta_label.configure(text=f"処理完了まで約{_format_eta(self._eta_smoothed)}")
 
     def _on_done(self, segments: list[Segment]):
         self._running = False
@@ -814,6 +990,9 @@ class App(_AppBase):  # type: ignore[misc]
         self._start_btn.configure(state="normal", text="文字起こし開始")
         self._progress_bar.set(1.0)
         self._progress_label.configure(text=f"完了  ({len(segments)} ブロック)")
+        self._eta_label.grid_remove()
+        self._eta_smoothed = None
+        self._stop_loading()
         self._load_speaker_names()
         self._render(segments)
         self._set_export_state("normal")
@@ -823,6 +1002,10 @@ class App(_AppBase):  # type: ignore[misc]
         self._start_btn.configure(state="normal", text="文字起こし開始")
         self._progress_label.configure(text="エラーが発生しました")
         self._progress_bar.grid_remove()
+        self._eta_label.grid_remove()
+        self._eta_smoothed = None
+        self._stop_loading()
+        self._show_placeholder("文字起こしに失敗しました。")
         messagebox.showerror("エラー", f"文字起こし中にエラーが発生しました:\n\n{error}")
 
     # ── Results rendering ──────────────────────────────────────────────
@@ -844,6 +1027,23 @@ class App(_AppBase):  # type: ignore[misc]
         for w in self._cards_container.winfo_children():
             w.destroy()
         self._card_editors = {}
+        # Hide the cards-area scrollbar while there's nothing to scroll.
+        self._set_cards_scrollbar(False)
+
+    def _set_cards_scrollbar(self, visible: bool) -> None:
+        """Show or hide the CTkScrollableFrame's scrollbar and gate the
+        keyboard scroll keys so they only act when there's content."""
+        self._cards_scrollable = visible
+        sb = getattr(self._cards_container, "_scrollbar", None)
+        if sb is None:
+            return
+        try:
+            if visible:
+                sb.grid()
+            else:
+                sb.grid_remove()
+        except tk.TclError:
+            pass
 
     def _show_placeholder(self, text: str):
         self._clear_text()
@@ -852,13 +1052,70 @@ class App(_AppBase):  # type: ignore[misc]
             text_color=_TEXT_MUTED, wraplength=500,
         ).grid(row=0, column=0, padx=20, pady=60)
 
+    _SPINNER_FRAMES = "◐◓◑◒"
+
+    def _show_loading(self, message: str = "文字起こし中…") -> None:
+        self._clear_text()
+        self._loading_active = True
+        self._loading_frame = 0
+
+        wrapper = ctk.CTkFrame(self._cards_container, fg_color="transparent")
+        wrapper.grid(row=0, column=0, padx=20, pady=120)
+        self._loading_spinner = ctk.CTkLabel(
+            wrapper, text=self._SPINNER_FRAMES[0],
+            font=ctk.CTkFont(size=44),
+            text_color=_ACCENT,
+        )
+        self._loading_spinner.pack()
+        self._loading_msg = ctk.CTkLabel(
+            wrapper, text=message,
+            font=ctk.CTkFont(size=14),
+            text_color=_TEXT_MUTED,
+        )
+        self._loading_msg.pack(pady=(10, 0))
+        self._tick_loading()
+
+    def _tick_loading(self) -> None:
+        if not getattr(self, "_loading_active", False):
+            return
+        try:
+            if self._loading_spinner.winfo_exists():
+                self._loading_frame = (self._loading_frame + 1) % len(self._SPINNER_FRAMES)
+                self._loading_spinner.configure(
+                    text=self._SPINNER_FRAMES[self._loading_frame]
+                )
+            else:
+                self._loading_active = False
+                return
+        except tk.TclError:
+            self._loading_active = False
+            return
+        self.after(140, self._tick_loading)
+
+    def _update_loading_message(self, message: str) -> None:
+        if not getattr(self, "_loading_active", False):
+            return
+        try:
+            if self._loading_msg.winfo_exists():
+                self._loading_msg.configure(text=message)
+        except tk.TclError:
+            pass
+
+    def _stop_loading(self) -> None:
+        self._loading_active = False
+
     def _render(self, segments: list[Segment]):
         self._clear_text()
         if not segments:
             self._show_placeholder("文字起こし結果がありません。")
             return
+        for seg in segments:
+            cleaned = _clean_legacy_join_text(seg.text)
+            if cleaned != seg.text:
+                seg.text = cleaned
         for i, seg in enumerate(segments):
             self._make_card(i, seg, edit_mode=False)
+        self._set_cards_scrollbar(True)
 
     def _make_card(self, idx: int, seg: "Segment", edit_mode: bool):
         label = seg.display_name or self._speaker_names.get(seg.speaker, seg.speaker)
@@ -894,16 +1151,26 @@ class App(_AppBase):  # type: ignore[misc]
             font=ctk.CTkFont(size=10), text_color=_TEXT_MUTED,
         ).pack(side="left", padx=(8, 0))
 
-        # Body text
+        # Body text — tk.Text (kept for the spacing1/2/3 line-spacing options).
+        # On Tk 9 / macOS aqua, the Text class binding routes wheel events to
+        # a native scroll handler that swallows them even when there is no
+        # overflow, so we drop the "Text" bindtag in display mode to disable
+        # the class binding entirely. This keeps the visual rendering and
+        # spacing while letting wheel events fall through to bindings on
+        # the parent canvas (CTkScrollableFrame).
+        # Both modes use manual kinsoku wrap (every line is a paragraph), so
+        # spacing1+spacing3 ends up being the gap between lines. Match the two
+        # modes so the visual rhythm stays the same when toggling edit mode.
+        sp1, sp2, sp3 = 0, 0, 4
         body = tk.Text(
             card,
-            font=("Helvetica Neue", 11),
-            wrap="word",
+            font=("Hiragino Sans", 13),
+            wrap="none" if not edit_mode else "char",
             relief="flat", bd=0,
             bg=_BG_CARD if not edit_mode else "#FFFFFF",
             fg=_TEXT,
             padx=10, pady=4,
-            spacing1=8, spacing2=4, spacing3=8,
+            spacing1=sp1, spacing2=sp2, spacing3=sp3,
             highlightthickness=0,
             insertbackground=_TEXT,
             selectbackground="#DBEAFE",
@@ -913,15 +1180,7 @@ class App(_AppBase):  # type: ignore[misc]
         )
         body.insert("1.0", seg.text)
         body.configure(state="normal" if edit_mode else "disabled")
-
-        if edit_mode:
-            body.bind("<KeyRelease>", lambda e, i=idx, b=body: (self._autosave_card(i, b), _auto_height(b=b)))
-            body.bind("<Shift-Return>", lambda e, i=idx, b=body: self._split_segment(i, b))
-            body.bind("<FocusIn>", lambda e, b=body: setattr(self, "_focused_editor", b))
-            self._card_editors[idx] = body
-        else:
-            body.bind("<Double-Button-1>", lambda e: self._enter_edit_mode())
-            card.bind("<Double-Button-1>", lambda e: self._enter_edit_mode())
+        font_obj = tkfont.Font(family="Hiragino Sans", size=13)
 
         def _auto_height(e=None, b=body):
             try:
@@ -930,6 +1189,84 @@ class App(_AppBase):  # type: ignore[misc]
                 b.configure(height=max(2, n + 1))
             except Exception:
                 pass
+
+        # Apply manual kinsoku wrapping in BOTH modes. In edit mode we re-wrap
+        # only on initial render and on card-width changes (resize), not per
+        # keystroke, so the cursor stays where the user is typing.
+        wrap_state = {"last_w": 0}
+
+        def _rewrap(e=None, b=body, c=card, st=wrap_state, f=font_obj):
+            w = c.winfo_width()
+            if w <= 60 or abs(w - st["last_w"]) < 4:
+                return
+            st["last_w"] = w
+            raw = _strip_word_joiners(b.get("1.0", "end-1c")).replace("\n", "")
+            wrapped = _wrap_kinsoku(raw, f, w - 28)
+            was_disabled = b.cget("state") == "disabled"
+            if was_disabled:
+                b.configure(state="normal")
+            b.delete("1.0", "end")
+            b.insert("1.0", wrapped)
+            if was_disabled:
+                b.configure(state="disabled")
+            _auto_height(b=b)
+        card.bind("<Configure>", _rewrap)
+
+        if edit_mode:
+            def _on_focus_in(e, b=body, c=card):
+                self._focused_editor = b
+                try:
+                    c.configure(border_color=_ACCENT)
+                except tk.TclError:
+                    pass
+
+            def _on_focus_out(e, c=card):
+                try:
+                    c.configure(border_color=_BORDER)
+                except tk.TclError:
+                    pass
+
+            body.bind("<KeyRelease>", lambda e, i=idx, b=body: (self._autosave_card(i, b), _auto_height(b=b)))
+            body.bind("<Shift-Return>", lambda e, i=idx, b=body: self._split_segment(i, b))
+            body.bind("<FocusIn>", _on_focus_in)
+            body.bind("<FocusOut>", _on_focus_out)
+            self._card_editors[idx] = body
+        else:
+            body.bind("<Double-Button-1>", lambda e: self._enter_edit_mode())
+            card.bind("<Double-Button-1>", lambda e: self._enter_edit_mode())
+
+            # Hover effect: tint card + body + dot when cursor is over the
+            # block. We track Enter/Leave on every descendant via reference
+            # counting so that moving from card to a child doesn't toggle.
+            hover_count = [0]
+
+            def _set_hover(on: bool):
+                bg = _BG_CARD_H if on else _BG_CARD
+                border = _BORDER_H if on else _BORDER
+                try:
+                    card.configure(fg_color=bg, border_color=border)
+                    body.configure(bg=bg)
+                    dot.configure(bg=bg)
+                except tk.TclError:
+                    pass
+
+            def _on_hover_enter(e=None):
+                hover_count[0] += 1
+                if hover_count[0] == 1:
+                    _set_hover(True)
+
+            def _on_hover_leave(e=None):
+                hover_count[0] -= 1
+                if hover_count[0] <= 0:
+                    hover_count[0] = 0
+                    _set_hover(False)
+
+            def _bind_hover(w):
+                w.bind("<Enter>", _on_hover_enter, add="+")
+                w.bind("<Leave>", _on_hover_leave, add="+")
+                for ch in w.winfo_children():
+                    _bind_hover(ch)
+            _bind_hover(card)
 
         body.bind("<Configure>", _auto_height)
         body.grid(row=1, column=0, padx=2, pady=(0, 8), sticky="ew")
@@ -1084,8 +1421,14 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _render_edit_mode(self):
         self._clear_text()
+        for seg in self._segments:
+            cleaned = _clean_legacy_join_text(seg.text)
+            if cleaned != seg.text:
+                seg.text = cleaned
         for i, seg in enumerate(self._segments):
             self._make_card(i, seg, edit_mode=True)
+        if self._segments:
+            self._set_cards_scrollbar(True)
 
     def _exit_edit_mode(self, save: bool = True):
         if save:
@@ -1100,15 +1443,27 @@ class App(_AppBase):  # type: ignore[misc]
             self._render(self._segments)
         for btn in (self._export_btn, self._save_proj_btn):
             btn.configure(state="normal")
+        # Move keyboard focus off the (now-destroyed) Text editors back to a
+        # neutral widget so wheel events keep flowing to the cards canvas.
+        try:
+            self._cards_container._parent_canvas.focus_set()
+        except (tk.TclError, AttributeError):
+            pass
+
+    @staticmethod
+    def _read_clean(body) -> str:
+        """Read the editor's current text, stripping the soft-wrap newlines
+        and word-joiners we inserted for kinsoku display."""
+        return _strip_word_joiners(body.get("1.0", "end").strip()).replace("\n", "")
 
     def _sync_edits_to_segments(self):
         for idx, body in self._card_editors.items():
             if idx < len(self._segments):
-                self._segments[idx].text = body.get("1.0", "end").strip()
+                self._segments[idx].text = self._read_clean(body)
 
     def _autosave_card(self, idx: int, body):
         if idx < len(self._segments):
-            self._segments[idx].text = body.get("1.0", "end").strip()
+            self._segments[idx].text = self._read_clean(body)
 
     def _undo(self):
         w = self._focused_editor
@@ -1128,9 +1483,9 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _split_segment(self, idx: int, body: tk.Text):
         cursor = body.index("insert")
-        before = body.get("1.0", cursor).rstrip("\n")
-        after = body.get(cursor, "end").strip()
-        if not before.strip() or not after:
+        before = _strip_word_joiners(body.get("1.0", cursor)).replace("\n", "").strip()
+        after = _strip_word_joiners(body.get(cursor, "end")).replace("\n", "").strip()
+        if not before or not after:
             return "break"
 
         self._segments[idx].text = before
@@ -1217,7 +1572,7 @@ class App(_AppBase):  # type: ignore[misc]
             text=message,
             bg="#1E293B",
             fg="#FFFFFF",
-            font=("Helvetica Neue", 13),
+            font=("Hiragino Sans", 13),
             padx=24, pady=14,
         )
         toast.place(relx=0.5, rely=0.5, anchor="center")
@@ -1248,7 +1603,7 @@ class App(_AppBase):  # type: ignore[misc]
                 start=s["start"],
                 end=s["end"],
                 speaker=s["speaker"],
-                text=s["text"],
+                text=_clean_legacy_join_text(s["text"]),
                 display_name=s.get("display_name", ""),
             )
             for s in data.get("segments", [])
@@ -1279,7 +1634,7 @@ class App(_AppBase):  # type: ignore[misc]
                        bg="#FFFFFF", fg=_TEXT,
                        activebackground="#EFF6FF", activeforeground=_ACCENT,
                        relief="flat", bd=0,
-                       font=("Helvetica Neue", 11))
+                       font=("Hiragino Sans", 11))
         menu.add_command(label="TXT ファイル",  command=lambda: self._export("txt"))
         menu.add_command(label="SRT ファイル",  command=lambda: self._export("srt"))
         menu.add_command(label="JSON ファイル", command=lambda: self._export("json"))
@@ -1307,9 +1662,17 @@ class App(_AppBase):  # type: ignore[misc]
 
 # ─── Entry point ───────────────────────────────────────────────────────────────
 
+
 def main():
     ctk.set_appearance_mode("light")
     ctk.set_default_color_theme("blue")
+    # Apply Hiragino Sans as the default family for every CTkFont() created
+    # without an explicit family argument, so the whole UI stays consistent
+    # with the manually-tuned tk.Text font in the cards.
+    try:
+        ctk.ThemeManager.theme["CTkFont"]["family"] = "Hiragino Sans"
+    except Exception:
+        pass
     app = App()
     app.mainloop()
 

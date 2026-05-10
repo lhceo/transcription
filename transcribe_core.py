@@ -108,15 +108,33 @@ def _best_speaker(seg_start: float, seg_end: float, diar_segments: list) -> str:
     return best_spk
 
 
+_JP_PUNCT_END = "\u3002\uff0e\u3001\uff01\uff1f!?\uff09\u300d\u300f"
+
+
+def _join_segment_text(prev: str, nxt: str) -> str:
+    """Join two consecutive Whisper segments without inserting visible whitespace
+    when Japanese punctuation or CJK characters already imply a boundary."""
+    if not prev:
+        return nxt
+    last = prev[-1]
+    if last in _JP_PUNCT_END:
+        return prev + nxt
+    if (
+        "\u3040" <= last <= "\u30ff"   # hiragana / katakana
+        or "\u4e00" <= last <= "\u9fff"  # CJK unified ideographs
+        or "\uff00" <= last <= "\uffef"  # full-width forms
+    ):
+        return prev + nxt
+    return prev + " " + nxt
+
+
 def _merge_consecutive(raw: list) -> list:
-    """
-    Merge consecutive same-speaker entries, joining text with a full-width space (U+3000).
-    """
+    """Merge consecutive same-speaker entries into a single segment."""
     merged = []
     for speaker, start, end, text in raw:
         if merged and merged[-1][0] == speaker:
             merged[-1][2] = end
-            merged[-1][3] = merged[-1][3] + "\u3000" + text
+            merged[-1][3] = _join_segment_text(merged[-1][3], text)
         else:
             merged.append([speaker, start, end, text])
 
