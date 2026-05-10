@@ -981,6 +981,9 @@ class App(_AppBase):  # type: ignore[misc]
         self._segments = []
         self._speaker_colors = {}
         self._set_export_state("disabled")
+        # ワーカースレッドが self._segments を書き換える間、Undo/Redo は
+        # 無効化（_update_undo_buttons が _running を見て disabled にする）。
+        self._update_undo_buttons()
         self._start_btn.configure(state="disabled", text="処理中…")
         self._progress_bar.set(0)
         self._progress_bar.grid()
@@ -1100,6 +1103,8 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _on_error(self, error: str):
         self._running = False
+        # _running が下りたので Undo/Redo ボタンの状態を再評価。
+        self._update_undo_buttons()
         self._start_btn.configure(state="normal", text="文字起こし開始")
         self._progress_label.configure(text="エラーが発生しました")
         self._progress_bar.grid_remove()
@@ -1126,6 +1131,12 @@ class App(_AppBase):  # type: ignore[misc]
             elif choice == "cancel":
                 return
             # discard はそのまま閉じる処理に進む
+        # 進行中バーストの debounce タイマーが残っていると、self.destroy() の
+        # 後で Tk の after コールバックが死んだウィジェットを参照して
+        # TclError を起こすことがある。明示的に巻き取って捨てる。
+        # （edit_mode でかつ _dirty=True のケースは _exit_edit_mode 経由で
+        # 既に finalize 済みだが、その他の経路に対する保険として呼ぶ）
+        self._finalize_burst()
         try:
             cfg = _load_config()
             cfg["window_geometry"] = self.geometry()
@@ -1783,16 +1794,21 @@ class App(_AppBase):  # type: ignore[misc]
         # スタックの中身でボタンの有効/無効を切り替える。バーストが進行中
         # （ユーザーが入力中だがまだ debounce 確定していない）の場合も
         # Cmd+Z で finalize → undo できるので、その状態も「Undo 可能」として
-        # 扱う。
+        # 扱う。文字起こし実行中はワーカースレッドが self._segments を書き
+        # 換えているので、そこに Undo を当てると不整合が起きうる。両方
+        # 強制的に無効化する。
         try:
+            running = self._running
             has_pending = (
                 self._burst_active and self._burst_pre_state is not None
             )
             self._undo_btn.configure(
-                state="normal" if (self._undo_stack or has_pending) else "disabled"
+                state="normal"
+                if (not running and (self._undo_stack or has_pending))
+                else "disabled"
             )
             self._redo_btn.configure(
-                state="normal" if self._redo_stack else "disabled"
+                state="normal" if (not running and self._redo_stack) else "disabled"
             )
         except (tk.TclError, AttributeError):
             pass
@@ -1859,6 +1875,10 @@ class App(_AppBase):  # type: ignore[misc]
         self._update_undo_buttons()
 
     def _undo(self):
+        # 文字起こし実行中はワーカースレッドが self._segments を書き換えて
+        # いるので、ここで Undo を当てると不整合が起きる。
+        if self._running:
+            return
         # 進行中バーストを先に確定。これが終わってから undo_stack を見るので、
         # 「打っている最中の Cmd+Z」も「直前のバーストを取り消す」挙動になる。
         self._finalize_burst()
@@ -1871,6 +1891,8 @@ class App(_AppBase):  # type: ignore[misc]
         self._update_undo_buttons()
 
     def _redo(self):
+        if self._running:
+            return
         self._finalize_burst()
         if not self._redo_stack:
             return
