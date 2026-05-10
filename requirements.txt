@@ -20,5 +20,8 @@ mutagen==1.47.0
 # Image decoding (Noto logo on the sidebar)
 pillow==12.2.0
 
+# Secure storage for HF Token (macOS Keychain)
+keyring==25.7.0
+
 # Packaging — installed only for `python setup.py py2app`
 # py2app

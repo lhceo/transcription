@@ -311,6 +311,61 @@ def _save_config(cfg: dict) -> None:
     tmp.replace(_CONFIG_PATH)
 
 
+# HF Token は config.json に平文ではなく macOS Keychain に保存する。
+# Service 名は .app の bundle identifier に揃える（Keychain Access.app で
+# 見たときに用途が分かりやすいように）。
+_KEYCHAIN_SERVICE = "co.lionheart.noto"
+_KEYCHAIN_USER_HF = "hf_token"
+
+
+def _load_hf_token() -> str:
+    """HF Token の取得順序:
+    1. macOS Keychain
+    2. 旧 config.json の平文（あれば Keychain へ移行して config から削除）
+    3. 環境変数 HF_TOKEN
+    4. 空文字
+    """
+    try:
+        import keyring  # type: ignore
+        tok = keyring.get_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF)
+        if tok:
+            return tok
+    except Exception:
+        pass
+
+    # 旧形式（config.json に平文保存）の救済 + Keychain へ移行
+    cfg = _load_config()
+    legacy = cfg.get("hf_token")
+    if isinstance(legacy, str) and legacy:
+        if _save_hf_token(legacy):
+            cfg.pop("hf_token", None)
+            try:
+                _save_config(cfg)
+            except Exception:
+                pass
+        return legacy
+
+    return os.environ.get("HF_TOKEN", "")
+
+
+def _save_hf_token(token: str) -> bool:
+    """HF Token を macOS Keychain に保存。空文字なら既存エントリを削除。
+    keyring が使えない環境では False を返す（呼び出し元で fallback 可）。"""
+    try:
+        import keyring  # type: ignore
+        if token:
+            keyring.set_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF, token)
+        else:
+            try:
+                keyring.delete_password(_KEYCHAIN_SERVICE, _KEYCHAIN_USER_HF)
+            except Exception:
+                # 既存エントリが無い場合の PasswordDeleteError は無視
+                pass
+        return True
+    except Exception:
+        return False
+
+
 # ─── Upload icon (Canvas) ──────────────────────────────────────────────────────
 
 def _make_upload_icon(parent, size: int = 52) -> tk.Canvas:
@@ -665,9 +720,9 @@ class App(_AppBase):  # type: ignore[misc]
         self._speaker_names: dict[str, str] = {}
 
         cfg = _load_config()
-        # HF token: saved config > HF_TOKEN env var > empty
-        default_token = cfg.get("hf_token") or os.environ.get("HF_TOKEN", "")
-        self._hf_token = tk.StringVar(value=default_token)
+        # HF token は macOS Keychain から取得（旧形式の config.json 平文も
+        # 自動移行）。env var HF_TOKEN は Keychain に何もない時のみ採用。
+        self._hf_token = tk.StringVar(value=_load_hf_token())
         self._model_id = tk.StringVar(value=cfg.get("model", _MODELS[0][1]))
         self._lang_code: Optional[str] = cfg.get("language", None)
         self._use_diarization = tk.BooleanVar(value=cfg.get("diarization", True))
@@ -1090,12 +1145,18 @@ class App(_AppBase):  # type: ignore[misc]
             )
             return
 
-        _save_config({
-            "hf_token": self._hf_token.get(),
+        # HF Token は Keychain へ。それ以外の設定は既存 config.json を
+        # ロードしてからマージし、speaker_names / window_geometry を
+        # 巻き込まないようにする。
+        _save_hf_token(self._hf_token.get().strip())
+        cfg = _load_config()
+        cfg.update({
             "model": self._model_id.get(),
             "language": self._lang_code,
             "diarization": self._use_diarization.get(),
         })
+        cfg.pop("hf_token", None)  # 旧形式の平文 token を確実に削除
+        _save_config(cfg)
 
         self._running = True
         self._segments = []

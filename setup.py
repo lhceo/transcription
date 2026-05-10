@@ -56,6 +56,7 @@ OPTIONS = {
         "pyannote",
         "mutagen",
         "PIL",
+        "keyring",  # macOS Keychain access for HF Token storage
     ],
     # Specific modules that py2app's static analysis may miss.
     "includes": [
