@@ -11,9 +11,50 @@ Follows the logic of the original transcribe.py:
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Callable, Optional
+
+
+def _resource_dir() -> Path:
+    """Return the directory containing app resources (works both in development
+    and inside a py2app .app bundle)."""
+    # py2app sets RESOURCEPATH to <app>.app/Contents/Resources
+    res = os.environ.get("RESOURCEPATH")
+    if res and Path(res).exists():
+        return Path(res)
+    return Path(__file__).resolve().parent
+
+
+def _ffmpeg_executable() -> str:
+    """Locate ffmpeg: prefer a binary bundled with the app, fall back to PATH."""
+    bundled = _resource_dir() / "bundled" / "ffmpeg" / "ffmpeg"
+    if bundled.is_file() and os.access(str(bundled), os.X_OK):
+        return str(bundled)
+    return "ffmpeg"
+
+
+def _is_model_cached(model_id: str) -> bool:
+    """Best-effort check for whether a HuggingFace model is already in the
+    user's local cache. Used to decide whether to warn about a slow first run."""
+    cache_root = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+    hub = cache_root / "hub"
+    if not hub.is_dir():
+        return False
+    safe_name = "models--" + model_id.replace("/", "--")
+    repo = hub / safe_name
+    if not repo.is_dir():
+        return False
+    snaps = repo / "snapshots"
+    if not snaps.is_dir():
+        return False
+    # If at least one snapshot directory contains files, treat as cached.
+    for entry in snaps.iterdir():
+        if entry.is_dir() and any(entry.iterdir()):
+            return True
+    return False
 
 
 @dataclass
@@ -87,8 +128,9 @@ def _extract_audio(input_path: str, output_path: str) -> None:
             f"音声ファイルが見つかりません:\n{input_path}\n"
             "ファイルが移動・削除されている可能性があります。"
         )
+    ffmpeg = _ffmpeg_executable()
     cmd = [
-        "ffmpeg", "-i", input_path,
+        ffmpeg, "-i", input_path,
         "-ar", "16000", "-ac", "1",
         "-c:a", "pcm_s16le",
         "-y", output_path,
@@ -96,11 +138,15 @@ def _extract_audio(input_path: str, output_path: str) -> None:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError as exc:
-        raise RuntimeError(
+        bundled_hint = (
+            "アプリに ffmpeg が同梱されていません。"
+            "再インストールするか、開発者にお問い合わせください。"
+        ) if ffmpeg != "ffmpeg" else (
             "ffmpeg が見つかりません。\n"
             "ターミナルで `brew install ffmpeg` を実行してインストールしてください。\n"
             "（既にインストール済みの場合は PATH の設定を確認してください）"
-        ) from exc
+        )
+        raise RuntimeError(bundled_hint) from exc
     except OSError as exc:
         raise RuntimeError(f"ffmpeg の実行に失敗しました: {exc}") from exc
     if r.returncode != 0:
@@ -247,13 +293,24 @@ class TranscriptionEngine:
 
             diar_segments: list = []
             if use_diarization and token:
-                _progress("\u8a71\u8005\u5206\u96e2\u30e2\u30c7\u30eb\u3092\u8aad\u307f\u8fbc\u307f\u4e2d\u2026", 12)
+                if _is_model_cached("pyannote/speaker-diarization-3.1"):
+                    _progress("\u8a71\u8005\u5206\u96e2\u30e2\u30c7\u30eb\u3092\u8aad\u307f\u8fbc\u307f\u4e2d\u2026", 12)
+                else:
+                    _progress(
+                        "\u8a71\u8005\u5206\u96e2\u30e2\u30c7\u30eb\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u4e2d\uff08\u521d\u56de\u306e\u307f\uff09\u2026", 12
+                    )
                 self._load_pipeline(token)
                 _progress("\u8a71\u8005\u5206\u96e2\u3092\u5b9f\u884c\u4e2d\u2026", 20)
                 diarization = self._pipeline(audio_path)
                 diar_segments = diarization.serialize()["diarization"]
 
-            _progress("\u6587\u5b57\u8d77\u3053\u3057\u3092\u5b9f\u884c\u4e2d\u2026", 50)
+            if _is_model_cached(model):
+                _progress("\u6587\u5b57\u8d77\u3053\u3057\u3092\u5b9f\u884c\u4e2d\u2026", 50)
+            else:
+                _progress(
+                    "\u6587\u5b57\u8d77\u3053\u3057\u30e2\u30c7\u30eb\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u4e2d\uff08\u521d\u56de\u306e\u307f\u30fb\u7d043GB\u30015\u301c15\u5206\u304b\u304b\u308a\u307e\u3059\uff09\u2026",
+                    50,
+                )
             import mlx_whisper  # type: ignore
 
             whisper_kwargs: dict = {

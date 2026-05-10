@@ -17,3 +17,10 @@ env/
 build/
 dist/
 *.egg-info/
+.eggs/
+
+# Bundled binaries (downloaded by scripts/download_ffmpeg.sh, not committed)
+bundled/ffmpeg/ffmpeg
+
+# App config (per-user runtime state)
+.transcription_app/
