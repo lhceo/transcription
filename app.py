@@ -35,16 +35,12 @@ from transcribe_core import (
 )
 
 
-def _clean_legacy_join_text(text: str) -> str:
-    """Strip the legacy U+3000 join character that older transcripts/projects
-    used between merged Whisper segments, re-joining with smart spacing."""
-    if "　" not in text:
-        return text
-    parts = text.split("　")
-    out = parts[0]
-    for p in parts[1:]:
-        out = _join_segment_text(out, p)
-    return out
+# Project file schema constants and migration live in project_format.py.
+from project_format import (
+    PROJECT_FILE_VERSION as _PROJECT_FILE_VERSION,
+    migrate_project_data as _migrate_project_data,
+    clean_legacy_join_text as _clean_legacy_join_text,
+)
 
 
 def _format_eta(seconds: float) -> str:
@@ -82,33 +78,6 @@ from kinsoku import (
     wrap_kinsoku as _wrap_kinsoku,
 )
 
-
-# .transcription project file schema version. Bump deliberately when the
-# on-disk shape changes incompatibly, and add a branch in _migrate_project_data.
-_PROJECT_FILE_VERSION = 1
-
-
-def _migrate_project_data(data: dict, from_version: int) -> dict:
-    """Bring a project file forward to the current schema. Currently we only
-    have version 1, so this is essentially identity; the structure is in
-    place so future format changes can land without rewriting load logic.
-
-    Returns the migrated dict (may be the same object). Raises ValueError on
-    an irrecoverable mismatch."""
-    v = from_version
-    if v == _PROJECT_FILE_VERSION:
-        return data
-    if v < 1:
-        # Treat legacy / version-less files as v1.
-        v = 1
-    # Future migrations would chain here, e.g.:
-    #   if v == 1: data = _migrate_v1_to_v2(data); v = 2
-    if v != _PROJECT_FILE_VERSION:
-        raise ValueError(
-            f"unhandled project schema version {from_version} "
-            f"(supported: {_PROJECT_FILE_VERSION})"
-        )
-    return data
 
 # ─── Drag-and-drop (optional) ─────────────────────────────────────────────────
 try:
