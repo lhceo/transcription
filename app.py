@@ -1346,6 +1346,12 @@ class App(_AppBase):  # type: ignore[misc]
         )
         body.insert("1.0", seg.text)
         body.configure(state="normal" if edit_mode else "disabled")
+        # 初期挿入操作を undo 履歴から除外（最初に Undo を押してもテキストが
+        # 消えないように）。
+        try:
+            body.edit_reset()
+        except tk.TclError:
+            pass
         font_obj = tkfont.Font(family="Hiragino Sans", size=13)
 
         def _auto_height(e=None, b=body):
@@ -1375,6 +1381,11 @@ class App(_AppBase):  # type: ignore[misc]
             b.insert("1.0", wrapped)
             if was_disabled:
                 b.configure(state="disabled")
+            # プログラムによる再フローも undo 履歴に積まないようリセット。
+            try:
+                b.edit_reset()
+            except tk.TclError:
+                pass
             _auto_height(b=b)
         card.bind("<Configure>", _rewrap)
 
@@ -1703,29 +1714,39 @@ class App(_AppBase):  # type: ignore[misc]
 
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
-        # Title bar dirty marker (matches macOS conventions: bullet prefix).
         try:
-            base = "Noto"
-            self.title(f"● {base}" if dirty else base)
+            self.title("Noto（未保存）" if dirty else "Noto")
         except tk.TclError:
             pass
 
     def _update_undo_buttons(self) -> None:
-        # 編集モード中は document-level undo を無効化（Cmd+Z は Tk が文字単位の
-        # undo を Text ウィジェットで処理するのでそちらを使ってもらう）。
+        # 編集モード中は Tk の文字単位 undo（Cmd+Z 相当）を行うため、
+        # ボタンは常に有効化する。表示モードではスナップショットスタックの
+        # 中身に応じて有効/無効を切り替える。
         try:
-            in_edit = self._edit_mode
-            self._undo_btn.configure(
-                state="normal" if (self._undo_stack and not in_edit) else "disabled"
-            )
-            self._redo_btn.configure(
-                state="normal" if (self._redo_stack and not in_edit) else "disabled"
-            )
+            if self._edit_mode:
+                self._undo_btn.configure(state="normal")
+                self._redo_btn.configure(state="normal")
+            else:
+                self._undo_btn.configure(
+                    state="normal" if self._undo_stack else "disabled"
+                )
+                self._redo_btn.configure(
+                    state="normal" if self._redo_stack else "disabled"
+                )
         except (tk.TclError, AttributeError):
             pass
 
     def _undo(self):
-        if self._edit_mode or not self._undo_stack:
+        if self._edit_mode:
+            # 編集モード中はフォーカス中の Text ウィジェットに文字単位 undo を試行。
+            if self._focused_editor:
+                try:
+                    self._focused_editor.edit_undo()
+                except tk.TclError:
+                    pass
+            return
+        if not self._undo_stack:
             return
         self._redo_stack.append(self._snapshot())
         self._apply_snapshot(self._undo_stack.pop())
@@ -1733,7 +1754,14 @@ class App(_AppBase):  # type: ignore[misc]
         self._update_undo_buttons()
 
     def _redo(self):
-        if self._edit_mode or not self._redo_stack:
+        if self._edit_mode:
+            if self._focused_editor:
+                try:
+                    self._focused_editor.edit_redo()
+                except tk.TclError:
+                    pass
+            return
+        if not self._redo_stack:
             return
         self._undo_stack.append(self._snapshot())
         self._apply_snapshot(self._redo_stack.pop())
