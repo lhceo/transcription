@@ -68,9 +68,6 @@ def _read_audio_duration(path: str) -> float:
 # names this module has historically used so the call sites below need no
 # changes.
 from kinsoku import (
-    KINSOKU_NO_BREAK_BEFORE as _KINSOKU_NO_BREAK_BEFORE,
-    KINSOKU_NO_BREAK_AFTER as _KINSOKU_NO_BREAK_AFTER,
-    WORD_JOINER as _WORD_JOINER,
     KINSOKU_NL_TAG as _KINSOKU_NL_TAG,
     strip_word_joiners as _strip_word_joiners,
     strip_kinsoku_newlines as _strip_kinsoku_newlines,
@@ -93,11 +90,8 @@ except ImportError:
 # Re-bind under the historical leading-underscore names so call sites are
 # unchanged.
 from app_config import (
-    CONFIG_PATH as _CONFIG_PATH,
     load_config as _load_config,
     save_config as _save_config,
-    KEYCHAIN_SERVICE as _KEYCHAIN_SERVICE,
-    KEYCHAIN_USER_HF as _KEYCHAIN_USER_HF,
     load_hf_token as _load_hf_token,
     save_hf_token as _save_hf_token,
 )
@@ -389,14 +383,9 @@ class DropZone(ctk.CTkFrame):
         size_str = f"{size_mb:.1f} MB"
 
         duration_str = ""
-        try:
-            from mutagen import File as _MFile  # type: ignore
-            af = _MFile(path)
-            if af and hasattr(af, "info") and hasattr(af.info, "length"):
-                s = int(af.info.length)
-                duration_str = f"  ·  {s // 60:02d}:{s % 60:02d}"
-        except Exception:
-            pass
+        s = int(_read_audio_duration(path))
+        if s > 0:
+            duration_str = f"  ·  {s // 60:02d}:{s % 60:02d}"
 
         row = ctk.CTkFrame(self, fg_color="#EFF6FF", corner_radius=8)
         row.pack(padx=8, pady=10, fill="x")
