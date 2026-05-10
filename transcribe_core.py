@@ -236,13 +236,15 @@ class TranscriptionEngine:
                 f"（詳細: {exc}）"
             ) from exc
 
-        # MPS (Apple Silicon GPU) を試し、使えなければ CPU フォールバック。
-        # Intel Mac やバージョン非互換のときも落ちないように。
-        try:
-            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                self._pipeline = self._pipeline.to(torch.device("mps"))
-        except Exception:
-            pass  # CPU で続行
+        # pyannote パイプラインは CPU で実行する。Apple Silicon の MPS バック
+        # エンドは、speaker diarization を走らせるとメモリが 17GB 超まで膨れ、
+        # 16GB Mac では macOS が OOM 警告を出して強制終了するクラッシュを
+        # 観測した（2026-05-10、MacBookPro18,3 + M1 Pro 16GB で再現）。
+        # 直接の引き金は PyTorch MPS の HeapAllocator が release 時に
+        # IOGPUResourceSetPurgeable で異常を起こすケース。speed と引き換えに
+        # 安定性を取るため CPU 固定。Whisper 本体（mlx-whisper）は別経路で
+        # MLX を使うのでこの変更の影響を受けない。
+        self._pipeline = self._pipeline.to(torch.device("cpu"))
         self._pipeline_token = hf_token
 
     def transcribe(
