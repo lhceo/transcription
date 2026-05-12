@@ -10,15 +10,19 @@
 
 ## [Unreleased] - 2026-05-12
 
-Web アプリへの全面書き換えに向けたドキュメント基盤の整備。コードへの実装変更はまだ含まれていない。
+Web アプリへの全面書き換えに向けた **ドキュメント基盤の整備と技術仕様の確定**。コードへの実装変更はまだ含まれていない。
 
 ### 追加
 - `CLAUDE.md`（Claude セッション継続用の道しるべ）
-- `docs/DESIGN.md`（全設計決定）
+- `docs/DESIGN.md`（全設計決定 A〜J）
 - `docs/DECISIONS.md`（判断の経緯記録）
 - `docs/ROADMAP.md`（実装ロードマップ）
 - `docs/CHANGELOG.md`（本ファイル）
-- `docs/RISKS.md`（リスク・レジスター）
+- `docs/RISKS.md`（リスク・レジスター 14項目）
+- `docs/ARCHITECTURE.md`（システム構成・各種フロー図）
+- `docs/DATA_MODEL.md`（DB スキーマ設計 5テーブル）
+- `docs/API.md`（API 設計・エンドポイント仕様）
+- `docs/SECURITY.md`（セキュリティ方針の骨子）
 
 ### 変更
 - `transcribe_core.py`: 未コミットだった MPS 復帰実験コードを破棄（Web アプリ化で pyannote 自体が不要になるため）
