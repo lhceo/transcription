@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
 from backend.auth.google import oauth
-from backend.config import load_settings
+from backend.config import APP_VERSION, load_settings
 from backend.db import SessionLocal
 from backend.db.models import User
 
@@ -60,7 +60,7 @@ async def login(request: Request, error: str | None = None) -> HTMLResponse:
         request,
         "login.html",
         {
-            "app_version": "0.3.0",
+            "app_version": APP_VERSION,
             "env": settings.env,
             "error_message": error_messages.get(error),
             "oauth_ready": settings.has_google_oauth,

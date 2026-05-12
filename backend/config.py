@@ -16,6 +16,10 @@ from dotenv import load_dotenv
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env", override=False)
 
+# アプリのバージョン (フッター表示、OpenAPI バージョン、health 応答で使用)。
+# リリース時にここだけ書き換えると全ての参照箇所に反映される。
+APP_VERSION = "1.1.0"
+
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
     value = os.environ.get(key, default)

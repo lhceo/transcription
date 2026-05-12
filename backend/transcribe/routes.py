@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.auth.dependencies import CurrentUser
-from backend.config import load_settings
+from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
@@ -399,7 +399,7 @@ async def transcript_detail(
         request,
         "transcript_detail.html",
         {
-            "app_version": "0.6.0",
+            "app_version": APP_VERSION,
             "env": settings.env,
             "user": user,
             "transcript": transcript,

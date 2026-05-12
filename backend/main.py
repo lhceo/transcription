@@ -23,7 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from backend.auth import router as auth_router
 from backend.auth.dependencies import CurrentUser, _RedirectToLogin
-from backend.config import load_settings
+from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Transcript
 from backend.transcribe import router as transcribe_router
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Transcription Web App",
-    version="0.6.0",
+    version=APP_VERSION,
     description="社内向け音声文字起こし Web アプリ",
     lifespan=lifespan,
 )
