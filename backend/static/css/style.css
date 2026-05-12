@@ -470,6 +470,26 @@ html, body {
     font-weight: 600;
 }
 
+/* アイコン + テキスト型のボタン */
+.btn-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+}
+
+.btn-icon-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
 /* アップロードコントロール（モデル選択など） */
 
 .upload-controls {

@@ -52,12 +52,23 @@
     <div class="detail-toolbar">
         <button
             type="button"
-            class="btn"
+            class="btn btn-with-icon"
             :class="editMode ? 'btn-primary' : 'btn-secondary-outline'"
             @click="toggleEditMode()"
         >
-            <span x-show="!editMode">✏️ 編集する</span>
-            <span x-show="editMode" x-cloak>✓ 編集を終了</span>
+            <span x-show="!editMode" class="btn-icon-label">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+                編集する
+            </span>
+            <span x-show="editMode" x-cloak class="btn-icon-label">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                編集を終了
+            </span>
         </button>
         <span class="edit-hint" x-show="editMode" x-cloak>
             ダブルクリックで編集 / Shift + Return で分割 / 自動保存
