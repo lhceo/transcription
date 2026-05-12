@@ -88,15 +88,16 @@
         <ol class="segment-list" id="segment-list" :class="editMode ? 'segment-list-editing' : ''">
             {% for seg in segments %}
                 {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
+                {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
                 <li class="segment-card"
                     id="segment-{{ seg.id }}"
                     data-segment-id="{{ seg.id }}"
                     data-speaker-label="{{ seg.speaker_label }}"
-                    data-color-index="{{ loop.index0 % 8 }}">
+                    data-color-index="{{ color_idx }}">
                     <header class="segment-header">
                         <button
                             type="button"
-                            class="speaker-badge speaker-color-{{ loop.index0 % 8 }}"
+                            class="speaker-badge speaker-color-{{ color_idx }}"
                             data-segment-id="{{ seg.id }}"
                             data-speaker-label="{{ seg.speaker_label }}"
                             data-current-display-name="{{ seg.display_name or '' }}"
@@ -223,6 +224,28 @@ function segmentsApp(transcriptId, historyNames) {
             });
         },
 
+        recolorByName() {
+            // 同じ effective_name = 同じ色。出現順に 0〜7 を循環。
+            const seen = [];
+            document.querySelectorAll('#segment-list .segment-card').forEach(card => {
+                const badge = card.querySelector('.speaker-badge');
+                if (!badge) return;
+                const name = badge.dataset.effectiveName || '';
+                let idx = seen.indexOf(name);
+                if (idx === -1) {
+                    seen.push(name);
+                    idx = seen.length - 1;
+                }
+                const colorIdx = idx % 8;
+                card.dataset.colorIndex = String(colorIdx);
+                const cls = badge.className
+                    .replace(/\bspeaker-color-\d+\b/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                badge.className = `${cls} speaker-color-${colorIdx}`;
+            });
+        },
+
         // ── 編集モード切替 ─────────────────────────────────────────
         toggleEditMode() {
             this.editMode = !this.editMode;
@@ -335,6 +358,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const currentCard = textarea.closest('.segment-card');
                 const newCard = this.buildSegmentCardElement(data.new, currentCard);
                 currentCard.after(newCard);
+                this.recolorByName();
 
                 // 新カードのテキストエリアにフォーカス
                 const newTextarea = newCard.querySelector('.segment-text-edit');
@@ -349,9 +373,9 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         buildSegmentCardElement(newSeg, prevCard) {
-            // 色は前カードと別になるように、prevCard の data-color-index + 1
-            const prevColor = parseInt(prevCard.dataset.colorIndex || '0', 10);
-            const colorIdx = (prevColor + 1) % 8;
+            // 新カードは前カードと同じ effective_name を引き継ぐので、色も同じ。
+            // （recolorByName でも後で再計算されるが、初期値もここで揃えておく）
+            const colorIdx = parseInt(prevCard.dataset.colorIndex || '0', 10);
             const effectiveName = (prevCard.querySelector('.speaker-badge-text')?.textContent || newSeg.speaker_label).trim();
 
             const li = document.createElement('li');
@@ -483,8 +507,12 @@ function segmentsApp(transcriptId, historyNames) {
                     const txt = card.querySelector('.speaker-badge-text');
                     if (txt) txt.textContent = name;
                     const badge = card.querySelector('.speaker-badge');
-                    if (badge) badge.dataset.effectiveName = name;
+                    if (badge) {
+                        badge.dataset.effectiveName = name;
+                        badge.dataset.currentDisplayName = name;
+                    }
                 }
+                this.recolorByName();
                 if (this.history.indexOf(name) < 0) this.history.unshift(name);
                 this.closeEditor();
             } catch (e) {
@@ -493,23 +521,29 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async applyAll() {
-            const name = (this.editor.input || '').trim();
-            if (!name) return;
+            const newName = (this.editor.input || '').trim();
+            if (!newName) return;
+            const fromName = this.editor.originalName;
+            if (!fromName) return;
             try {
-                const res = await fetch(`/api/transcripts/${this.transcriptId}/speakers/${this.editor.speakerLabel}`, {
-                    method: 'PATCH',
+                // 画面上の表示名 (effective name) が fromName と一致する
+                // セグメントすべてを newName に変更する（Notta 方式）
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/rename-by-name`, {
+                    method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({display_name: name}),
+                    body: JSON.stringify({from_name: fromName, to_name: newName}),
                 });
                 if (!res.ok) throw new Error(await res.text());
-                const cards = document.querySelectorAll(`[data-speaker-label="${this.editor.speakerLabel}"]`);
-                cards.forEach(c => {
-                    const txt = c.querySelector('.speaker-badge-text');
-                    if (txt) txt.textContent = name;
-                    const badge = c.querySelector('.speaker-badge');
-                    if (badge) badge.dataset.effectiveName = name;
+                document.querySelectorAll('#segment-list .speaker-badge').forEach(badge => {
+                    if (badge.dataset.effectiveName === fromName) {
+                        const txt = badge.querySelector('.speaker-badge-text');
+                        if (txt) txt.textContent = newName;
+                        badge.dataset.effectiveName = newName;
+                        badge.dataset.currentDisplayName = newName;
+                    }
                 });
-                if (this.history.indexOf(name) < 0) this.history.unshift(name);
+                this.recolorByName();
+                if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
                 this.closeEditor();
             } catch (e) {
                 alert('保存に失敗しました: ' + e.message);

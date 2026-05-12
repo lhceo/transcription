@@ -229,6 +229,18 @@ async def transcript_detail(
     # speaker_label → display_name の辞書
     speaker_name_map = {s.speaker_label: s.display_name for s in speakers}
 
+    # 同じ表示名（effective name）に同じ色を割り当てるためのマップ。
+    # 出現順に色 0〜7 を循環。
+    name_to_color: dict[str, int] = {}
+    for seg in segments:
+        effective = (
+            seg.display_name
+            or speaker_name_map.get(seg.speaker_label)
+            or seg.speaker_label
+        )
+        if effective not in name_to_color:
+            name_to_color[effective] = len(name_to_color) % 8
+
     # ユーザーが過去に使った話者名（候補リスト）
     history_names = _user_speaker_history_names(user["id"], db)
 
@@ -244,6 +256,7 @@ async def transcript_detail(
             "segments": segments,
             "speakers": speakers,
             "speaker_name_map": speaker_name_map,
+            "name_to_color": name_to_color,
             "history_names": history_names,
         },
     )
@@ -703,4 +716,58 @@ async def rename_speaker(
 
     return JSONResponse(
         {"speaker_label": speaker_label, "display_name": name}
+    )
+
+
+@router.post("/api/transcripts/{transcript_id}/segments/rename-by-name")
+async def rename_segments_by_effective_name(
+    transcript_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """画面上の表示名（effective name）が一致するセグメントをまとめて改名する。
+
+    Notta 方式の「すべての○○ に適用」用エンドポイント。
+    元の speaker_label は無視し、現在表示されている名前が ``from_name`` の
+    セグメントすべてに対し ``segment.display_name = to_name`` を個別にセットする。
+
+    payload: {"from_name": "話者A", "to_name": "山田さん"}
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    from_name = (payload.get("from_name") or "").strip()
+    to_name = (payload.get("to_name") or "").strip()
+    if not from_name or not to_name:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_NAME", "message": "名前は空にできません"},
+        )
+
+    segments = list(
+        db.scalars(select(Segment).where(Segment.transcript_id == transcript_id))
+    )
+    speakers = list(
+        db.scalars(select(Speaker).where(Speaker.transcript_id == transcript_id))
+    )
+    name_map = {s.speaker_label: s.display_name for s in speakers}
+
+    matched_ids: list[int] = []
+    for seg in segments:
+        effective = seg.display_name or name_map.get(seg.speaker_label) or seg.speaker_label
+        if effective == from_name:
+            seg.display_name = to_name
+            matched_ids.append(seg.id)
+
+    _record_speaker_history(user["id"], to_name, db)
+    db.commit()
+
+    return JSONResponse(
+        {
+            "from_name": from_name,
+            "to_name": to_name,
+            "segment_ids": matched_ids,
+        }
     )
