@@ -99,6 +99,9 @@ async def _redirect_to_login_handler(
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
+from backend.transcribe.eta import compute_eta_text  # noqa: E402
+templates.env.globals["eta_text"] = compute_eta_text
+
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
 

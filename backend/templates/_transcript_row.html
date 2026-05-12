@@ -32,6 +32,10 @@
                     {{ transcript.status }}
                 {% endif %}
             </span>
+            {% set eta = eta_text(transcript) %}
+            {% if eta %}
+                <span class="history-item-eta">{{ eta }}</span>
+            {% endif %}
             <span class="history-item-size">
                 {% set mb = transcript.file_size_bytes / (1024 * 1024) %}
                 {% if mb >= 1024 %}

@@ -23,6 +23,7 @@ from backend.config import load_settings
 from backend.db import get_db
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
+from backend.transcribe.eta import compute_eta_text
 from backend.transcribe.storage import UploadTooLargeError, save_upload_to_tmp
 from backend.transcribe.tasks import process_transcript
 
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
+templates.env.globals["eta_text"] = compute_eta_text
 
 router = APIRouter()
 
@@ -41,11 +43,16 @@ async def create_transcript(
     db: Annotated[Session, Depends(get_db)],
     file: UploadFile = File(...),
     model_tier: str = Form("best"),
+    audio_duration_seconds: str | None = Form(None),
 ) -> HTMLResponse:
     """音声ファイルをアップロードし、ジョブを作成する。
 
     Phase 3 ではここで処理は止まる（AssemblyAI 送信は Phase 4）。
     レスポンスは HTMX の swap 用 HTML 断片。
+
+    `audio_duration_seconds` はクライアント側で `<audio>`/`<video>` の
+    metadata から読み取った概算値（任意）。処理時間目安の表示に使う。
+    AssemblyAI 完了時に正確な値で上書きされる。
     """
     # ──── 入力バリデーション ────────────────────────────────────────────────
     if model_tier not in {"best", "nano"}:
@@ -85,10 +92,22 @@ async def create_transcript(
     settings = load_settings()
     initial_status = "processing" if settings.has_assemblyai else "uploaded"
 
+    # クライアント側で読み取った音声長を保存（処理時間目安の表示に使う）。
+    # 信頼境界の外なので、現実的な範囲 (0 < x <= 6時間) にクランプする。
+    initial_duration: float | None = None
+    if audio_duration_seconds:
+        try:
+            d = float(audio_duration_seconds)
+            if 0 < d <= 6 * 3600:
+                initial_duration = d
+        except (TypeError, ValueError):
+            pass
+
     transcript = Transcript(
         user_id=user["id"],
         original_filename=file.filename,
         file_size_bytes=size_bytes,
+        audio_duration_seconds=initial_duration,
         status=initial_status,
         model_tier=model_tier,
         language="ja",

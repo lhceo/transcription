@@ -26,6 +26,14 @@
             class="hidden-file-input"
             @change="onFileChange($event)"
         >
+        {# 処理時間目安のためにクライアントで読み取った音声長 (秒)。
+           ブラウザが metadata を読めなかった場合は空のまま送られる。 #}
+        <input
+            type="hidden"
+            name="audio_duration_seconds"
+            id="audio-duration-input"
+            value=""
+        >
 
         <div
             class="dropzone"
@@ -139,12 +147,36 @@ function uploadForm() {
                 this.statusMessage = '対応していないファイル形式です。mp3 か mp4 をご利用ください。';
                 this.statusClass = 'status-error';
                 this.reset();
+                return;
             }
             if (f.size > 2 * 1024 * 1024 * 1024) {
                 this.statusMessage = 'ファイルサイズが 2GB を超えています。';
                 this.statusClass = 'status-error';
                 this.reset();
+                return;
             }
+            // 音声長を読み取ってフォームに格納（処理時間目安の表示に使う）。
+            // 失敗しても送信はそのまま続行する。
+            this.readDuration(f);
+        },
+
+        readDuration(file) {
+            const isVideo = (file.type || '').startsWith('video/') || file.name.toLowerCase().endsWith('.mp4');
+            const el = document.createElement(isVideo ? 'video' : 'audio');
+            el.preload = 'metadata';
+            el.muted = true;
+            const url = URL.createObjectURL(file);
+            const cleanup = () => URL.revokeObjectURL(url);
+            el.onloadedmetadata = () => {
+                const d = el.duration;
+                cleanup();
+                const input = document.getElementById('audio-duration-input');
+                if (input && Number.isFinite(d) && d > 0) {
+                    input.value = String(d);
+                }
+            };
+            el.onerror = cleanup;
+            el.src = url;
         },
 
         reset() {
@@ -152,6 +184,8 @@ function uploadForm() {
             this.fileSize = 0;
             const input = document.getElementById('file-input');
             if (input) input.value = '';
+            const dur = document.getElementById('audio-duration-input');
+            if (dur) dur.value = '';
         },
 
         onStart() {
