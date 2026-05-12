@@ -504,7 +504,8 @@ async def split_segment(
         )
 
     # 時間の按分（文字数比率）。元のテキスト長が 0 のときは半分にする。
-    duration = segment.end_seconds - segment.start_seconds
+    original_end = segment.end_seconds
+    duration = original_end - segment.start_seconds
     if len(full_text) > 0 and position > 0:
         ratio = position / len(full_text)
     else:
@@ -529,14 +530,11 @@ async def split_segment(
         transcript_id=segment.transcript_id,
         order_index=segment.order_index + 1,
         start_seconds=split_time,
-        end_seconds=segment.end_seconds if False else (segment.end_seconds),  # 元の end を再利用しないよう注意
+        end_seconds=original_end,
         speaker_label=segment.speaker_label,
         text_content=after or "（無音）",
         is_edited=True,
     )
-    # 上の new_segment の end を、本来の元 end に直す
-    # （segment.end_seconds はすでに split_time で上書きされたので、再計算が必要）
-    new_segment.end_seconds = split_time + (duration * (1 - ratio))
 
     db.add(new_segment)
     db.commit()
@@ -734,56 +732,6 @@ def _urlencode_filename(name: str) -> str:
     from urllib.parse import quote
 
     return quote(name, safe="")
-
-
-@router.patch("/api/transcripts/{transcript_id}/speakers/{speaker_label}")
-async def rename_speaker(
-    transcript_id: int,
-    speaker_label: str,
-    payload: dict,
-    user: CurrentUser,
-    db: Annotated[Session, Depends(get_db)],
-) -> JSONResponse:
-    """同じ内部ラベル（SPEAKER_00 等）の話者をまとめて改名する。
-
-    payload: {"display_name": "山田さん"}
-    """
-    transcript = db.get(Transcript, transcript_id)
-    if transcript is None or transcript.user_id != user["id"]:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-
-    name = (payload.get("display_name") or "").strip()
-    if not name:
-        raise HTTPException(
-            status_code=400, detail={"code": "INVALID_NAME", "message": "名前は空にできません"}
-        )
-
-    speaker = db.scalar(
-        select(Speaker).where(
-            Speaker.transcript_id == transcript_id,
-            Speaker.speaker_label == speaker_label,
-        )
-    )
-    if speaker is None:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-
-    speaker.display_name = name
-
-    # 個別上書き（segment.display_name）をクリアして、speaker.display_name に
-    # 統一する。これにより「一括変更」の意図が反映される。
-    db.execute(
-        Segment.__table__.update()
-        .where(Segment.transcript_id == transcript_id)
-        .where(Segment.speaker_label == speaker_label)
-        .values(display_name=None)
-    )
-
-    _record_speaker_history(user["id"], name, db)
-    db.commit()
-
-    return JSONResponse(
-        {"speaker_label": speaker_label, "display_name": name}
-    )
 
 
 @router.post("/api/transcripts/{transcript_id}/segments/rename-by-name")

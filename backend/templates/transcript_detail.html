@@ -466,7 +466,6 @@ function segmentsApp(transcriptId, historyNames) {
             badge.dataset.speakerLabel = newSeg.speaker_label;
             badge.dataset.currentDisplayName = '';
             badge.dataset.effectiveName = effectiveName;
-            badge.setAttribute('@click', 'openSpeakerEditorFromEvent($event)');
             // Alpine は動的に挿入された @click を解釈できないため、
             // ネイティブ addEventListener で直接バインドする
             badge.addEventListener('click', (ev) => this.openSpeakerEditorFromEvent(ev));
@@ -583,6 +582,12 @@ function segmentsApp(transcriptId, historyNames) {
 
         closeEditor() {
             this.editor.open = false;
+            this.editor.segmentId = null;
+            this.editor.speakerLabel = null;
+            this.editor.currentDisplayName = '';
+            this.editor.originalName = '';
+            this.editor.input = '';
+            this.editor.fromCandidate = false;
         },
 
         async _extractErrorMessage(res) {
