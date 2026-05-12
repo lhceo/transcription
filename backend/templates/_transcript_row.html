@@ -1,5 +1,14 @@
-{# 履歴の1行。HTMX の afterbegin で挿入される。 #}
-<li class="history-item">
+{# 履歴の1行。processing 中は HTMX で 5秒ごとに自分自身を再取得して状態更新する。 #}
+{% set is_pending = transcript.status in ('uploaded', 'processing') %}
+<li
+    class="history-item"
+    id="transcript-{{ transcript.id }}"
+    {% if is_pending %}
+    hx-get="/api/transcripts/{{ transcript.id }}/row"
+    hx-trigger="every 5s"
+    hx-swap="outerHTML"
+    {% endif %}
+>
     <div class="history-item-main">
         <div class="history-item-name">
             <span class="history-item-icon">🎵</span>
@@ -10,7 +19,7 @@
                 {% if transcript.status == 'uploaded' %}
                     アップロード完了
                 {% elif transcript.status == 'processing' %}
-                    処理中
+                    <span class="processing-dot"></span>文字起こし中…
                 {% elif transcript.status == 'completed' %}
                     完了
                 {% elif transcript.status == 'failed' %}
@@ -27,12 +36,29 @@
                     {{ "%.1f"|format(mb) }} MB
                 {% endif %}
             </span>
+            {% if transcript.audio_duration_seconds %}
+                <span class="history-item-duration">
+                    {% set dur = transcript.audio_duration_seconds %}
+                    {% set hours = (dur // 3600)|int %}
+                    {% set minutes = ((dur % 3600) // 60)|int %}
+                    {% set seconds = (dur % 60)|int %}
+                    {% if hours > 0 %}{{ hours }}時間{% endif %}{% if minutes > 0 or hours > 0 %}{{ minutes }}分{% endif %}{{ seconds }}秒
+                </span>
+            {% endif %}
             <span class="history-item-tier">
                 {% if transcript.model_tier == 'best' %}高精度{% else %}コスト重視{% endif %}
             </span>
+            {% if transcript.cost_yen is not none and transcript.cost_yen > 0 %}
+                <span class="history-item-cost">約 {{ transcript.cost_yen }} 円</span>
+            {% endif %}
             <span class="history-item-date">
                 {{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}
             </span>
         </div>
+        {% if transcript.status == 'failed' and transcript.error_message %}
+            <div class="history-item-error">
+                エラー: {{ transcript.error_message }}
+            </div>
+        {% endif %}
     </div>
 </li>

@@ -88,7 +88,7 @@
     </div>
     <ul id="history-list" class="history-list">
         {% if transcripts %}
-            {% for t in transcripts %}
+            {% for transcript in transcripts %}
                 {% include "_transcript_row.html" %}
             {% endfor %}
         {% else %}

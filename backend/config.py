@@ -50,6 +50,9 @@ class Settings:
     # コールバック URL。本番では正しいドメインを使う必要があるので env で上書き可。
     google_oauth_redirect_uri: str
 
+    # AssemblyAI 設定（Phase 4 で使用）
+    assemblyai_api_key: str
+
     @property
     def is_production(self) -> bool:
         return self.env.lower() == "production"
@@ -58,6 +61,11 @@ class Settings:
     def has_google_oauth(self) -> bool:
         """Google OAuth が設定済みか。未設定なら認証機能を無効化する。"""
         return bool(self.google_oauth_client_id and self.google_oauth_client_secret)
+
+    @property
+    def has_assemblyai(self) -> bool:
+        """AssemblyAI が設定済みか。未設定なら文字起こし機能を無効化する。"""
+        return bool(self.assemblyai_api_key)
 
 
 def load_settings() -> Settings:
@@ -81,4 +89,5 @@ def load_settings() -> Settings:
             "GOOGLE_OAUTH_REDIRECT_URI",
             "http://127.0.0.1:8000/auth/google/callback",
         ),
+        assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
     )
