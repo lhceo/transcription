@@ -779,8 +779,79 @@ a.history-item-filename:hover {
 .detail-title {
     font-size: 18px;
     font-weight: 700;
-    margin-bottom: 8px;
+    margin: 0;
     word-break: break-all;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: background 0.12s ease;
+}
+
+.detail-title:hover {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.detail-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.detail-title-edit-btn {
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.detail-title-edit-btn:hover {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+}
+
+.detail-title-edit-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.detail-title-edit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 280px;
+}
+
+.detail-title-input {
+    flex: 1;
+    min-width: 200px;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-family: inherit;
+}
+
+.detail-title-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.btn-small {
+    padding: 4px 12px;
+    font-size: 13px;
 }
 
 .detail-meta {

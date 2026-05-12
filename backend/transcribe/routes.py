@@ -25,6 +25,7 @@ from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
 from backend.transcribe.eta import compute_eta_text
+from backend.transcribe.display import transcript_display_name
 from backend.transcribe.storage import UploadTooLargeError, save_upload_to_tmp
 from backend.transcribe.tasks import process_transcript
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 templates.env.globals["eta_text"] = compute_eta_text
+templates.env.globals["display_name"] = transcript_display_name
 
 router = APIRouter()
 
@@ -192,6 +194,51 @@ async def list_transcripts(
         request,
         "_transcript_list.html",
         {"transcripts": transcripts},
+    )
+
+
+@router.patch("/api/transcripts/{transcript_id}")
+async def update_transcript(
+    transcript_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """文字起こしの表示名 (title) を更新する。
+
+    request body: {"title": "山田さんとの 1on1"} もしくは {"title": ""}（クリア）
+    title は最大 500 文字。空文字を渡すと NULL に戻し original_filename 表示に
+    戻す。
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    raw = payload.get("title")
+    if raw is None:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_TITLE", "message": "title フィールドが必要です"},
+        )
+    title = str(raw).strip()
+    if len(title) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "TITLE_TOO_LONG", "message": "名前は 500 文字以内で入力してください"},
+        )
+    transcript.title = title or None
+    db.commit()
+    db.refresh(transcript)
+    return JSONResponse(
+        {
+            "id": transcript.id,
+            "title": transcript.title,
+            "original_filename": transcript.original_filename,
+        }
     )
 
 
@@ -755,10 +802,11 @@ async def export_transcript(
             detail={"code": "UNKNOWN_FORMAT", "message": "未対応の形式です"},
         )
 
-    # ファイル名: 元ファイル名（拡張子除く）+ .{ext}
+    # ファイル名: リネームがあれば title、なければ original_filename（拡張子除く）
     import os
 
-    base = os.path.splitext(transcript.original_filename)[0] or "transcript"
+    raw_name = transcript_display_name(transcript)
+    base = os.path.splitext(raw_name)[0] or "transcript"
     download_name = f"{base}.{ext}"
 
     return Response(

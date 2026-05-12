@@ -75,6 +75,8 @@ class Transcript(Base):
     )
 
     original_filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    # ユーザーがリネームした表示名。未設定なら original_filename を表示に使う。
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     audio_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 

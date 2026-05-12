@@ -12,10 +12,11 @@
     <div class="history-item-main">
         <div class="history-item-name">
             <span class="history-item-icon">🎵</span>
+            {% set name = display_name(transcript) %}
             {% if transcript.status == 'completed' %}
-                <a href="/transcripts/{{ transcript.id }}" class="history-item-filename">{{ transcript.original_filename }}</a>
+                <a href="/transcripts/{{ transcript.id }}" class="history-item-filename">{{ name }}</a>
             {% else %}
-                <span class="history-item-filename">{{ transcript.original_filename }}</span>
+                <span class="history-item-filename">{{ name }}</span>
             {% endif %}
         </div>
         <div class="history-item-meta">
@@ -74,7 +75,7 @@
         type="button"
         class="history-item-delete"
         hx-delete="/api/transcripts/{{ transcript.id }}"
-        hx-confirm="「{{ transcript.original_filename }}」を削除しますか？"
+        hx-confirm="「{{ display_name(transcript) }}」を削除しますか？"
         hx-target="#transcript-{{ transcript.id }}"
         hx-swap="delete"
         aria-label="削除"

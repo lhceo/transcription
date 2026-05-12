@@ -103,6 +103,8 @@ from backend.transcribe.eta import compute_eta_text  # noqa: E402
 templates.env.globals["eta_text"] = compute_eta_text
 
 from backend.transcribe.cost import current_month_cost_yen  # noqa: E402
+from backend.transcribe.display import transcript_display_name  # noqa: E402
+templates.env.globals["display_name"] = transcript_display_name
 
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
