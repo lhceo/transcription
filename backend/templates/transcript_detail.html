@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+
+{% block title %}{{ transcript.original_filename }} - 音声文字起こし{% endblock %}
+
+{% block content %}
+<script>
+    // history_names は JSON で安全に渡せるよう <script> タグ経由で渡す。
+    // x-data 属性に |tojson を埋め込むと、JSON の " と HTML 属性の " が衝突して
+    // Alpine の式が壊れる（クリックハンドラが一切動かなくなる）。
+    window.__SEGMENTS_INIT = {
+        transcriptId: {{ transcript.id }},
+        historyNames: {{ history_names|tojson }},
+    };
+</script>
+
+{% set title_no_ext = transcript.original_filename.rsplit('.', 1)[0] %}
+<section class="detail-header">
+    <nav class="breadcrumb" aria-label="パンくずナビ">
+        <a href="/" class="breadcrumb-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12L12 4l9 8"></path>
+                <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"></path>
+            </svg>
+            <span>ホーム</span>
+        </a>
+        <span class="breadcrumb-sep" aria-hidden="true">›</span>
+    </nav>
+    <h2 class="detail-title">{{ title_no_ext }}</h2>
+    <div class="detail-meta">
+        {% if transcript.audio_duration_seconds %}
+            {% set dur = transcript.audio_duration_seconds %}
+            {% set hours = (dur // 3600)|int %}
+            {% set minutes = ((dur % 3600) // 60)|int %}
+            {% set seconds = (dur % 60)|int %}
+            <span class="meta-item">
+                {% if hours > 0 %}{{ hours }}時間{% endif %}{% if minutes > 0 or hours > 0 %}{{ minutes }}分{% endif %}{{ seconds }}秒
+            </span>
+        {% endif %}
+        <span class="meta-item">{{ speakers|length }}人の話者</span>
+        <span class="meta-item">{{ segments|length }} セグメント</span>
+        {% if transcript.cost_yen %}
+            <span class="meta-item meta-cost">約 {{ transcript.cost_yen }} 円</span>
+        {% endif %}
+        <span class="meta-item">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
+    </div>
+</section>
+
+<section class="segments-section"
+         x-data="segmentsApp(window.__SEGMENTS_INIT.transcriptId, window.__SEGMENTS_INIT.historyNames)">
+
+    {# ──── ツールバー：編集モード切替＋エクスポート ──── #}
+    <div class="detail-toolbar">
+        <button
+            type="button"
+            class="btn"
+            :class="editMode ? 'btn-primary' : 'btn-secondary-outline'"
+            @click="toggleEditMode()"
+        >
+            <span x-show="!editMode">✏️ 編集する</span>
+            <span x-show="editMode" x-cloak>✓ 編集を終了</span>
+        </button>
+        <span class="edit-hint" x-show="editMode" x-cloak>
+            ダブルクリックで編集 / Shift + Return で分割 / 自動保存
+        </span>
+
+        <details class="export-menu">
+            <summary class="btn btn-secondary-outline">エクスポート ▾</summary>
+            <div class="export-options">
+                <a href="/api/transcripts/{{ transcript.id }}/export?format=txt" class="export-option">
+                    <strong>TXT</strong><span>テキスト形式（タイムスタンプ＋話者）</span>
+                </a>
+                <a href="/api/transcripts/{{ transcript.id }}/export?format=srt" class="export-option">
+                    <strong>SRT</strong><span>字幕ファイル形式</span>
+                </a>
+                <a href="/api/transcripts/{{ transcript.id }}/export?format=json" class="export-option">
+                    <strong>JSON</strong><span>構造化データ（再利用向け）</span>
+                </a>
+            </div>
+        </details>
+    </div>
+
+    {# ──── セグメント一覧 ──── #}
+    {% if not segments %}
+        <div class="segments-empty">
+            まだセグメントがありません。
+        </div>
+    {% else %}
+        <ol class="segment-list" id="segment-list" :class="editMode ? 'segment-list-editing' : ''">
+            {% for seg in segments %}
+                {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
+                <li class="segment-card"
+                    id="segment-{{ seg.id }}"
+                    data-segment-id="{{ seg.id }}"
+                    data-speaker-label="{{ seg.speaker_label }}"
+                    data-color-index="{{ loop.index0 % 8 }}">
+                    <header class="segment-header">
+                        <button
+                            type="button"
+                            class="speaker-badge speaker-color-{{ loop.index0 % 8 }}"
+                            data-segment-id="{{ seg.id }}"
+                            data-speaker-label="{{ seg.speaker_label }}"
+                            data-current-display-name="{{ seg.display_name or '' }}"
+                            data-effective-name="{{ effective_name }}"
+                            @click="openSpeakerEditorFromEvent($event)"
+                        >
+                            <span class="speaker-badge-text">{{ effective_name }}</span>
+                        </button>
+                        <span class="segment-time" data-start="{{ seg.start_seconds }}">
+                            {% set ts = seg.start_seconds|int %}
+                            {% set th = ts // 3600 %}
+                            {% set tm = (ts % 3600) // 60 %}
+                            {% set tsec = ts % 60 %}
+                            {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
+                        </span>
+                        {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
+                    </header>
+
+                    {# 閲覧モード：div で表示。ダブルクリックで編集モードに入る #}
+                    <div
+                        class="segment-text"
+                        x-show="!editMode"
+                        @dblclick="enterEditMode()"
+                    >{{ seg.text_content }}</div>
+
+                    {# 編集モード：textarea で表示 #}
+                    <textarea
+                        class="segment-text-edit"
+                        x-show="editMode"
+                        x-cloak
+                        data-segment-id="{{ seg.id }}"
+                        @blur="onSegmentBlur($event)"
+                        @input="onSegmentInput($event)"
+                        @keydown="onSegmentKeydown($event)"
+                    >{{ seg.text_content }}</textarea>
+                </li>
+            {% endfor %}
+        </ol>
+    {% endif %}
+
+    {# ──── 話者編集ポップアップ ──── #}
+    <div
+        class="speaker-popup"
+        x-show="editor.open"
+        x-cloak
+        :style="{ top: editor.y + 'px', left: editor.x + 'px' }"
+        @click.outside="closeEditor()"
+        @keydown.escape.window="closeEditor()"
+    >
+        <div class="speaker-popup-header">
+            <input
+                type="text"
+                class="speaker-popup-input"
+                placeholder="名前を入力 or 候補から選択"
+                x-model="editor.input"
+                @keydown.enter.prevent="applyAll()"
+                x-ref="input"
+            >
+        </div>
+        <div class="speaker-popup-candidates" x-show="filteredCandidates().length > 0">
+            <p class="speaker-popup-section-label">候補</p>
+            <template x-for="name in filteredCandidates()" :key="name">
+                <button
+                    type="button"
+                    class="speaker-popup-candidate"
+                    @click="editor.input = name; $refs.input.focus()"
+                >
+                    <span class="speaker-popup-avatar" x-text="name.charAt(0)"></span>
+                    <span x-text="name"></span>
+                </button>
+            </template>
+        </div>
+        <div class="speaker-popup-actions">
+            <button type="button" class="speaker-popup-action" @click="applyOnly()">
+                この発言のみ
+            </button>
+            <button type="button" class="speaker-popup-action speaker-popup-action-primary" @click="applyAll()">
+                <span x-text="'すべての「' + editor.originalName + '」に適用'"></span>
+            </button>
+            <button type="button" class="btn-link" @click="closeEditor()">
+                キャンセル
+            </button>
+        </div>
+    </div>
+</section>
+
+<script>
+function segmentsApp(transcriptId, historyNames) {
+    return {
+        transcriptId: transcriptId,
+        history: historyNames || [],
+        editMode: false,
+
+        editor: {
+            open: false,
+            x: 0,
+            y: 0,
+            segmentId: null,
+            speakerLabel: null,
+            currentDisplayName: '',
+            originalName: '',
+            input: '',
+        },
+
+        init() {
+            // textarea の自動サイズ調整を初期化
+            this.$nextTick(() => this.resizeAllTextareas());
+        },
+
+        // ── 編集モード切替 ─────────────────────────────────────────
+        toggleEditMode() {
+            this.editMode = !this.editMode;
+            if (this.editMode) {
+                this.$nextTick(() => this.resizeAllTextareas());
+            }
+        },
+
+        enterEditMode() {
+            if (this.editMode) return;
+            this.editMode = true;
+            this.$nextTick(() => this.resizeAllTextareas());
+        },
+
+        resizeAllTextareas() {
+            document.querySelectorAll('.segment-text-edit').forEach(t => this.autoResize(t));
+        },
+
+        autoResize(textarea) {
+            // 「広げるのみ・縮めない」設計。auto に戻すと改行のたびに
+            // ページがスクロールしてしまうので避ける。
+            const desired = textarea.scrollHeight;
+            if (desired > textarea.offsetHeight) {
+                textarea.style.height = desired + 'px';
+            }
+        },
+
+        // ── テキストエリアイベント ─────────────────────────────────
+        onSegmentInput(event) {
+            this.autoResize(event.currentTarget);
+        },
+
+        async onSegmentBlur(event) {
+            const t = event.currentTarget;
+            const segmentId = parseInt(t.dataset.segmentId, 10);
+            const newText = t.value.trim();
+            const original = t.dataset.originalText !== undefined
+                ? t.dataset.originalText
+                : t.defaultValue.trim();
+            if (newText === original) return;
+
+            try {
+                const res = await fetch(`/api/segments/${segmentId}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: newText}),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                t.dataset.originalText = newText;
+                // 同じカード内の表示用 div も同期しておく
+                const card = t.closest('.segment-card');
+                if (card) {
+                    const viewDiv = card.querySelector('.segment-text');
+                    if (viewDiv) viewDiv.textContent = newText;
+                    if (!card.querySelector('[data-edited]')) {
+                        const time = card.querySelector('.segment-time');
+                        const badge = document.createElement('span');
+                        badge.className = 'segment-edited';
+                        badge.dataset.edited = '1';
+                        badge.textContent = '編集済み';
+                        if (time) time.after(badge);
+                    }
+                }
+            } catch (e) {
+                console.error('save failed:', e);
+                // ロールバック
+                t.value = original;
+            }
+        },
+
+        onSegmentKeydown(event) {
+            // Shift + Enter でセグメント分割
+            if (event.key === 'Enter' && event.shiftKey) {
+                event.preventDefault();
+                this.splitSegmentAtCursor(event.currentTarget);
+            }
+        },
+
+        // ── セグメント分割 ─────────────────────────────────────────
+        async splitSegmentAtCursor(textarea) {
+            const segmentId = parseInt(textarea.dataset.segmentId, 10);
+            const position = textarea.selectionStart;
+            const original = textarea.value;
+
+            try {
+                const res = await fetch(`/api/segments/${segmentId}/split`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({position: position}),
+                });
+                if (!res.ok) {
+                    const body = await res.text();
+                    throw new Error(body || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                // 現在のカードを更新
+                textarea.value = data.current.text;
+                textarea.dataset.originalText = data.current.text;
+                this.autoResize(textarea);
+
+                // 新カードを DOM に挿入
+                const currentCard = textarea.closest('.segment-card');
+                const newCard = this.buildSegmentCardElement(data.new, currentCard);
+                currentCard.after(newCard);
+
+                // 新カードのテキストエリアにフォーカス
+                const newTextarea = newCard.querySelector('.segment-text-edit');
+                if (newTextarea) {
+                    this.autoResize(newTextarea);
+                    newTextarea.focus();
+                    newTextarea.setSelectionRange(0, 0);
+                }
+            } catch (e) {
+                alert('分割に失敗しました: ' + e.message);
+            }
+        },
+
+        buildSegmentCardElement(newSeg, prevCard) {
+            // 色は前カードと別になるように、prevCard の data-color-index + 1
+            const prevColor = parseInt(prevCard.dataset.colorIndex || '0', 10);
+            const colorIdx = (prevColor + 1) % 8;
+            const effectiveName = (prevCard.querySelector('.speaker-badge-text')?.textContent || newSeg.speaker_label).trim();
+
+            const li = document.createElement('li');
+            li.className = 'segment-card';
+            li.id = `segment-${newSeg.id}`;
+            li.dataset.segmentId = String(newSeg.id);
+            li.dataset.speakerLabel = newSeg.speaker_label;
+            li.dataset.colorIndex = String(colorIdx);
+
+            const header = document.createElement('header');
+            header.className = 'segment-header';
+            const badge = document.createElement('button');
+            badge.type = 'button';
+            badge.className = `speaker-badge speaker-color-${colorIdx}`;
+            badge.dataset.segmentId = String(newSeg.id);
+            badge.dataset.speakerLabel = newSeg.speaker_label;
+            badge.dataset.currentDisplayName = '';
+            badge.dataset.effectiveName = effectiveName;
+            badge.setAttribute('@click', 'openSpeakerEditorFromEvent($event)');
+            // Alpine は動的に挿入された @click を解釈できないため、
+            // ネイティブ addEventListener で直接バインドする
+            badge.addEventListener('click', (ev) => this.openSpeakerEditorFromEvent(ev));
+            const badgeText = document.createElement('span');
+            badgeText.className = 'speaker-badge-text';
+            badgeText.textContent = effectiveName;
+            badge.appendChild(badgeText);
+
+            const time = document.createElement('span');
+            time.className = 'segment-time';
+            time.dataset.start = String(newSeg.start_seconds);
+            time.textContent = this.formatTime(newSeg.start_seconds);
+
+            const edited = document.createElement('span');
+            edited.className = 'segment-edited';
+            edited.dataset.edited = '1';
+            edited.textContent = '編集済み';
+
+            header.appendChild(badge);
+            header.appendChild(time);
+            header.appendChild(edited);
+
+            // 閲覧モード div（編集中は x-show で非表示）
+            const viewDiv = document.createElement('div');
+            viewDiv.className = 'segment-text';
+            viewDiv.style.display = this.editMode ? 'none' : '';
+            viewDiv.textContent = newSeg.text;
+            viewDiv.addEventListener('dblclick', () => this.enterEditMode());
+
+            const textarea = document.createElement('textarea');
+            textarea.className = 'segment-text-edit';
+            textarea.dataset.segmentId = String(newSeg.id);
+            textarea.dataset.originalText = newSeg.text;
+            textarea.value = newSeg.text;
+            textarea.style.display = this.editMode ? '' : 'none';
+            textarea.addEventListener('blur', (e) => this.onSegmentBlur(e));
+            textarea.addEventListener('input', (e) => this.onSegmentInput(e));
+            textarea.addEventListener('keydown', (e) => this.onSegmentKeydown(e));
+
+            li.appendChild(header);
+            li.appendChild(viewDiv);
+            li.appendChild(textarea);
+
+            return li;
+        },
+
+        formatTime(seconds) {
+            const total = Math.floor(seconds);
+            const h = Math.floor(total / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const s = total % 60;
+            const pad = n => String(n).padStart(2, '0');
+            return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+        },
+
+        // ── 話者編集ポップアップ ─────────────────────────────────
+        filteredCandidates() {
+            const q = (this.editor.input || '').trim();
+            if (!q) return this.history.slice(0, 8);
+            return this.history.filter(n => n.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+        },
+
+        openSpeakerEditorFromEvent(event) {
+            const t = event.currentTarget;
+            this.openSpeakerEditor(
+                t,
+                parseInt(t.dataset.segmentId, 10),
+                t.dataset.speakerLabel,
+                t.dataset.currentDisplayName || '',
+                t.dataset.effectiveName || ''
+            );
+        },
+
+        openSpeakerEditor(targetEl, segmentId, speakerLabel, currentSegName, effectiveName) {
+            const rect = targetEl.getBoundingClientRect();
+            const popupWidth = 320;
+            const x = Math.min(rect.left, window.innerWidth - popupWidth - 16);
+            const y = rect.bottom + 4;
+            this.editor = {
+                open: true,
+                x: Math.max(8, x),
+                y: y,
+                segmentId: segmentId,
+                speakerLabel: speakerLabel,
+                currentDisplayName: currentSegName,
+                originalName: effectiveName,
+                input: '',
+            };
+            this.$nextTick(() => {
+                if (this.$refs.input) this.$refs.input.focus();
+            });
+        },
+
+        closeEditor() {
+            this.editor.open = false;
+        },
+
+        async applyOnly() {
+            const name = (this.editor.input || '').trim();
+            if (!name) return;
+            try {
+                const res = await fetch(`/api/segments/${this.editor.segmentId}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({display_name: name}),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const card = document.getElementById('segment-' + this.editor.segmentId);
+                if (card) {
+                    const txt = card.querySelector('.speaker-badge-text');
+                    if (txt) txt.textContent = name;
+                    const badge = card.querySelector('.speaker-badge');
+                    if (badge) badge.dataset.effectiveName = name;
+                }
+                if (this.history.indexOf(name) < 0) this.history.unshift(name);
+                this.closeEditor();
+            } catch (e) {
+                alert('保存に失敗しました: ' + e.message);
+            }
+        },
+
+        async applyAll() {
+            const name = (this.editor.input || '').trim();
+            if (!name) return;
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/speakers/${this.editor.speakerLabel}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({display_name: name}),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const cards = document.querySelectorAll(`[data-speaker-label="${this.editor.speakerLabel}"]`);
+                cards.forEach(c => {
+                    const txt = c.querySelector('.speaker-badge-text');
+                    if (txt) txt.textContent = name;
+                    const badge = c.querySelector('.speaker-badge');
+                    if (badge) badge.dataset.effectiveName = name;
+                });
+                if (this.history.indexOf(name) < 0) this.history.unshift(name);
+                this.closeEditor();
+            } catch (e) {
+                alert('保存に失敗しました: ' + e.message);
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

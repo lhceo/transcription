@@ -36,7 +36,7 @@ _STATIC_DIR = _BACKEND_DIR / "static"
 
 app = FastAPI(
     title="Transcription Web App",
-    version="0.5.0",
+    version="0.6.0",
     description="社内向け音声文字起こし Web アプリ",
 )
 

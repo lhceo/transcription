@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from backend.auth.dependencies import CurrentUser
 from backend.config import load_settings
 from backend.db import get_db
-from backend.db.models import Transcript
+from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from backend.transcribe.storage import UploadTooLargeError, save_upload_to_tmp
 from backend.transcribe.tasks import process_transcript
@@ -150,6 +150,30 @@ async def list_transcripts(
     )
 
 
+@router.delete("/api/transcripts/{transcript_id}", status_code=200)
+async def delete_transcript(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    """文字起こしをソフト削除する（deleted_at を設定）。
+
+    HTMX 側は hx-swap="delete" でこの行を DOM から削除する。
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    # HTMX が delete swap を実行するために 2xx を返す（ボディ不要）
+    return Response(status_code=200, content="")
+
+
 @router.get("/api/transcripts/{transcript_id}/row", response_class=HTMLResponse)
 async def get_transcript_row(
     request: Request,
@@ -174,6 +198,70 @@ async def get_transcript_row(
     )
 
 
+@router.get("/transcripts/{transcript_id}", response_class=HTMLResponse)
+async def transcript_detail(
+    request: Request,
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> HTMLResponse:
+    """文字起こし詳細ページ（カード形式の発言表示・編集 UI）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    segments = list(
+        db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+        )
+    )
+    speakers = list(
+        db.scalars(
+            select(Speaker).where(Speaker.transcript_id == transcript_id)
+        )
+    )
+    # speaker_label → display_name の辞書
+    speaker_name_map = {s.speaker_label: s.display_name for s in speakers}
+
+    # ユーザーが過去に使った話者名（候補リスト）
+    history_names = _user_speaker_history_names(user["id"], db)
+
+    settings = load_settings()
+    return templates.TemplateResponse(
+        request,
+        "transcript_detail.html",
+        {
+            "app_version": "0.6.0",
+            "env": settings.env,
+            "user": user,
+            "transcript": transcript,
+            "segments": segments,
+            "speakers": speakers,
+            "speaker_name_map": speaker_name_map,
+            "history_names": history_names,
+        },
+    )
+
+
+def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
+    """ユーザーが過去に使った話者名（直近順）。"""
+    from backend.db.models import SpeakerHistory
+
+    rows = db.scalars(
+        select(SpeakerHistory)
+        .where(SpeakerHistory.user_id == user_id)
+        .order_by(SpeakerHistory.last_used_at.desc())
+        .limit(50)
+    )
+    return [r.name for r in rows]
+
+
 @router.get("/api/transcripts/{transcript_id}/status")
 async def get_transcript_status(
     transcript_id: int,
@@ -196,4 +284,423 @@ async def get_transcript_status(
                 transcript.completed_at.isoformat() if transcript.completed_at else None
             ),
         }
+    )
+
+
+# ── セグメント編集 ─────────────────────────────────────────────────────
+
+
+def _record_speaker_history(user_id: int, name: str, db: Session) -> None:
+    """話者名の使用履歴を記録する。重複しない名前のみ。"""
+    from datetime import datetime, timezone
+
+    from backend.db.models import SpeakerHistory
+
+    name = (name or "").strip()
+    if not name:
+        return
+    existing = db.scalar(
+        select(SpeakerHistory).where(
+            SpeakerHistory.user_id == user_id, SpeakerHistory.name == name
+        )
+    )
+    now = datetime.now(timezone.utc)
+    if existing is not None:
+        existing.last_used_at = now
+        existing.use_count = existing.use_count + 1
+    else:
+        db.add(
+            SpeakerHistory(
+                user_id=user_id, name=name, last_used_at=now, use_count=1
+            )
+        )
+
+
+@router.patch("/api/segments/{segment_id}")
+async def update_segment(
+    segment_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメント1件を更新（テキスト or 個別話者上書き）。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or transcript.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # text 更新
+    if "text" in payload:
+        new_text = (payload.get("text") or "").strip()
+        if not new_text:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_TEXT", "message": "テキストは空にできません"},
+            )
+        segment.text_content = new_text
+        segment.is_edited = True
+
+    # display_name 個別上書き（カード単位の話者変更）
+    if "display_name" in payload:
+        name = payload.get("display_name")
+        if name is None or name == "":
+            segment.display_name = None
+        else:
+            name = str(name).strip()
+            segment.display_name = name or None
+            if name:
+                _record_speaker_history(user["id"], name, db)
+
+    db.commit()
+    db.refresh(segment)
+
+    return JSONResponse(
+        {
+            "id": segment.id,
+            "text": segment.text_content,
+            "display_name": segment.display_name,
+            "is_edited": segment.is_edited,
+        }
+    )
+
+
+# ── セグメント分割（Shift+Return で1つを2つに分ける） ──────────────
+
+
+@router.post("/api/segments/{segment_id}/split")
+async def split_segment(
+    segment_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメントを文字位置 ``position`` で2つに分割する。
+
+    request body: {"position": int}  (現在のテキスト内のカーソル位置)
+
+    挙動:
+    - text[:position] を現セグメントに残す
+    - text[position:] を新セグメントとして直後に挿入
+    - 新セグメントは話者ラベルを継承
+    - 後続セグメントの order_index は +1 ずらす
+    - 時間は現セグメントを按分する（簡易）
+
+    レスポンス:
+    {
+        "current": {"id": ..., "text": ...},
+        "new":     {"id": ..., "order_index": ..., "start_seconds": ..., ...}
+    }
+    """
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or transcript.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    raw_position = payload.get("position")
+    try:
+        position = int(raw_position)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_POSITION", "message": "位置の指定が不正です"},
+        )
+
+    full_text = segment.text_content or ""
+    position = max(0, min(position, len(full_text)))
+
+    before = full_text[:position].rstrip()
+    after = full_text[position:].lstrip()
+
+    if not before and not after:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "EMPTY_SPLIT", "message": "空のセグメントは分割できません"},
+        )
+
+    # 時間の按分（文字数比率）。元のテキスト長が 0 のときは半分にする。
+    duration = segment.end_seconds - segment.start_seconds
+    if len(full_text) > 0 and position > 0:
+        ratio = position / len(full_text)
+    else:
+        ratio = 0.5
+    split_time = segment.start_seconds + duration * ratio
+
+    # 後続セグメントの order_index を +1 ずらす（重複しないよう新セグメントの席を作る）
+    db.execute(
+        Segment.__table__.update()
+        .where(Segment.transcript_id == segment.transcript_id)
+        .where(Segment.order_index > segment.order_index)
+        .values(order_index=Segment.order_index + 1)
+    )
+
+    # 現セグメントを更新（前半テキスト）
+    segment.text_content = before or "（無音）"
+    segment.end_seconds = split_time
+    segment.is_edited = True
+
+    # 新セグメントを追加（後半テキスト）
+    new_segment = Segment(
+        transcript_id=segment.transcript_id,
+        order_index=segment.order_index + 1,
+        start_seconds=split_time,
+        end_seconds=segment.end_seconds if False else (segment.end_seconds),  # 元の end を再利用しないよう注意
+        speaker_label=segment.speaker_label,
+        text_content=after or "（無音）",
+        is_edited=True,
+    )
+    # 上の new_segment の end を、本来の元 end に直す
+    # （segment.end_seconds はすでに split_time で上書きされたので、再計算が必要）
+    new_segment.end_seconds = split_time + (duration * (1 - ratio))
+
+    db.add(new_segment)
+    db.commit()
+    db.refresh(segment)
+    db.refresh(new_segment)
+
+    return JSONResponse(
+        {
+            "current": {
+                "id": segment.id,
+                "text": segment.text_content,
+                "start_seconds": segment.start_seconds,
+                "end_seconds": segment.end_seconds,
+                "is_edited": segment.is_edited,
+            },
+            "new": {
+                "id": new_segment.id,
+                "order_index": new_segment.order_index,
+                "start_seconds": new_segment.start_seconds,
+                "end_seconds": new_segment.end_seconds,
+                "speaker_label": new_segment.speaker_label,
+                "text": new_segment.text_content,
+                "is_edited": new_segment.is_edited,
+            },
+        }
+    )
+
+
+# ── 話者一括リネーム ───────────────────────────────────────────────────
+
+
+# ── エクスポート ───────────────────────────────────────────────────────
+
+
+def _format_time_hms(seconds: float) -> str:
+    """秒数を HH:MM:SS 形式に整形（時間が 0 なら MM:SS）。"""
+    total = int(seconds)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    if h > 0:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _format_time_srt(seconds: float) -> str:
+    """SRT 形式のタイムコード（HH:MM:SS,mmm）。"""
+    total = int(seconds)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    ms = int((seconds - total) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _resolve_speaker_name(seg: Segment, name_map: dict[str, str]) -> str:
+    """セグメントの表示名を解決する。segment.display_name 優先、なければ speakers から。"""
+    if seg.display_name:
+        return seg.display_name
+    return name_map.get(seg.speaker_label, seg.speaker_label)
+
+
+def _build_export_txt(segments: list[Segment], name_map: dict[str, str]) -> str:
+    lines: list[str] = []
+    for seg in segments:
+        name = _resolve_speaker_name(seg, name_map)
+        ts = _format_time_hms(seg.start_seconds)
+        lines.append(f"[{ts} {name}]")
+        lines.append(seg.text_content)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _build_export_srt(segments: list[Segment], name_map: dict[str, str]) -> str:
+    parts: list[str] = []
+    for i, seg in enumerate(segments, 1):
+        name = _resolve_speaker_name(seg, name_map)
+        parts.append(str(i))
+        parts.append(
+            f"{_format_time_srt(seg.start_seconds)} --> {_format_time_srt(seg.end_seconds)}"
+        )
+        parts.append(f"[{name}] {seg.text_content}")
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _build_export_json(
+    transcript: Transcript, segments: list[Segment], name_map: dict[str, str]
+) -> str:
+    import json
+
+    data = {
+        "version": 1,
+        "transcript": {
+            "id": transcript.id,
+            "filename": transcript.original_filename,
+            "audio_duration_seconds": transcript.audio_duration_seconds,
+            "created_at": (
+                transcript.created_at.isoformat() if transcript.created_at else None
+            ),
+            "completed_at": (
+                transcript.completed_at.isoformat()
+                if transcript.completed_at
+                else None
+            ),
+        },
+        "speakers": [
+            {"speaker_label": label, "display_name": name}
+            for label, name in name_map.items()
+        ],
+        "segments": [
+            {
+                "order_index": s.order_index,
+                "start_seconds": s.start_seconds,
+                "end_seconds": s.end_seconds,
+                "speaker_label": s.speaker_label,
+                "display_name": s.display_name,
+                "text": s.text_content,
+                "speaker": _resolve_speaker_name(s, name_map),
+            }
+            for s in segments
+        ],
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+@router.get("/api/transcripts/{transcript_id}/export")
+async def export_transcript(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    format: str = "txt",
+) -> Response:
+    """文字起こしを TXT / SRT / JSON でダウンロード。"""
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    segments = list(
+        db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+        )
+    )
+    speakers = list(
+        db.scalars(
+            select(Speaker).where(Speaker.transcript_id == transcript_id)
+        )
+    )
+    name_map = {s.speaker_label: s.display_name for s in speakers}
+
+    fmt = format.lower()
+    if fmt == "txt":
+        content = _build_export_txt(segments, name_map)
+        media_type = "text/plain; charset=utf-8"
+        ext = "txt"
+    elif fmt == "srt":
+        content = _build_export_srt(segments, name_map)
+        media_type = "application/x-subrip; charset=utf-8"
+        ext = "srt"
+    elif fmt == "json":
+        content = _build_export_json(transcript, segments, name_map)
+        media_type = "application/json; charset=utf-8"
+        ext = "json"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "UNKNOWN_FORMAT", "message": "未対応の形式です"},
+        )
+
+    # ファイル名: 元ファイル名（拡張子除く）+ .{ext}
+    import os
+
+    base = os.path.splitext(transcript.original_filename)[0] or "transcript"
+    download_name = f"{base}.{ext}"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": (
+                # RFC 5987 形式で日本語ファイル名を扱う
+                f"attachment; filename*=UTF-8''{_urlencode_filename(download_name)}"
+            )
+        },
+    )
+
+
+def _urlencode_filename(name: str) -> str:
+    from urllib.parse import quote
+
+    return quote(name, safe="")
+
+
+@router.patch("/api/transcripts/{transcript_id}/speakers/{speaker_label}")
+async def rename_speaker(
+    transcript_id: int,
+    speaker_label: str,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """同じ内部ラベル（SPEAKER_00 等）の話者をまとめて改名する。
+
+    payload: {"display_name": "山田さん"}
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    name = (payload.get("display_name") or "").strip()
+    if not name:
+        raise HTTPException(
+            status_code=400, detail={"code": "INVALID_NAME", "message": "名前は空にできません"}
+        )
+
+    speaker = db.scalar(
+        select(Speaker).where(
+            Speaker.transcript_id == transcript_id,
+            Speaker.speaker_label == speaker_label,
+        )
+    )
+    if speaker is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    speaker.display_name = name
+
+    # 個別上書き（segment.display_name）をクリアして、speaker.display_name に
+    # 統一する。これにより「一括変更」の意図が反映される。
+    db.execute(
+        Segment.__table__.update()
+        .where(Segment.transcript_id == transcript_id)
+        .where(Segment.speaker_label == speaker_label)
+        .values(display_name=None)
+    )
+
+    _record_speaker_history(user["id"], name, db)
+    db.commit()
+
+    return JSONResponse(
+        {"speaker_label": speaker_label, "display_name": name}
     )

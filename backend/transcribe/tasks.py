@@ -22,6 +22,7 @@ from backend.db import SessionLocal
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.assemblyai_client import AssemblyAIClient, AssemblyAIError
 from backend.transcribe.storage import cleanup_job_dir
+from backend.transcribe.text_utils import normalize_japanese_text
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +77,14 @@ def _save_results_to_db(transcript_id: int, aai_result: dict) -> None:
             # AssemblyAI は ms 単位、我々は秒で保持する
             start_ms = utt.get("start") or 0
             end_ms = utt.get("end") or 0
+            raw_text = (utt.get("text") or "").strip()
             seg = Segment(
                 transcript_id=transcript_id,
                 order_index=idx,
                 start_seconds=float(start_ms) / 1000.0,
                 end_seconds=float(end_ms) / 1000.0,
                 speaker_label=speaker_label,
-                text_content=(utt.get("text") or "").strip(),
+                text_content=normalize_japanese_text(raw_text),
             )
             db.add(seg)
 
