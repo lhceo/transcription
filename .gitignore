@@ -24,3 +24,22 @@ bundled/ffmpeg/ffmpeg
 
 # App config (per-user runtime state)
 .transcription_app/
+
+# Environment variables (secrets)
+.env
+.env.local
+.env.*.local
+
+# Web アプリ用：ローカルデータ
+data/
+*.db
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Web アプリ用：アップロード一時保存
+tmp/uploads/
+
+# Web アプリ用：FastAPI/uvicorn ログ
+*.log

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}音声文字起こし{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+    <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.14.3" defer></script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="logo">音声文字起こし</h1>
+            <nav class="nav">
+                {% block nav %}{% endblock %}
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="container">
+            <span class="version">v{{ app_version }}{% if env != 'production' %} ({{ env }}){% endif %}</span>
+        </div>
+    </footer>
+</body>
+</html>
