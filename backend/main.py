@@ -9,8 +9,12 @@ Phase 2: Google OAuth 認証を追加。
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,16 +32,36 @@ from sqlalchemy.orm import Session
 from fastapi import Depends
 from typing import Annotated
 
+logger = logging.getLogger(__name__)
+
 settings = load_settings()
 
 _BACKEND_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _BACKEND_DIR.parent
 _TEMPLATES_DIR = _BACKEND_DIR / "templates"
 _STATIC_DIR = _BACKEND_DIR / "static"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """起動時に Alembic マイグレーションを実行する。
+
+    Railway 等の永続ボリュームは pre-deploy ステップではマウントされず
+    Start フェーズで初めて利用可能になるため、マイグレーションはここで走らせる。
+    """
+    alembic_ini = _REPO_ROOT / "alembic.ini"
+    logger.info("Alembic マイグレーション開始: %s", alembic_ini)
+    cfg = AlembicConfig(str(alembic_ini))
+    command.upgrade(cfg, "head")
+    logger.info("Alembic マイグレーション完了")
+    yield
+
 
 app = FastAPI(
     title="Transcription Web App",
     version="0.6.0",
     description="社内向け音声文字起こし Web アプリ",
+    lifespan=lifespan,
 )
 
 # セッション Cookie（署名付き）の設定。
