@@ -23,6 +23,7 @@ from backend.config import load_settings
 from backend.db import get_db
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
+from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
 from backend.transcribe.eta import compute_eta_text
 from backend.transcribe.storage import UploadTooLargeError, save_upload_to_tmp
 from backend.transcribe.tasks import process_transcript
@@ -75,6 +76,43 @@ async def create_transcript(
             },
         )
 
+    # クライアント側で読み取った音声長を解釈する（信頼境界の外なので
+    # 現実的な範囲 0 < x <= 6時間 にクランプ）。コスト上限チェックと
+    # DB 保存の両方で使う。
+    parsed_duration: float | None = None
+    if audio_duration_seconds:
+        try:
+            d = float(audio_duration_seconds)
+            if 0 < d <= 6 * 3600:
+                parsed_duration = d
+        except (TypeError, ValueError):
+            pass
+
+    # ──── 月次コスト上限チェック ────────────────────────────────────────────
+    settings = load_settings()
+    if settings.monthly_cost_limit_yen > 0:
+        exceeded, _estimate, current = will_exceed_limit(
+            db,
+            parsed_duration,
+            model_tier,
+            settings.monthly_cost_limit_yen,
+        )
+        if exceeded:
+            reset_text = next_month_start_jst_text()
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "MONTHLY_BUDGET_EXCEEDED",
+                    "message": (
+                        f"今月の文字起こし予算 (¥{settings.monthly_cost_limit_yen:,}) "
+                        f"に達したため、新規のアップロードを停止しています。"
+                        f"次の月初 ({reset_text}) にリセットされます。"
+                        f"早めにご利用が必要な場合は管理者にご相談ください。"
+                        f"（今月の利用額: ¥{current:,}）"
+                    ),
+                },
+            )
+
     # ──── ファイル保存 ─────────────────────────────────────────────────────
     try:
         save_path, size_bytes = await save_upload_to_tmp(file, max_bytes=MAX_UPLOAD_BYTES)
@@ -89,25 +127,13 @@ async def create_transcript(
 
     # ──── DB レコード作成 ──────────────────────────────────────────────────
     # AssemblyAI 未設定の時は uploaded（処理されない）、設定済なら processing
-    settings = load_settings()
     initial_status = "processing" if settings.has_assemblyai else "uploaded"
-
-    # クライアント側で読み取った音声長を保存（処理時間目安の表示に使う）。
-    # 信頼境界の外なので、現実的な範囲 (0 < x <= 6時間) にクランプする。
-    initial_duration: float | None = None
-    if audio_duration_seconds:
-        try:
-            d = float(audio_duration_seconds)
-            if 0 < d <= 6 * 3600:
-                initial_duration = d
-        except (TypeError, ValueError):
-            pass
 
     transcript = Transcript(
         user_id=user["id"],
         original_filename=file.filename,
         file_size_bytes=size_bytes,
-        audio_duration_seconds=initial_duration,
+        audio_duration_seconds=parsed_duration,
         status=initial_status,
         model_tier=model_tier,
         language="ja",

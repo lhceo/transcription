@@ -53,6 +53,10 @@ class Settings:
     # AssemblyAI 設定（Phase 4 で使用）
     assemblyai_api_key: str
 
+    # 月次コスト上限 (円)。0 または未設定の場合は上限なし。
+    # 月初は日本時間 0:00 でリセット。Railway の Variables から変更する。
+    monthly_cost_limit_yen: int
+
     @property
     def is_production(self) -> bool:
         return self.env.lower() == "production"
@@ -90,4 +94,13 @@ def load_settings() -> Settings:
             "http://127.0.0.1:8000/auth/google/callback",
         ),
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
+        monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
     )
+
+
+def _safe_int(value: str) -> int:
+    """環境変数の値を int に変換する。無効値は 0 として扱う。"""
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0

@@ -3,6 +3,25 @@
 {% block title %}ホーム - 音声文字起こし{% endblock %}
 
 {% block content %}
+<section class="monthly-cost-summary">
+    <div class="monthly-cost-label">今月の利用額</div>
+    <div class="monthly-cost-value">
+        ¥{{ "{:,}".format(monthly_cost) }}
+        {% if monthly_limit and monthly_limit > 0 %}
+            <span class="monthly-cost-limit">/ ¥{{ "{:,}".format(monthly_limit) }}</span>
+        {% else %}
+            <span class="monthly-cost-limit">/ 上限なし</span>
+        {% endif %}
+    </div>
+    {% if monthly_limit and monthly_limit > 0 %}
+        {% set pct = (monthly_cost * 100 / monthly_limit)|round(0, 'floor')|int %}
+        <div class="monthly-cost-bar">
+            <div class="monthly-cost-bar-fill {% if pct >= 100 %}is-over{% elif pct >= 80 %}is-warn{% endif %}"
+                 style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+        </div>
+    {% endif %}
+</section>
+
 <section class="upload-section">
     <form
         id="upload-form"
@@ -203,10 +222,18 @@ function uploadForm() {
                 // 履歴の空メッセージを消す
                 const empty = document.querySelector('.history-empty');
                 if (empty) empty.remove();
-            } else {
-                this.statusMessage = 'アップロードに失敗しました。再度お試しください。';
-                this.statusClass = 'status-error';
+                return;
             }
+            // サーバー側のエラーメッセージ (例: 月次上限超過) があれば表示する
+            let serverMessage = '';
+            try {
+                const body = JSON.parse(e.detail.xhr.responseText || '{}');
+                if (body && body.detail && body.detail.message) {
+                    serverMessage = body.detail.message;
+                }
+            } catch (_) { /* fallthrough */ }
+            this.statusMessage = serverMessage || 'アップロードに失敗しました。再度お試しください。';
+            this.statusClass = 'status-error';
         },
     };
 }

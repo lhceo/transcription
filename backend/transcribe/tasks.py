@@ -21,6 +21,7 @@ from backend.config import load_settings
 from backend.db import SessionLocal
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.assemblyai_client import AssemblyAIClient, AssemblyAIError
+from backend.transcribe.cost import COST_YEN_PER_HOUR
 from backend.transcribe.storage import cleanup_job_dir
 from backend.transcribe.text_utils import normalize_japanese_text
 
@@ -29,12 +30,6 @@ logger = logging.getLogger(__name__)
 # ポーリング間隔と最大時間
 POLL_INTERVAL_SECONDS = 5
 POLL_TIMEOUT_SECONDS = 60 * 60 * 6  # 6時間（極端な保険、通常はもっと早く完了）
-
-# コスト試算（1時間あたりの円、為替・AssemblyAI 料金次第で変動）
-COST_YEN_PER_HOUR = {
-    "best": 55,
-    "nano": 20,
-}
 
 
 def _normalize_speaker_label(aai_label: str, label_map: dict[str, str]) -> str:

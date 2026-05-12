@@ -102,6 +102,8 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 from backend.transcribe.eta import compute_eta_text  # noqa: E402
 templates.env.globals["eta_text"] = compute_eta_text
 
+from backend.transcribe.cost import current_month_cost_yen  # noqa: E402
+
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
 
@@ -131,6 +133,9 @@ async def home(
     )
     transcripts = list(db.scalars(stmt))
 
+    monthly_cost = current_month_cost_yen(db)
+    monthly_limit = settings.monthly_cost_limit_yen
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -139,5 +144,7 @@ async def home(
             "env": settings.env,
             "user": user,
             "transcripts": transcripts,
+            "monthly_cost": monthly_cost,
+            "monthly_limit": monthly_limit,
         },
     )
