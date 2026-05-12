@@ -160,6 +160,50 @@ A-4「処理後音声即削除」ポリシーは維持する。代わりに**ク
 
 ---
 
+## v1.0.1 以降の改善候補（v1.0 リリース前レビューで指摘・先送り）
+
+2026-05-12 の v1.0 リリース前レビューで指摘されたが、社内 5〜8 人用途・ベータ的位置づけということで一旦先送りとした項目。実利用フィードバックを見ながら優先度を判断する。
+
+### セキュリティ / 堅牢性
+
+- [ ] **CSRF トークンの導入**（POST/PATCH/DELETE エンドポイント）
+  - 現状: SameSite=Lax + Google OAuth ドメイン制限で実害リスクは小さい
+  - 必要性: SECURITY.md §5 で「重要操作のみ」と計画済み。特に `DELETE /api/transcripts/{id}` は本文不要なので、悪意ある外部サイトからの `<form method=POST>` 経由攻撃の可能性をゼロにはできない
+- [ ] **`_record_speaker_history` の UniqueConstraint 違反ハンドリング**
+  - 現状: select → insert 構造で、並行実行時に IntegrityError 発生の可能性
+  - 影響: 単独ユーザーが 1 件編集中なら確率ほぼゼロ。複数タブ同時編集で潜在
+- [ ] **`split_segment` の `order_index` 制約強化**
+  - 現状: `(transcript_id, order_index)` の UNIQUE 制約なし
+  - 影響: SQLite 単一ライターなので低リスクだが、将来 Postgres 化や複数ワーカー化したら必須
+
+### UX / 表示
+
+- [ ] **9 人以上の話者で色が重複する問題**
+  - 現状: 色は 8 色ループなので、9 人目以降は既存話者と同色になる
+  - 影響: 5〜8 人想定のため通常運用で問題なし。長尺会議で発生時に「色は手がかりの 1 つ」と認識すれば許容範囲
+  - 改修案: 9 人目以降は枠線パターン違いで識別、または色数を 12 まで拡張
+- [ ] **`transcript.status` の中間段階を可視化**
+  - 現状: `pending` → `processing` → `completed/failed` の遷移しか持たない
+  - 改修案: `uploading_to_assemblyai` / `polling` などの中間状態を導入し UI に表示
+
+### コード品質 / メンテナンス性
+
+- [ ] **`routes.py:465` の `if False else` 残骸を削除**（無害だが紛らわしい）
+- [ ] **`transcript_detail.html:418` の `setAttribute('@click', ...)` を削除**（Alpine に無視される死コード）
+- [ ] **`assemblyai_client.delete_transcript` のタイムアウト短縮**
+  - 現状: AssemblyAI 障害時にジョブ完了処理が最大 60 秒ブロック
+- [ ] **`closeEditor()` が `input/segmentId` を初期化していない**
+  - 影響: ポップアップ再オープン時、1 フレームだけ前回入力が残る（視認上問題なし）
+- [ ] **`_user_speaker_history_names` の局所 import を module-level に**
+
+### 旧 API のクリーンアップ
+
+- [ ] **`PATCH /api/transcripts/{id}/speakers/{speaker_label}` を削除**
+  - 現状: Notta 方式リネーム導入後、フロントから呼び出されていないが、サーバー側コードは残置
+  - 一定期間モニタリング後（v1.1 など）に削除
+
+---
+
 ## 次のアクション
 
 ### ステージ B（技術仕様の詳細化）— 完了

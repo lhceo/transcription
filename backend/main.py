@@ -78,10 +78,21 @@ app.add_middleware(
 
 # 未認証時の RedirectResponse は HTTPException ではないので、
 # 専用の例外ハンドラで /login にリダイレクトする。
+# ただし /api/* は AJAX 経由なので、302 では fetch() が /login を取得して
+# 200 を返してしまい「保存できているように見えて実は失敗」が起きる。
+# API パスでは 401 JSON を返し、フロント側で再ログイン誘導する。
 @app.exception_handler(_RedirectToLogin)
 async def _redirect_to_login_handler(
     request: Request, exc: _RedirectToLogin
-) -> RedirectResponse:
+) -> JSONResponse | RedirectResponse:
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "code": "UNAUTHENTICATED",
+                "message": "セッションが切れました。ページを再読み込みしてログインしてください。",
+            },
+        )
     return RedirectResponse(url="/login", status_code=302)
 
 
