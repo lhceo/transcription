@@ -47,9 +47,17 @@ html, body {
 }
 
 .logo {
+    display: inline-flex;
+    align-items: center;
     font-size: 18px;
     font-weight: 700;
     color: var(--color-text);
+}
+
+.logo-img {
+    height: 30px;
+    width: auto;
+    display: block;
 }
 
 .nav {
@@ -222,6 +230,13 @@ html, body {
 
 .login-header {
     margin-bottom: 28px;
+}
+
+.login-logo {
+    display: block;
+    height: 80px;
+    width: auto;
+    margin: 0 auto 16px;
 }
 
 .login-title {
