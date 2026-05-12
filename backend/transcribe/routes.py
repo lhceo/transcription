@@ -410,13 +410,15 @@ async def update_segment(
     # display_name 個別上書き（カード単位の話者変更）
     if "display_name" in payload:
         name = payload.get("display_name")
+        force = bool(payload.get("force"))
         if name is None or name == "":
             segment.display_name = None
         else:
             name = str(name).strip()
-            if name:
+            if name and not force:
                 # 同名禁止チェック: 別の speaker_label に同じ表示名が
-                # 付いていたら拒否する。
+                # 付いていたら拒否する。force=True (候補からの選択 = 既存
+                # 話者への明示的マージ) のときはスキップする。
                 collision_msg = _check_speaker_name_collision(
                     transcript.id, name, [segment.id], db
                 )
@@ -805,6 +807,7 @@ async def rename_segments_by_effective_name(
 
     from_name = (payload.get("from_name") or "").strip()
     to_name = (payload.get("to_name") or "").strip()
+    force = bool(payload.get("force"))
     if not from_name or not to_name:
         raise HTTPException(
             status_code=400,
@@ -826,14 +829,17 @@ async def rename_segments_by_effective_name(
         if effective == from_name:
             matched_ids.append(seg.id)
 
-    collision_msg = _check_speaker_name_collision(
-        transcript_id, to_name, matched_ids, db
-    )
-    if collision_msg is not None:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "DUPLICATE_SPEAKER_NAME", "message": collision_msg},
+    # force=True は「候補からの選択 = 既存話者への明示的マージ」を表すので
+    # 重複チェックをスキップする。
+    if not force:
+        collision_msg = _check_speaker_name_collision(
+            transcript_id, to_name, matched_ids, db
         )
+        if collision_msg is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "DUPLICATE_SPEAKER_NAME", "message": collision_msg},
+            )
 
     # 検証通過したので実際に書き換える
     for seg in segments:

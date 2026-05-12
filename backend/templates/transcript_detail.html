@@ -153,6 +153,7 @@
                 class="speaker-popup-input"
                 placeholder="名前を入力 or 候補から選択"
                 x-model="editor.input"
+                @input="editor.fromCandidate = false"
                 @keydown.enter.prevent
                 x-ref="input"
             >
@@ -163,7 +164,7 @@
                 <button
                     type="button"
                     class="speaker-popup-candidate"
-                    @click="editor.input = name; $refs.input.focus()"
+                    @click="editor.input = name; editor.fromCandidate = true; $refs.input.focus()"
                 >
                     <span
                         class="speaker-badge"
@@ -203,6 +204,10 @@ function segmentsApp(transcriptId, historyNames) {
             currentDisplayName: '',
             originalName: '',
             input: '',
+            // 候補からクリック選択した場合 true。「既存の話者にマージしたい」
+            // 明示的な操作とみなし、サーバー側の重複チェックをスキップする。
+            // ユーザーがタイプした瞬間に false に戻る (@input ハンドラ参照)。
+            fromCandidate: false,
         },
 
         init() {
@@ -551,6 +556,7 @@ function segmentsApp(transcriptId, historyNames) {
                 currentDisplayName: currentSegName,
                 originalName: effectiveName,
                 input: '',
+                fromCandidate: false,
             };
             this.$nextTick(() => {
                 if (this.$refs.input) this.$refs.input.focus();
@@ -594,7 +600,10 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/segments/${this.editor.segmentId}`, {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({display_name: name}),
+                    body: JSON.stringify({
+                        display_name: name,
+                        force: !!this.editor.fromCandidate,
+                    }),
                 });
                 if (!res.ok) {
                     throw new Error(await this._extractErrorMessage(res));
@@ -628,7 +637,11 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/rename-by-name`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({from_name: fromName, to_name: newName}),
+                    body: JSON.stringify({
+                        from_name: fromName,
+                        to_name: newName,
+                        force: !!this.editor.fromCandidate,
+                    }),
                 });
                 if (!res.ok) {
                     throw new Error(await this._extractErrorMessage(res));
