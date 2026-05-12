@@ -329,6 +329,57 @@ def _record_speaker_history(user_id: int, name: str, db: Session) -> None:
         )
 
 
+def _check_speaker_name_collision(
+    transcript_id: int,
+    new_name: str,
+    affected_segment_ids: list[int],
+    db: Session,
+) -> str | None:
+    """同じ話者名 (effective_name) が複数の異なる speaker_label に重ならないか検証する。
+
+    Notta 等と同じ「ユーザー側で工夫する (例: 田中A、田中B)」方針。
+
+    Returns:
+        OK なら None、衝突するならエラーメッセージ。
+    """
+    target = (new_name or "").strip()
+    if not target:
+        return None
+
+    segments = list(
+        db.scalars(select(Segment).where(Segment.transcript_id == transcript_id))
+    )
+    speakers = list(
+        db.scalars(select(Speaker).where(Speaker.transcript_id == transcript_id))
+    )
+    name_map = {s.speaker_label: s.display_name for s in speakers}
+    affected_set = set(affected_segment_ids)
+
+    labels_with_target: set[str] = set()
+
+    # 1. これから書き換えるセグメントは target になる → speaker_label を集める
+    for seg in segments:
+        if seg.id in affected_set:
+            labels_with_target.add(seg.speaker_label)
+
+    # 2. 書き換えないセグメントで、現状すでに target を表示しているもの
+    for seg in segments:
+        if seg.id in affected_set:
+            continue
+        effective = (
+            seg.display_name or name_map.get(seg.speaker_label) or seg.speaker_label
+        )
+        if (effective or "").strip() == target:
+            labels_with_target.add(seg.speaker_label)
+
+    if len(labels_with_target) > 1:
+        return (
+            f"「{target}」は別の話者で既に使われています。"
+            f"別の名前にしてください（例: {target}A、{target}B）。"
+        )
+    return None
+
+
 @router.patch("/api/segments/{segment_id}")
 async def update_segment(
     segment_id: int,
@@ -363,6 +414,20 @@ async def update_segment(
             segment.display_name = None
         else:
             name = str(name).strip()
+            if name:
+                # 同名禁止チェック: 別の speaker_label に同じ表示名が
+                # 付いていたら拒否する。
+                collision_msg = _check_speaker_name_collision(
+                    transcript.id, name, [segment.id], db
+                )
+                if collision_msg is not None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "DUPLICATE_SPEAKER_NAME",
+                            "message": collision_msg,
+                        },
+                    )
             segment.display_name = name or None
             if name:
                 _record_speaker_history(user["id"], name, db)
@@ -754,12 +819,26 @@ async def rename_segments_by_effective_name(
     )
     name_map = {s.speaker_label: s.display_name for s in speakers}
 
+    # 影響を受けるセグメントを先に確定し、同名禁止チェック
     matched_ids: list[int] = []
     for seg in segments:
         effective = seg.display_name or name_map.get(seg.speaker_label) or seg.speaker_label
         if effective == from_name:
-            seg.display_name = to_name
             matched_ids.append(seg.id)
+
+    collision_msg = _check_speaker_name_collision(
+        transcript_id, to_name, matched_ids, db
+    )
+    if collision_msg is not None:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "DUPLICATE_SPEAKER_NAME", "message": collision_msg},
+        )
+
+    # 検証通過したので実際に書き換える
+    for seg in segments:
+        if seg.id in matched_ids:
+            seg.display_name = to_name
 
     _record_speaker_history(user["id"], to_name, db)
     db.commit()

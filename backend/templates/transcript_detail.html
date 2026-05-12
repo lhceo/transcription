@@ -554,6 +554,14 @@ function segmentsApp(transcriptId, historyNames) {
             this.editor.open = false;
         },
 
+        async _extractErrorMessage(res) {
+            try {
+                const body = await res.json();
+                if (body && body.detail && body.detail.message) return body.detail.message;
+            } catch (_) { /* fallthrough */ }
+            return `HTTP ${res.status}`;
+        },
+
         async applyOnly() {
             const name = (this.editor.input || '').trim();
             if (!name) return;
@@ -563,7 +571,9 @@ function segmentsApp(transcriptId, historyNames) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({display_name: name}),
                 });
-                if (!res.ok) throw new Error(await res.text());
+                if (!res.ok) {
+                    throw new Error(await this._extractErrorMessage(res));
+                }
                 const card = document.getElementById('segment-' + this.editor.segmentId);
                 if (card) {
                     const txt = card.querySelector('.speaker-badge-text');
@@ -578,7 +588,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.history.indexOf(name) < 0) this.history.unshift(name);
                 this.closeEditor();
             } catch (e) {
-                alert('保存に失敗しました: ' + e.message);
+                alert(e.message);
             }
         },
 
@@ -595,7 +605,9 @@ function segmentsApp(transcriptId, historyNames) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({from_name: fromName, to_name: newName}),
                 });
-                if (!res.ok) throw new Error(await res.text());
+                if (!res.ok) {
+                    throw new Error(await this._extractErrorMessage(res));
+                }
                 document.querySelectorAll('#segment-list .speaker-badge').forEach(badge => {
                     if (badge.dataset.effectiveName === fromName) {
                         const txt = badge.querySelector('.speaker-badge-text');
@@ -608,7 +620,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
                 this.closeEditor();
             } catch (e) {
-                alert('保存に失敗しました: ' + e.message);
+                alert(e.message);
             }
         },
     };
