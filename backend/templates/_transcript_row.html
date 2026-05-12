@@ -1,8 +1,10 @@
 {# 履歴の1行。processing 中は HTMX で 5秒ごとに自分自身を再取得して状態更新する。 #}
 {% set is_pending = transcript.status in ('uploaded', 'processing') %}
+{% set audio_available = transcript.status == 'completed' and has_audio(transcript) %}
 <li
     class="history-item"
     id="transcript-{{ transcript.id }}"
+    x-data="{ playerOpen: false }"
     {% if is_pending %}
     hx-get="/api/transcripts/{{ transcript.id }}/row"
     hx-trigger="every 5s"
@@ -71,21 +73,51 @@
         {% endif %}
     </div>
 
-    <button
-        type="button"
-        class="history-item-delete"
-        hx-delete="/api/transcripts/{{ transcript.id }}"
-        hx-confirm="「{{ display_name(transcript) }}」を削除しますか？"
-        hx-target="#transcript-{{ transcript.id }}"
-        hx-swap="delete"
-        aria-label="削除"
-        title="削除"
-    >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-            <path d="M10 11v6M14 11v6"></path>
-            <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
-        </svg>
-    </button>
+    <div class="history-item-actions">
+        {% if audio_available %}
+        <button
+            type="button"
+            class="history-item-play"
+            :class="{ 'is-active': playerOpen }"
+            @click="playerOpen = !playerOpen"
+            aria-label="音声を再生"
+            title="音声を再生"
+        >
+            <svg x-show="!playerOpen" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M8 5v14l11-7z"></path>
+            </svg>
+            <svg x-show="playerOpen" x-cloak viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="5" width="4" height="14"></rect>
+                <rect x="14" y="5" width="4" height="14"></rect>
+            </svg>
+        </button>
+        {% endif %}
+        <button
+            type="button"
+            class="history-item-delete"
+            hx-delete="/api/transcripts/{{ transcript.id }}"
+            hx-confirm="「{{ display_name(transcript) }}」を削除しますか？"
+            hx-target="#transcript-{{ transcript.id }}"
+            hx-swap="delete"
+            aria-label="削除"
+            title="削除"
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                <path d="M10 11v6M14 11v6"></path>
+                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+            </svg>
+        </button>
+    </div>
+    {% if audio_available %}
+    <div class="history-item-player" x-show="playerOpen" x-cloak>
+        <audio
+            controls
+            preload="none"
+            x-init="$watch('playerOpen', v => { if (!v) $el.pause(); })"
+            src="/api/transcripts/{{ transcript.id }}/audio"
+        ></audio>
+    </div>
+    {% endif %}
 </li>

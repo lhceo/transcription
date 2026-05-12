@@ -1,9 +1,12 @@
-"""音声ファイルの一時保存とクリーンアップ。
+"""音声ファイルの保存・取得・削除。
 
-設計方針（DESIGN.md A-4）:
-- 音声ファイルは AssemblyAI に送り終わったら **即削除** する
-- そのため、ここでは「保存」と「削除」のみ提供し、永続化はしない
-- パスはサーバー再起動で変わらないよう、リポジトリ外（または明示パス）に固定
+設計方針（DECISIONS.md 2026-05-12 A-4 改訂）:
+- アップロード受信時は一時領域に書き込み、AssemblyAI への送信を経た後で
+  永続ボリュームへ移動する
+- 永続側はユーザーが「音声を聞いて思い出す」「v1.1 で同期再生する」目的で
+  保管。手動削除のみ（自動削除は別タスクで追加予定）
+- 一時領域はサーバー再起動で消えてもよい（処理中の音声のみ置く）
+- 永続領域は Railway のボリューム /data 下にマウントされる前提
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -24,12 +26,69 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# 一時アップロード保存先。設計方針上、処理完了後に必ず削除するので、
-# 永続化は不要。デフォルトはリポジトリ直下 tmp/uploads/、本番 (Railway 等)
-# では UPLOAD_TMP_DIR=/tmp/transcription_uploads のように env で上書きする。
+# ──── 一時アップロード保存先 ─────────────────────────────────────────
+# 処理中のみ存在する。AssemblyAI に送り終わったら永続側に移動 (またはコピー)
+# する。デフォルトはリポジトリ直下 tmp/uploads/、本番では UPLOAD_TMP_DIR で
+# /tmp/transcription_uploads などを指定する。
 _DEFAULT_UPLOADS = _REPO_ROOT / "tmp" / "uploads"
 _UPLOADS_DIR = Path(os.environ.get("UPLOAD_TMP_DIR") or str(_DEFAULT_UPLOADS))
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ──── 永続音声保管先 ──────────────────────────────────────────────
+# Railway では AUDIO_STORAGE_DIR=/data/audio を設定する。ローカル開発は
+# リポジトリ直下 data/audio に置く（.gitignore 済）。
+_DEFAULT_AUDIO_DIR = _REPO_ROOT / "data" / "audio"
+_AUDIO_DIR = Path(os.environ.get("AUDIO_STORAGE_DIR") or str(_DEFAULT_AUDIO_DIR))
+_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def audio_storage_path(transcript_id: int, suffix: str) -> Path:
+    """永続側の音声ファイルのパスを返す。
+
+    suffix は ".mp3" / ".mp4" 等 (先頭ピリオドありの拡張子)。
+    """
+    s = suffix.lower()
+    if not s.startswith("."):
+        s = "." + s
+    return _AUDIO_DIR / f"{transcript_id}{s}"
+
+
+def find_stored_audio(transcript_id: int) -> Path | None:
+    """transcript_id に紐づく永続音声ファイルを探す。
+
+    拡張子が事前に分からなくても見つけられるよう、`{id}.*` を glob で探索。
+    存在しなければ None。
+    """
+    matches = list(_AUDIO_DIR.glob(f"{transcript_id}.*"))
+    return matches[0] if matches else None
+
+
+def move_to_storage(source: Path, transcript_id: int) -> Path:
+    """一時パスの音声を永続側に移動する。元ファイルは消える。
+
+    既に同じ id のファイルがあれば上書きする (再アップロード時の保険)。
+    """
+    target = audio_storage_path(transcript_id, source.suffix)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        target.unlink()
+    shutil.move(str(source), str(target))
+    logger.info("音声を永続保管に移動: transcript_id=%s path=%s", transcript_id, target)
+    return target
+
+
+def delete_stored_audio(transcript_id: int) -> bool:
+    """永続側の音声を削除する。存在しなければ False を返す。"""
+    p = find_stored_audio(transcript_id)
+    if p is None:
+        return False
+    try:
+        p.unlink()
+        logger.info("音声を永続保管から削除: transcript_id=%s path=%s", transcript_id, p)
+        return True
+    except Exception:
+        logger.exception("音声削除に失敗: transcript_id=%s", transcript_id)
+        return False
 
 
 class UploadTooLargeError(Exception):

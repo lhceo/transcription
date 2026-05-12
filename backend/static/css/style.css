@@ -323,6 +323,86 @@ html, body {
     font-size: 14px;
 }
 
+/* ── 音声プレイヤー ─────────────────────────────────────── */
+
+.audio-player-section {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+
+.audio-player-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.audio-player {
+    flex: 1;
+    min-width: 280px;
+    height: 36px;
+}
+
+.audio-delete-btn {
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+
+.audio-delete-btn:hover {
+    color: #ef4444;
+}
+
+.history-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.history-item-play {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.history-item-play:hover {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+}
+
+.history-item-play.is-active {
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--color-primary);
+}
+
+.history-item-play svg {
+    width: 18px;
+    height: 18px;
+}
+
+.history-item-player {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.history-item-player audio {
+    width: 100%;
+    height: 34px;
+}
+
 /* ── 月次コスト表示 ─────────────────────────────────────── */
 
 .monthly-cost-summary {
@@ -581,6 +661,7 @@ html, body {
 
 .history-item {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: 12px;

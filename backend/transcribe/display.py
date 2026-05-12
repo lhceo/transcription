@@ -22,3 +22,17 @@ def transcript_display_name(transcript: Any) -> str:
         if title:
             return title
     return getattr(transcript, "original_filename", "") or ""
+
+
+def has_stored_audio(transcript: Any) -> bool:
+    """対応する音声ファイルがサーバーに残っているか判定する。
+
+    旧データ (A-4 即削除ポリシー下でアップロードされた) は False を返す。
+    """
+    # 循環 import を避けるため遅延 import
+    from backend.transcribe.storage import find_stored_audio
+
+    tid = getattr(transcript, "id", None)
+    if tid is None:
+        return False
+    return find_stored_audio(int(tid)) is not None

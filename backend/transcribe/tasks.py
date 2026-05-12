@@ -22,7 +22,7 @@ from backend.db import SessionLocal
 from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.assemblyai_client import AssemblyAIClient, AssemblyAIError
 from backend.transcribe.cost import COST_YEN_PER_HOUR
-from backend.transcribe.storage import cleanup_job_dir
+from backend.transcribe.storage import cleanup_job_dir, move_to_storage
 from backend.transcribe.text_utils import normalize_japanese_text
 
 logger = logging.getLogger(__name__)
@@ -210,6 +210,15 @@ async def process_transcript(transcript_id: int, audio_path: Path) -> None:
         #    程度なので問題ない範囲）
         _save_results_to_db(transcript_id, result)
 
+        # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
+        #    失敗時は移動せず、一時領域ごと削除される。
+        try:
+            move_to_storage(audio_path, transcript_id)
+        except Exception:
+            logger.exception(
+                "音声の永続保管への移動に失敗: transcript_id=%s", transcript_id
+            )
+
     except AssemblyAIError as exc:
         logger.exception("AssemblyAI 呼び出しで失敗: %s", exc)
         await _mark_failed(transcript_id, f"AssemblyAI エラー: {exc}")
@@ -217,11 +226,12 @@ async def process_transcript(transcript_id: int, audio_path: Path) -> None:
         logger.exception("バックグラウンド処理で予期せぬ例外: transcript_id=%s", transcript_id)
         await _mark_failed(transcript_id, f"内部エラー: {exc!s}")
     finally:
-        # ローカル音声ファイル削除（成功・失敗いずれも実行）
+        # 一時ジョブディレクトリは常に削除。永続側に移動済みならファイル本体は
+        # 既に消えているが、空ディレクトリは残るのでまとめて掃除する。
         try:
             cleanup_job_dir(audio_path.parent)
         except Exception:
-            logger.exception("ローカル音声ファイル削除に失敗")
+            logger.exception("一時ジョブディレクトリ削除に失敗")
 
         # AssemblyAI から削除依頼（成功・失敗いずれも実行）
         if aai_transcript_id:

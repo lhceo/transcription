@@ -72,6 +72,26 @@
     </div>
 </section>
 
+{% if has_audio(transcript) %}
+<section class="audio-player-section" x-data="audioPlayer({{ transcript.id }})">
+    <div class="audio-player-row">
+        <audio
+            x-ref="audioEl"
+            controls
+            preload="none"
+            class="audio-player"
+            src="/api/transcripts/{{ transcript.id }}/audio"
+        ></audio>
+        <button
+            type="button"
+            class="btn-link audio-delete-btn"
+            @click="confirmDelete()"
+            title="音声ファイルだけを削除します（文字起こしテキストは残ります）"
+        >音声を削除</button>
+    </div>
+</section>
+{% endif %}
+
 <section class="segments-section"
          x-data="segmentsApp(window.__SEGMENTS_INIT.transcriptId, window.__SEGMENTS_INIT.historyNames)">
 
@@ -227,6 +247,29 @@
 </section>
 
 <script>
+function audioPlayer(transcriptId) {
+    return {
+        async confirmDelete() {
+            if (!confirm('音声ファイルを削除します。文字起こしテキストは残りますが、音声を再生できなくなります。\n\n本当に削除しますか？')) return;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/audio`, {
+                    method: 'DELETE',
+                });
+                if (!res.ok) {
+                    alert('音声の削除に失敗しました');
+                    return;
+                }
+                // 再生中なら停止し、セクションごと非表示にする
+                const audio = this.$refs.audioEl;
+                if (audio) audio.pause();
+                this.$root.style.display = 'none';
+            } catch (_) {
+                alert('音声の削除に失敗しました');
+            }
+        },
+    };
+}
+
 function titleEditor() {
     const init = window.__TRANSCRIPT_INIT || {};
     return {

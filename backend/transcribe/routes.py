@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,8 +25,13 @@ from backend.db.models import Segment, Speaker, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
 from backend.transcribe.eta import compute_eta_text
-from backend.transcribe.display import transcript_display_name
-from backend.transcribe.storage import UploadTooLargeError, save_upload_to_tmp
+from backend.transcribe.display import has_stored_audio, transcript_display_name
+from backend.transcribe.storage import (
+    UploadTooLargeError,
+    delete_stored_audio,
+    find_stored_audio,
+    save_upload_to_tmp,
+)
 from backend.transcribe.tasks import process_transcript
 
 logger = logging.getLogger(__name__)
@@ -35,6 +40,7 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 templates.env.globals["eta_text"] = compute_eta_text
 templates.env.globals["display_name"] = transcript_display_name
+templates.env.globals["has_audio"] = has_stored_audio
 
 router = APIRouter()
 
@@ -242,6 +248,56 @@ async def update_transcript(
     )
 
 
+@router.get("/api/transcripts/{transcript_id}/audio")
+async def get_audio(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> FileResponse:
+    """音声ファイルを配信する（HTML5 <audio> 要素から参照される）。
+
+    認証必須。所有権チェックを行う。ファイルが存在しない場合 404。
+    Range リクエストは FileResponse が自動で扱う（シーク・部分再生に対応）。
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    path = find_stored_audio(transcript_id)
+    if path is None or not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "AUDIO_NOT_FOUND", "message": "音声ファイルが見つかりません"},
+        )
+
+    suffix = path.suffix.lower()
+    media_type = "audio/mpeg" if suffix == ".mp3" else "video/mp4"
+    return FileResponse(path=str(path), media_type=media_type)
+
+
+@router.delete("/api/transcripts/{transcript_id}/audio")
+async def delete_audio(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """音声ファイルだけを削除する（文字起こしテキストは残す）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    deleted = delete_stored_audio(transcript_id)
+    return JSONResponse({"deleted": deleted})
+
+
 @router.delete("/api/transcripts/{transcript_id}", status_code=200)
 async def delete_transcript(
     transcript_id: int,
@@ -262,6 +318,8 @@ async def delete_transcript(
 
     transcript.deleted_at = datetime.now(timezone.utc)
     db.commit()
+    # 永続側の音声も削除する (ソフト削除でテキストは残るが、音声は復活する意味が薄い)
+    delete_stored_audio(transcript_id)
     # HTMX が delete swap を実行するために 2xx を返す（ボディ不要）
     return Response(status_code=200, content="")
 
