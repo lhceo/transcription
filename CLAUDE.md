@@ -9,11 +9,26 @@ Notta（年20万円規模の有料サービス）からの脱却が動機。
 
 ## 現在のステータス（2026-05-12 時点）
 
-- **Mac アプリ版 v0.1 が完成**、ただし**社内未配布**
-- 配布前の検証段階で「2時間音声で 16GB Mac が OOM クラッシュ」「pyannote の MPS と CPU で迷走」など複数の問題が判明
-- **方針転換**: Mac アプリ → **Web アプリへ全面書き換え** することを決定
-- これは「直行直帰・コワーキング・出張先での作業」「アップロードして放置できる体験」を実現するため
-- 実装はまだ着手していない。**ドキュメント整備中**
+- ✅ **Web アプリ v1.0 リリース完了** — Railway で本番稼働中
+- 本番 URL: `https://transcription-production-f1c1.up.railway.app`
+- 現在ブランチ: `web-app-rewrite`（main ではない）／最新タグ: `v1.0-production`
+- Mac アプリ版は `v0.1-mac-app-snapshot` タグで凍結済み（参照のみ）
+- フェーズ 1〜8 すべて完了。次は **v1.1（音声同期再生）** を計画中
+- 既知の改善候補は `docs/ROADMAP.md` の「v1.0.1 以降の改善候補」セクション参照
+
+### 直近で実装済みの v1.0 機能
+- Google OAuth (lionheart.co.jp ドメイン限定)
+- 音声アップロード (mp3/mp4, 最大 2GB / 約2時間)
+- AssemblyAI 経由の日本語文字起こし + 話者分離
+- セグメント編集 / Shift+Return で分割 / TXT・SRT・JSON エクスポート
+- 話者リネーム (Notta 方式: 個別 ／ すべてに適用、同名禁止＋候補選択は例外)
+- 同じ表示名は同じ色（出現順 8 色循環）
+
+### 次セッション開始時のチェック
+1. `git status` / `git log --oneline -10` で現状確認
+2. `docs/ROADMAP.md` 末尾の「次のアクション」と「v1.0.1 以降の改善候補」を確認
+3. `docs/DECISIONS.md` 冒頭で直近の判断を確認
+4. 必要なら本番 URL をシークレットウィンドウで開いて挙動確認
 
 ## 重要な前提
 
@@ -24,17 +39,17 @@ Notta（年20万円規模の有料サービス）からの脱却が動機。
 5. **お客様情報を含む音声**を扱うので、機密性に配慮する
 6. **コスト目標**: Notta（年15-20万）の何分の1かに抑える
 
-## 技術スタック（移行後の予定）
+## 技術スタック（v1.0 確定版）
 
-| | 移行前（現状の Mac アプリ） | 移行後（Web アプリ） |
-|---|---|---|
-| UI | Tkinter (customtkinter) | HTML/CSS/JS |
-| バックエンド | ローカル Python | FastAPI または Flask |
-| 文字起こし | mlx-whisper（ローカル） | **AssemblyAI**（クラウド API） |
-| 話者分離 | pyannote（ローカル） | **AssemblyAI**（同上） |
-| 認証 | なし（ローカルアプリ） | **Google SSO**（Google Workspace） |
-| ホスティング | py2app で .app 配布 | **マネージドクラウド**（Railway/Render 等） |
-| データ永続化 | ローカル JSON ファイル | サーバー側 DB（要設計） |
+| レイヤ | 採用 |
+|---|---|
+| UI | Jinja2 テンプレート + Alpine.js + HTMX |
+| バックエンド | FastAPI + Uvicorn (`--proxy-headers` + Railway HTTPS 終端) |
+| 文字起こし / 話者分離 | **AssemblyAI** (クラウド API、処理後音声は即削除 A-4) |
+| 認証 | **Google OAuth** (authlib + Starlette SessionMiddleware, 14日 Cookie) |
+| ホスティング | **Railway** (Railpack, 永続ボリューム `/data` に SQLite) |
+| データ永続化 | SQLite + Alembic (FastAPI lifespan で起動時に `upgrade head`) |
+| デプロイ | `Procfile` の web: のみ。release: は削除済み (lifespan で代替) |
 
 ## 開発の進め方ルール
 
