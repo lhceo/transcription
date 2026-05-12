@@ -250,24 +250,42 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         _buildNameColorMap() {
-            // 「画面のセグメント (出現順)」→「履歴 (this.history の順)」 の優先で
-            // 名前ごとに次の色を割り当てる。色は 8 色しかないので 9 つ目以降は
-            // 循環するが、それまでは衝突しない。
+            // 「画面のセグメント (実際のクラスから読む)」→「履歴 (未使用色を順に)」
+            // の順で名前ごとの色を決める。
+            // セグメント側は計算し直さず、サーバーまたは recolorByName が確定
+            // させた現在の class 値をそのまま使う。これで候補側との色ズレを完全に防ぐ。
             const map = new Map();
-            let nextIdx = 0;
+            const used = new Set();
             document.querySelectorAll('#segment-list .speaker-badge').forEach(b => {
                 const n = (b.dataset.effectiveName || '').normalize('NFC').trim();
-                if (n && !map.has(n)) {
-                    map.set(n, nextIdx % 8);
-                    nextIdx++;
-                }
+                if (!n || map.has(n)) return;
+                const m = b.className.match(/speaker-color-(\d+)/);
+                if (!m) return;
+                const c = parseInt(m[1], 10);
+                map.set(n, c);
+                used.add(c);
             });
+            // 履歴のうち画面に無い名前は、未使用色を 0,1,2,... の順で当てる。
+            // 全色 (0〜7) 埋まったら 0 から循環。
+            let cursor = 0;
+            const nextFreeColor = () => {
+                for (let i = 0; i < 8; i++) {
+                    const c = (cursor + i) % 8;
+                    if (!used.has(c)) {
+                        cursor = (c + 1) % 8;
+                        return c;
+                    }
+                }
+                const c = cursor % 8;
+                cursor = (cursor + 1) % 8;
+                return c;
+            };
             for (const name of this.history) {
                 const n = (name || '').normalize('NFC').trim();
-                if (n && !map.has(n)) {
-                    map.set(n, nextIdx % 8);
-                    nextIdx++;
-                }
+                if (!n || map.has(n)) continue;
+                const c = nextFreeColor();
+                map.set(n, c);
+                used.add(c);
             }
             return map;
         },
