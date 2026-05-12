@@ -165,8 +165,11 @@
                     class="speaker-popup-candidate"
                     @click="editor.input = name; $refs.input.focus()"
                 >
-                    <span class="speaker-popup-avatar" x-text="name.charAt(0)"></span>
-                    <span x-text="name"></span>
+                    <span
+                        class="speaker-badge"
+                        :class="'speaker-color-' + colorForName(name)"
+                        x-text="name"
+                    ></span>
                 </button>
             </template>
         </div>
@@ -244,6 +247,24 @@ function segmentsApp(transcriptId, historyNames) {
                     .trim();
                 badge.className = `${cls} speaker-color-${colorIdx}`;
             });
+        },
+
+        colorForName(name) {
+            // 1) 画面上にすでに存在する名前なら、そのカードと同じ色
+            let found = null;
+            document.querySelectorAll('#segment-list .speaker-badge').forEach(b => {
+                if (found === null && b.dataset.effectiveName === name) {
+                    const m = b.className.match(/speaker-color-(\d+)/);
+                    if (m) found = parseInt(m[1], 10);
+                }
+            });
+            if (found !== null) return found;
+            // 2) 画面に無い名前は、名前から決定論的にハッシュして色を決める
+            let h = 0;
+            for (let i = 0; i < name.length; i++) {
+                h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+            }
+            return Math.abs(h) % 8;
         },
 
         // ── 編集モード切替 ─────────────────────────────────────────
