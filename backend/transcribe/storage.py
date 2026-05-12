@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -21,9 +23,12 @@ from backend.transcribe.constants import MAX_UPLOAD_BYTES
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-# tmp/uploads/{uuid}/ にファイルを置く。/tmp はサーバー再起動で消える可能性が
-# あるので、リポジトリ直下の tmp/ を使う（.gitignore 済）。
-_UPLOADS_DIR = _REPO_ROOT / "tmp" / "uploads"
+
+# 一時アップロード保存先。設計方針上、処理完了後に必ず削除するので、
+# 永続化は不要。デフォルトはリポジトリ直下 tmp/uploads/、本番 (Railway 等)
+# では UPLOAD_TMP_DIR=/tmp/transcription_uploads のように env で上書きする。
+_DEFAULT_UPLOADS = _REPO_ROOT / "tmp" / "uploads"
+_UPLOADS_DIR = Path(os.environ.get("UPLOAD_TMP_DIR") or str(_DEFAULT_UPLOADS))
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
