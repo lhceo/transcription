@@ -22,7 +22,7 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # v1.1.0 は ROADMAP 上「音声同期再生 (ハイライト・自動スクロール・クリックで
 # シーク)」のマイルストーンとして予約済み。今回のリリースは単純な音声
 # プレイヤーまでで同期機能は未達成なので、v1.0.x 系として扱う。
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:

@@ -151,3 +151,20 @@ async def home(
             "monthly_limit": monthly_limit,
         },
     )
+
+
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(
+    request: Request,
+    user: CurrentUser,
+) -> HTMLResponse:
+    """使い方ガイド (ヘルプ画面)。ログイン必須。"""
+    return templates.TemplateResponse(
+        request,
+        "help.html",
+        {
+            "app_version": app.version,
+            "env": settings.env,
+            "user": user,
+        },
+    )
