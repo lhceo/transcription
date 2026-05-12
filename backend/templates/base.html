@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/alpinejs@3.14.3" defer></script>
 </head>
 <body>
+    {% block header %}
     <header class="app-header">
         <div class="container">
             <a href="/" class="logo" aria-label="ホームへ">
@@ -32,6 +33,7 @@
             </nav>
         </div>
     </header>
+    {% endblock %}
 
     <main class="app-main">
         <div class="container">

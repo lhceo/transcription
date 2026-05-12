@@ -2,7 +2,8 @@
 
 {% block title %}ログイン - 音声文字起こし{% endblock %}
 
-{% block nav %}{# ログイン画面ではユーザーメニューを出さない #}{% endblock %}
+{# ログイン画面ではヘッダー全体を出さず、中央の login.svg ロゴだけで構成する #}
+{% block header %}{% endblock %}
 
 {% block content %}
 <section class="login-card">
