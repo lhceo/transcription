@@ -15,9 +15,12 @@ from authlib.integrations.base_client import OAuthError
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
 from backend.auth.google import oauth
 from backend.config import load_settings
+from backend.db import SessionLocal
+from backend.db.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -110,12 +113,40 @@ async def auth_google_callback(request: Request) -> RedirectResponse:
         logger.info("許可されていないドメインからのログイン試行: %s", email)
         return RedirectResponse(url="/login?error=forbidden_domain", status_code=302)
 
+    name = user_info.get("name", email)
+    picture = user_info.get("picture", "")
+    sub = user_info.get("sub", "")
+
+    # DB にユーザーを upsert（初回ログインなら作成、既存なら名前/画像/最終ログイン更新）
+    from datetime import datetime, timezone
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        now = datetime.now(timezone.utc)
+        if user is None:
+            user = User(
+                email=email,
+                name=name,
+                picture_url=picture or None,
+                created_at=now,
+                last_login_at=now,
+            )
+            db.add(user)
+        else:
+            user.name = name
+            user.picture_url = picture or None
+            user.last_login_at = now
+        db.commit()
+        db.refresh(user)
+        user_id = user.id
+
     # セッションにユーザー情報を保存
     request.session["user"] = {
+        "id": user_id,
         "email": email,
-        "name": user_info.get("name", email),
-        "picture": user_info.get("picture", ""),
-        "sub": user_info.get("sub", ""),
+        "name": name,
+        "picture": picture,
+        "sub": sub,
     }
 
     logger.info("ログイン成功: %s", email)

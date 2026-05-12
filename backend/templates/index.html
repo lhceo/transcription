@@ -3,38 +3,185 @@
 {% block title %}ホーム - 音声文字起こし{% endblock %}
 
 {% block content %}
-<section class="hero">
-    <h2 class="hero-title">ようこそ、{{ user.name }}さん</h2>
+<section class="hero hero-compact">
+    <h2 class="hero-title">音声ファイルから文字起こしを作成</h2>
     <p class="hero-subtitle">
-        音声ファイルから話者付きの文字起こしを作成できます。
+        mp3 / mp4 ファイルをドロップ、または下のボタンから選択してください。最大 2GB（約2時間の動画）まで対応。
     </p>
-    <div class="placeholder-card">
-        <p class="placeholder-text">
-            🚧 開発中：Phase 2（Google 認証）
-        </p>
-        <p class="placeholder-detail">
-            ログインが必要なページになりました。次のフェーズでファイルアップロード機能を追加します。
-        </p>
-    </div>
 </section>
 
-<section class="status">
-    <h3>動作確認</h3>
-    <ul class="check-list">
-        <li>✅ FastAPI が起動している</li>
-        <li>✅ Google 認証が成功している（あなた: {{ user.email }}）</li>
-        <li>✅ セッション Cookie が保存されている</li>
-        <li>✅ ドメイン制限が機能している</li>
-        <li>
-            HTMX 通信テスト：
-            <button
-                hx-get="/health"
-                hx-target="#health-result"
-                hx-swap="innerHTML"
-                class="btn btn-secondary"
-            >ヘルスチェック実行</button>
-            <span id="health-result" class="check-result"></span>
-        </li>
+<section class="upload-section">
+    <form
+        id="upload-form"
+        hx-post="/api/transcripts"
+        hx-encoding="multipart/form-data"
+        hx-target="#history-list"
+        hx-swap="afterbegin"
+        hx-disabled-elt="find button, find select"
+        x-data="uploadForm()"
+        @htmx:before-request="onStart()"
+        @htmx:after-request="onDone($event)"
+    >
+        {# ファイル入力は常に DOM に存在させる（x-if の外）。
+           Alpine の x-if 内に置くと、ファイル選択直後に DOM から消えて
+           multipart の送信に乗らなくなる。 #}
+        <input
+            type="file"
+            name="file"
+            id="file-input"
+            accept=".mp3,.mp4,audio/mpeg,audio/mp4,video/mp4"
+            class="hidden-file-input"
+            @change="onFileChange($event)"
+        >
+
+        <div
+            class="dropzone"
+            :class="{ 'dropzone-active': dragOver, 'dropzone-has-file': fileName }"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop($event)"
+        >
+            <template x-if="!fileName">
+                <div class="dropzone-empty">
+                    <p class="dropzone-text">ここに音声ファイルをドロップ</p>
+                    <p class="dropzone-or">または</p>
+                    <label class="btn btn-primary" for="file-input">
+                        ファイルを選択
+                    </label>
+                    <p class="dropzone-hint">対応形式: mp3, mp4 ／ 最大 2GB</p>
+                </div>
+            </template>
+            <template x-if="fileName">
+                <div class="dropzone-file">
+                    <p class="dropzone-filename" x-text="fileName"></p>
+                    <p class="dropzone-filesize" x-text="prettySize"></p>
+                    <button type="button" class="btn-link" @click="reset()">取り消す</button>
+                </div>
+            </template>
+        </div>
+
+        <div class="upload-controls" x-show="fileName" x-cloak>
+            <div class="form-row">
+                <label for="model_tier" class="form-label">文字起こしの精度</label>
+                <select id="model_tier" name="model_tier" class="form-select">
+                    <option value="best">高精度 (Best) — 1時間あたり約 55円</option>
+                    <option value="nano">コスト重視 (Nano) — 1時間あたり約 20円</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-large" :disabled="uploading">
+                <span x-show="!uploading">アップロード開始</span>
+                <span x-show="uploading">アップロード中…</span>
+            </button>
+        </div>
+
+        <div class="upload-status" x-show="statusMessage" x-cloak>
+            <p x-text="statusMessage" :class="statusClass"></p>
+        </div>
+    </form>
+</section>
+
+<section class="history">
+    <div class="history-header">
+        <h3 class="section-title">これまでの文字起こし</h3>
+        <span class="history-count">{{ transcripts|length }} 件</span>
+    </div>
+    <ul id="history-list" class="history-list">
+        {% if transcripts %}
+            {% for t in transcripts %}
+                {% include "_transcript_row.html" %}
+            {% endfor %}
+        {% else %}
+            <li class="history-empty">
+                まだ文字起こしはありません。上のフォームから音声ファイルを追加してみてください。
+            </li>
+        {% endif %}
     </ul>
 </section>
+
+<script>
+function uploadForm() {
+    return {
+        dragOver: false,
+        fileName: '',
+        fileSize: 0,
+        uploading: false,
+        statusMessage: '',
+        statusClass: '',
+
+        get prettySize() {
+            if (!this.fileSize) return '';
+            const mb = this.fileSize / (1024 * 1024);
+            if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+            return mb.toFixed(1) + ' MB';
+        },
+
+        onFileChange(e) {
+            const f = e.target.files[0];
+            if (f) this.setFile(f);
+        },
+
+        onDrop(e) {
+            this.dragOver = false;
+            const f = e.dataTransfer.files[0];
+            if (!f) return;
+            // input にファイルをセット（フォーム送信用）
+            const input = document.getElementById('file-input');
+            if (input) {
+                const dt = new DataTransfer();
+                dt.items.add(f);
+                input.files = dt.files;
+            }
+            this.setFile(f);
+        },
+
+        setFile(f) {
+            this.fileName = f.name;
+            this.fileSize = f.size;
+            this.statusMessage = '';
+            this.statusClass = '';
+            // 拡張子チェック（クライアント側、UX 向上のみ。サーバー側でも検証する）
+            const ext = f.name.toLowerCase().split('.').pop();
+            if (ext !== 'mp3' && ext !== 'mp4') {
+                this.statusMessage = '対応していないファイル形式です。mp3 か mp4 をご利用ください。';
+                this.statusClass = 'status-error';
+                this.reset();
+            }
+            if (f.size > 2 * 1024 * 1024 * 1024) {
+                this.statusMessage = 'ファイルサイズが 2GB を超えています。';
+                this.statusClass = 'status-error';
+                this.reset();
+            }
+        },
+
+        reset() {
+            this.fileName = '';
+            this.fileSize = 0;
+            const input = document.getElementById('file-input');
+            if (input) input.value = '';
+        },
+
+        onStart() {
+            this.uploading = true;
+            this.statusMessage = 'アップロード中…';
+            this.statusClass = 'status-info';
+        },
+
+        onDone(e) {
+            this.uploading = false;
+            if (e.detail.successful) {
+                this.statusMessage = 'アップロードが完了しました。';
+                this.statusClass = 'status-success';
+                this.reset();
+                // 履歴の空メッセージを消す
+                const empty = document.querySelector('.history-empty');
+                if (empty) empty.remove();
+            } else {
+                this.statusMessage = 'アップロードに失敗しました。再度お試しください。';
+                this.statusClass = 'status-error';
+            }
+        },
+    };
+}
+</script>
 {% endblock %}

@@ -20,6 +20,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from backend.auth import router as auth_router
 from backend.auth.dependencies import CurrentUser, _RedirectToLogin
 from backend.config import load_settings
+from backend.db import get_db
+from backend.db.models import Transcript
+from backend.transcribe import router as transcribe_router
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from typing import Annotated
 
 settings = load_settings()
 
@@ -29,7 +36,7 @@ _STATIC_DIR = _BACKEND_DIR / "static"
 
 app = FastAPI(
     title="Transcription Web App",
-    version="0.3.0",
+    version="0.4.0",
     description="社内向け音声文字起こし Web アプリ",
 )
 
@@ -60,6 +67,9 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
 
+# 文字起こしルート（POST /api/transcripts, GET /api/transcripts）
+app.include_router(transcribe_router)
+
 
 @app.get("/health")
 async def health() -> JSONResponse:
@@ -68,8 +78,21 @@ async def health() -> JSONResponse:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, user: CurrentUser) -> HTMLResponse:
-    """ホーム画面。認証必須。"""
+async def home(
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> HTMLResponse:
+    """ホーム画面。認証必須。アップロード UI + 履歴一覧。"""
+    stmt = (
+        select(Transcript)
+        .where(Transcript.user_id == user["id"])
+        .where(Transcript.deleted_at.is_(None))
+        .order_by(Transcript.created_at.desc())
+        .limit(50)
+    )
+    transcripts = list(db.scalars(stmt))
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -77,5 +100,6 @@ async def home(request: Request, user: CurrentUser) -> HTMLResponse:
             "app_version": app.version,
             "env": settings.env,
             "user": user,
+            "transcripts": transcripts,
         },
     )

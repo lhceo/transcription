@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 class SessionUser(TypedDict):
     """セッション Cookie に格納するユーザー情報の最小セット。"""
 
+    id: int  # DB の users.id
     email: str
     name: str
     picture: str
@@ -22,10 +23,17 @@ class SessionUser(TypedDict):
 
 
 def get_optional_user(request: Request) -> SessionUser | None:
-    """セッションからユーザー情報を取り出す（未認証なら None）。"""
+    """セッションからユーザー情報を取り出す（未認証なら None）。
+
+    旧バージョンのセッション（id が無い）はここで無効化する。
+    結果として再ログインが促される。
+    """
     user = request.session.get("user")
-    if isinstance(user, dict) and "email" in user:
+    if isinstance(user, dict) and "id" in user and "email" in user:
         return user  # type: ignore[return-value]
+    # 旧セッション or 未認証 → 古いセッションをクリアして無効化
+    if user is not None:
+        request.session.clear()
     return None
 
 

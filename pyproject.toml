@@ -13,11 +13,14 @@ dependencies = [
     "authlib>=1.3.2",        # OAuth クライアント
     "httpx>=0.27.2",         # authlib が内部で使う + テストでも使う
     "itsdangerous>=2.2.0",   # SessionMiddleware が要求する署名ライブラリ
+    # Phase 3: DB
+    "sqlalchemy>=2.0.36",    # ORM
+    "alembic>=1.13.3",       # マイグレーション管理
+    "aiofiles>=24.1.0",      # 大容量ファイルの非同期ストリーミング書き込み
 ]
 
 [project.optional-dependencies]
-# Phase 3 以降で追加していく
-# db = ["sqlalchemy>=2.0.36", "alembic>=1.13.3"]
+# Phase 4 以降で追加していく
 # transcribe = ["assemblyai>=0.34.0"]
 dev = [
     "pytest>=8.3.3",

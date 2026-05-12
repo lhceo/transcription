@@ -1,0 +1,38 @@
+{# 履歴の1行。HTMX の afterbegin で挿入される。 #}
+<li class="history-item">
+    <div class="history-item-main">
+        <div class="history-item-name">
+            <span class="history-item-icon">🎵</span>
+            <span class="history-item-filename">{{ transcript.original_filename }}</span>
+        </div>
+        <div class="history-item-meta">
+            <span class="history-item-status status-{{ transcript.status }}">
+                {% if transcript.status == 'uploaded' %}
+                    アップロード完了
+                {% elif transcript.status == 'processing' %}
+                    処理中
+                {% elif transcript.status == 'completed' %}
+                    完了
+                {% elif transcript.status == 'failed' %}
+                    失敗
+                {% else %}
+                    {{ transcript.status }}
+                {% endif %}
+            </span>
+            <span class="history-item-size">
+                {% set mb = transcript.file_size_bytes / (1024 * 1024) %}
+                {% if mb >= 1024 %}
+                    {{ "%.2f"|format(mb / 1024) }} GB
+                {% else %}
+                    {{ "%.1f"|format(mb) }} MB
+                {% endif %}
+            </span>
+            <span class="history-item-tier">
+                {% if transcript.model_tier == 'best' %}高精度{% else %}コスト重視{% endif %}
+            </span>
+            <span class="history-item-date">
+                {{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}
+            </span>
+        </div>
+    </div>
+</li>

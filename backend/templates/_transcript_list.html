@@ -1,0 +1,10 @@
+{# 履歴一覧（HTMX で再取得した時に body を置き換える用） #}
+{% if transcripts %}
+    {% for transcript in transcripts %}
+        {% include "_transcript_row.html" %}
+    {% endfor %}
+{% else %}
+    <li class="history-empty">
+        まだ文字起こしはありません。
+    </li>
+{% endif %}
