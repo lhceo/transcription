@@ -161,6 +161,33 @@
 
 ---
 
+## 2026-05-12: ステージ A 完了（ドキュメント整備と Git 凍結）
+
+### 実施内容
+- `CHANGELOG.md` の構造ミス（未来予定の混在）を修正
+- `docs/RISKS.md` を作成（リスク・レジスター 14項目）
+- 未コミットの `transcribe_core.py` 変更（MPS 復帰実験）を破棄
+- Git タグ `v0.1-mac-app-snapshot` を設定
+- ブランチ `web-app-rewrite` を作成
+- `ROADMAP.md` と `DECISIONS.md` を更新
+
+### 自己レビューで判明した欠落（次セッション以降で対応）
+- `ARCHITECTURE.md`: アーキテクチャ図がない（最優先）
+- `DATA_MODEL.md`: DB スキーマ未定義
+- `API.md`: エンドポイント仕様未定義
+- `SECURITY.md`: セキュリティ方針未文書化
+- `TESTING.md`: テスト戦略未定義
+- `OPERATIONS.md`: 運用手順未定義
+
+これらは「ステージ B（次セッション）」で順次作成する方針。
+
+### 次セッションで Claude が真っ先にやるべきこと
+1. `CLAUDE.md` を読む
+2. `docs/ROADMAP.md` で現在地を確認
+3. ステージ B のタスクから着手
+
+---
+
 ## 2026-05-12: ドキュメント駆動の開発方針
 
 ### 背景

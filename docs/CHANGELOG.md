@@ -3,9 +3,14 @@
 このファイルはバージョンごとの変更内容を記録します。  
 形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に準拠。
 
+**未来の予定は記載しません**（→ `ROADMAP.md` を参照）。  
+このファイルには「実際に起きたこと」のみ記載します。
+
 ---
 
 ## [Unreleased] - 2026-05-12
+
+Web アプリへの全面書き換えに向けたドキュメント基盤の整備。コードへの実装変更はまだ含まれていない。
 
 ### 追加
 - `CLAUDE.md`（Claude セッション継続用の道しるべ）
@@ -13,26 +18,29 @@
 - `docs/DECISIONS.md`（判断の経緯記録）
 - `docs/ROADMAP.md`（実装ロードマップ）
 - `docs/CHANGELOG.md`（本ファイル）
+- `docs/RISKS.md`（リスク・レジスター）
 
-### 設計上の決定
-- **方針転換**: Mac アプリ → Web アプリへ全面書き換え
-- **文字起こし方式**: ローカル ML（mlx-whisper + pyannote）→ AssemblyAI クラウド API
-- **認証**: Google SSO（Google Workspace 連携）
-- **ホスティング**: マネージドクラウドサービス
-- **話者編集 UI**: Notta 風ドロップダウンに改修予定
+### 変更
+- `transcribe_core.py`: 未コミットだった MPS 復帰実験コードを破棄（Web アプリ化で pyannote 自体が不要になるため）
 
-### 既知の課題
-- `transcribe_core.py` に未コミットの MPS 復帰実験コードが残っている（Web アプリ化で破棄予定）
+### Git
+- タグ `v0.1-mac-app-snapshot` を作成（Mac アプリ最終状態の凍結）
+- ブランチ `web-app-rewrite` を作成（以降の Web アプリ開発はここで進める）
+
+### 決定された主要な方針（詳細は `DESIGN.md`）
+- Mac アプリ → Web アプリへの全面書き換え
+- ローカル ML（mlx-whisper + pyannote）→ AssemblyAI クラウド API
+- Google SSO による認証（Google Workspace 連携）
+- マネージドクラウドホスティング
+- 話者編集 UI を Notta 風ドロップダウンに改修予定
 
 ---
 
-## [v0.1-mac-app-snapshot] - 2026-05-11（タグ予定）
+## [v0.1-mac-app-snapshot] - 2026-05-12
 
-### Mac アプリ版の最終状態
+社内未配布のまま、Web アプリへ全面書き換えする前の Mac アプリ最終スナップショット。
 
-社内未配布のまま、Web アプリへ全面書き換えする前のスナップショット。
-
-#### 主要機能
+### Mac アプリ版の機能（このスナップショットに含まれるもの）
 - Tkinter (customtkinter) ベースのデスクトップ UI
 - mlx-whisper による日本語文字起こし
 - pyannote-audio による話者分離
@@ -43,37 +51,14 @@
 - macOS Keychain による HuggingFace Token 保存
 - py2app による .app パッケージ化
 
-#### 既知の問題（書き換えの動機）
+### このスナップショットを残す理由
+- 過去の状態に戻して動作検証できるようにする
+- 「Web アプリ版」との比較対象として保全
+- 万一 Web アプリ化が頓挫した場合のフォールバック
+
+### このスナップショットの既知の問題（書き換えの動機）
 - 2時間音声で 16GB Mac が OOM クラッシュ
-- pyannote の MPS / CPU 切替で迷走（速度と安定性のトレードオフ）
+- pyannote の MPS / CPU 切替で速度と安定性のトレードオフが解決できない
 - 配布先 Mac のスペック差を吸収できない
 - 外出先での使用に向かない設計
 - 全 2,191 行が `app.py` に集約されており、保守性に課題
-
----
-
-## 今後の予定
-
-### [v0.2-web-skeleton]（次のマイルストーン）
-Web アプリの最小骨格
-
-### [v0.3-auth]
-Google SSO 認証
-
-### [v0.4-upload]
-ファイルアップロード機能
-
-### [v0.5-transcription]
-AssemblyAI 連携・文字起こし機能
-
-### [v0.6-results]
-結果表示・編集機能
-
-### [v0.7-history]
-履歴一覧機能
-
-### [v0.8-operations]
-コスト管理・運用機能
-
-### [v1.0-production]
-本番デプロイ・社内提供開始
