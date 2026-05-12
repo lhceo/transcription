@@ -4,16 +4,16 @@
 
 {% block content %}
 <section class="hero">
-    <h2 class="hero-title">ようこそ</h2>
+    <h2 class="hero-title">ようこそ、{{ user.name }}さん</h2>
     <p class="hero-subtitle">
         音声ファイルから話者付きの文字起こしを作成できます。
     </p>
     <div class="placeholder-card">
         <p class="placeholder-text">
-            🚧 開発中：Phase 1（Web スケルトン）
+            🚧 開発中：Phase 2（Google 認証）
         </p>
         <p class="placeholder-detail">
-            このページは雛形です。次のフェーズで認証・アップロード機能を追加していきます。
+            ログインが必要なページになりました。次のフェーズでファイルアップロード機能を追加します。
         </p>
     </div>
 </section>
@@ -22,8 +22,9 @@
     <h3>動作確認</h3>
     <ul class="check-list">
         <li>✅ FastAPI が起動している</li>
-        <li>✅ Jinja2 テンプレートが表示されている</li>
-        <li>✅ 静的ファイル（CSS）が読み込めている</li>
+        <li>✅ Google 認証が成功している（あなた: {{ user.email }}）</li>
+        <li>✅ セッション Cookie が保存されている</li>
+        <li>✅ ドメイン制限が機能している</li>
         <li>
             HTMX 通信テスト：
             <button

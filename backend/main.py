@@ -1,7 +1,7 @@
 """FastAPI エントリポイント。
 
-Phase 1 では「ブラウザで開ける状態」を作るのみ。
-認証・アップロード・AssemblyAI 連携は後続フェーズで追加していく。
+Phase 2: Google OAuth 認証を追加。
+未認証ユーザーは / にアクセスすると /login にリダイレクトされる。
 
 起動方法:
     uvicorn backend.main:app --reload
@@ -12,10 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
+from backend.auth import router as auth_router
+from backend.auth.dependencies import CurrentUser, _RedirectToLogin
 from backend.config import load_settings
 
 settings = load_settings()
@@ -26,12 +29,36 @@ _STATIC_DIR = _BACKEND_DIR / "static"
 
 app = FastAPI(
     title="Transcription Web App",
-    version="0.2.0",
+    version="0.3.0",
     description="社内向け音声文字起こし Web アプリ",
 )
 
+# セッション Cookie（署名付き）の設定。
+# Cookie 属性は本番環境では Secure を強制したいので、APP_ENV で切り替える。
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie="transcription_session",
+    max_age=14 * 24 * 60 * 60,  # 14日（SECURITY.md の方針通り）
+    same_site="lax",
+    https_only=settings.is_production,
+)
+
+
+# 未認証時の RedirectResponse は HTTPException ではないので、
+# 専用の例外ハンドラで /login にリダイレクトする。
+@app.exception_handler(_RedirectToLogin)
+async def _redirect_to_login_handler(
+    request: Request, exc: _RedirectToLogin
+) -> RedirectResponse:
+    return RedirectResponse(url="/login", status_code=302)
+
+
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
+
+# 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
+app.include_router(auth_router)
 
 
 @app.get("/health")
@@ -41,13 +68,14 @@ async def health() -> JSONResponse:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
-    """ホーム画面（Phase 1 では認証なし、雛形だけ表示）。"""
+async def home(request: Request, user: CurrentUser) -> HTMLResponse:
+    """ホーム画面。認証必須。"""
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "app_version": app.version,
             "env": settings.env,
+            "user": user,
         },
     )

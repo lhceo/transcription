@@ -161,3 +161,141 @@ html, body {
     font-size: 12px;
     color: var(--color-text-muted);
 }
+
+/* ── ヘッダーのユーザーメニュー ─────────────────────────── */
+
+.logo {
+    text-decoration: none;
+}
+
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--color-text);
+}
+
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--color-border);
+}
+
+.user-name {
+    font-weight: 500;
+}
+
+.logout-form {
+    margin: 0;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 4px;
+}
+
+.btn-link:hover {
+    background: #eff6ff;
+    text-decoration: underline;
+}
+
+/* ── ログイン画面 ─────────────────────────────────────── */
+
+.login-card {
+    max-width: 440px;
+    margin: 48px auto;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 40px 32px;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.login-header {
+    margin-bottom: 28px;
+}
+
+.login-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.login-subtitle {
+    color: var(--color-text-muted);
+    font-size: 14px;
+}
+
+.error-banner {
+    background: #fee2e2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    text-align: left;
+}
+
+.google-signin-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+
+.google-signin-btn:hover {
+    background: #f9fafb;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.google-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.setup-warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+    border-radius: 6px;
+    padding: 16px;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.setup-warning-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.setup-warning-detail code {
+    background: rgba(0, 0, 0, 0.08);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.login-help {
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+}

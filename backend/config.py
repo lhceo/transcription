@@ -44,9 +44,20 @@ class Settings:
     # 許可されたメールドメインのリスト
     allowed_email_domains: tuple[str, ...]
 
+    # Google OAuth 設定（Phase 2 で使用）
+    google_oauth_client_id: str
+    google_oauth_client_secret: str
+    # コールバック URL。本番では正しいドメインを使う必要があるので env で上書き可。
+    google_oauth_redirect_uri: str
+
     @property
     def is_production(self) -> bool:
         return self.env.lower() == "production"
+
+    @property
+    def has_google_oauth(self) -> bool:
+        """Google OAuth が設定済みか。未設定なら認証機能を無効化する。"""
+        return bool(self.google_oauth_client_id and self.google_oauth_client_secret)
 
 
 def load_settings() -> Settings:
@@ -60,8 +71,14 @@ def load_settings() -> Settings:
             "dev-only-insecure-secret-change-me",
         ),
         allowed_email_domains=tuple(
-            d.strip()
+            d.strip().lower()
             for d in _env("ALLOWED_EMAIL_DOMAINS", "").split(",")
             if d.strip()
+        ),
+        google_oauth_client_id=_env("GOOGLE_OAUTH_CLIENT_ID", ""),
+        google_oauth_client_secret=_env("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+        google_oauth_redirect_uri=_env(
+            "GOOGLE_OAUTH_REDIRECT_URI",
+            "http://127.0.0.1:8000/auth/google/callback",
         ),
     )
