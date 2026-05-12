@@ -204,6 +204,23 @@ function segmentsApp(transcriptId, historyNames) {
         init() {
             // textarea の自動サイズ調整を初期化
             this.$nextTick(() => this.resizeAllTextareas());
+            // Shift+Return で動的に追加されたカードには x-show が効かないので、
+            // editMode の変化を監視して view/edit 表示を手動同期する。
+            this.$watch('editMode', () => {
+                this.syncSegmentDisplay();
+                if (this.editMode) {
+                    this.$nextTick(() => this.resizeAllTextareas());
+                }
+            });
+        },
+
+        syncSegmentDisplay() {
+            document.querySelectorAll('#segment-list .segment-text').forEach(d => {
+                d.style.display = this.editMode ? 'none' : '';
+            });
+            document.querySelectorAll('#segment-list .segment-text-edit').forEach(t => {
+                t.style.display = this.editMode ? '' : 'none';
+            });
         },
 
         // ── 編集モード切替 ─────────────────────────────────────────
@@ -221,11 +238,19 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         resizeAllTextareas() {
-            document.querySelectorAll('.segment-text-edit').forEach(t => this.autoResize(t));
+            // 編集モード入場時は、前回の style.height が残っている可能性があるので
+            // 一度リセットしてから内容に合わせ直す（縮みも許可）
+            document.querySelectorAll('.segment-text-edit').forEach(t => this.fitToContent(t));
+        },
+
+        fitToContent(textarea) {
+            // 内容ぴったりに合わせる。Shift+Return で本文が縮んだ時用。
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
         },
 
         autoResize(textarea) {
-            // 「広げるのみ・縮めない」設計。auto に戻すと改行のたびに
+            // タイピング中は「広げるのみ・縮めない」設計。auto に戻すと改行のたびに
             // ページがスクロールしてしまうので避ける。
             const desired = textarea.scrollHeight;
             if (desired > textarea.offsetHeight) {
@@ -301,10 +326,10 @@ function segmentsApp(transcriptId, historyNames) {
                     throw new Error(body || `HTTP ${res.status}`);
                 }
                 const data = await res.json();
-                // 現在のカードを更新
+                // 現在のカードを更新（本文が縮むので fit で縮みも反映）
                 textarea.value = data.current.text;
                 textarea.dataset.originalText = data.current.text;
-                this.autoResize(textarea);
+                this.fitToContent(textarea);
 
                 // 新カードを DOM に挿入
                 const currentCard = textarea.closest('.segment-card');
@@ -314,7 +339,7 @@ function segmentsApp(transcriptId, historyNames) {
                 // 新カードのテキストエリアにフォーカス
                 const newTextarea = newCard.querySelector('.segment-text-edit');
                 if (newTextarea) {
-                    this.autoResize(newTextarea);
+                    this.fitToContent(newTextarea);
                     newTextarea.focus();
                     newTextarea.setSelectionRange(0, 0);
                 }
