@@ -250,19 +250,24 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         colorForName(name) {
-            // 1) 画面上にすでに存在する名前なら、そのカードと同じ色
+            // 1) 画面上にすでに存在する名前なら、そのカードと同じ色を使う。
+            //    NFC 正規化 + trim で「見た目同じだが文字コード上は別物」
+            //    (NFC/NFD 差や末尾スペース) を吸収する。
+            const target = (name || '').normalize('NFC').trim();
             let found = null;
             document.querySelectorAll('#segment-list .speaker-badge').forEach(b => {
-                if (found === null && b.dataset.effectiveName === name) {
+                if (found !== null) return;
+                const n = (b.dataset.effectiveName || '').normalize('NFC').trim();
+                if (n === target) {
                     const m = b.className.match(/speaker-color-(\d+)/);
                     if (m) found = parseInt(m[1], 10);
                 }
             });
             if (found !== null) return found;
-            // 2) 画面に無い名前は、名前から決定論的にハッシュして色を決める
+            // 2) 画面に無い名前 (履歴のみ) は、名前から決定論的にハッシュして色を決める
             let h = 0;
-            for (let i = 0; i < name.length; i++) {
-                h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+            for (let i = 0; i < target.length; i++) {
+                h = ((h << 5) - h + target.charCodeAt(i)) | 0;
             }
             return Math.abs(h) % 8;
         },
@@ -375,8 +380,24 @@ function segmentsApp(transcriptId, historyNames) {
                 textarea.dataset.originalText = data.current.text;
                 this.fitToContent(textarea);
 
-                // 新カードを DOM に挿入
+                // 閲覧モード用の div も同期する。これを忘れると、編集モードを
+                // 抜けた瞬間に div 側の古い (分割前の) テキストが見え、
+                // 「カードが分かれていないように見える」バグになる。
                 const currentCard = textarea.closest('.segment-card');
+                if (currentCard) {
+                    const viewDiv = currentCard.querySelector('.segment-text');
+                    if (viewDiv) viewDiv.textContent = data.current.text;
+                    if (!currentCard.querySelector('[data-edited]')) {
+                        const time = currentCard.querySelector('.segment-time');
+                        const badge = document.createElement('span');
+                        badge.className = 'segment-edited';
+                        badge.dataset.edited = '1';
+                        badge.textContent = '編集済み';
+                        if (time) time.after(badge);
+                    }
+                }
+
+                // 新カードを DOM に挿入
                 const newCard = this.buildSegmentCardElement(data.new, currentCard);
                 currentCard.after(newCard);
                 this.recolorByName();
@@ -493,6 +514,8 @@ function segmentsApp(transcriptId, historyNames) {
             const rect = targetEl.getBoundingClientRect();
             const popupWidth = 320;
             const x = Math.min(rect.left, window.innerWidth - popupWidth - 16);
+            // 初期配置はバッジの直下。$nextTick で実寸を測り、画面下端を
+            // 超えるようなら バッジの上 or ビューポート内クランプに切り替える。
             const y = rect.bottom + 4;
             this.editor = {
                 open: true,
@@ -506,6 +529,24 @@ function segmentsApp(transcriptId, historyNames) {
             };
             this.$nextTick(() => {
                 if (this.$refs.input) this.$refs.input.focus();
+                const popupEl = document.querySelector('.speaker-popup');
+                if (!popupEl) return;
+                const popupRect = popupEl.getBoundingClientRect();
+                const margin = 8;
+                if (popupRect.bottom > window.innerHeight - margin) {
+                    // 下にはみ出している
+                    const above = rect.top - popupRect.height - 4;
+                    if (above >= margin) {
+                        // バッジの上に十分なスペースあり → 上に配置
+                        this.editor.y = above;
+                    } else {
+                        // 上下どちらも入りきらない → ビューポート内にクランプ
+                        this.editor.y = Math.max(
+                            margin,
+                            window.innerHeight - popupRect.height - margin
+                        );
+                    }
+                }
             });
         },
 
