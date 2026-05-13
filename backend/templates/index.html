@@ -309,15 +309,28 @@ function uploadForm() {
 // 詳細画面の titleEditor() と同じ操作モデルを採用 (Enter で保存、Esc で
 // キャンセル、鉛筆ボタンで編集モードに入る)。バックエンドは既存の
 // PATCH /api/transcripts/{id} を流用。
-function rowEditor(transcriptId, initialName, originalFilename) {
+//
+// 初期データ (display_name / original_filename) は <li> の data-* 属性
+// から読む。x-data 引数で渡すと、Jinja |tojson の出力 (ダブルクォート
+// 含む) が HTML 属性のクォートと衝突するため。
+function rowEditor(transcriptId) {
     return {
+        transcriptId: transcriptId,
         // 既存の音声プレイヤー開閉状態
         playerOpen: false,
         // リネーム用 state
         editing: false,
-        currentName: initialName,
+        currentName: '',
+        originalFilename: '',
         draft: '',
         saving: false,
+
+        init() {
+            // dataset 経由で初期値を読み込む。Alpine は HTML をデコード
+            // 済みで dataset として返してくれるので、特殊文字も安全。
+            this.currentName = this.$el.dataset.initialName || '';
+            this.originalFilename = this.$el.dataset.originalFilename || '';
+        },
 
         startEdit() {
             this.draft = this.currentName;
@@ -356,7 +369,7 @@ function rowEditor(transcriptId, initialName, originalFilename) {
                 // 空にした場合は title=null が返るので original_filename にフォールバック
                 let nameToShow = body.title;
                 if (!nameToShow) {
-                    nameToShow = body.original_filename || originalFilename || '';
+                    nameToShow = body.original_filename || this.originalFilename || '';
                 }
                 this.currentName = nameToShow;
                 this.editing = false;

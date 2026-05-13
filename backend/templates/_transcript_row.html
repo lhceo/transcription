@@ -7,9 +7,11 @@
 <li
     class="history-item"
     id="transcript-{{ transcript.id }}"
-    x-data="rowEditor({{ transcript.id }}, {{ display_label|tojson }}, {{ transcript.original_filename|tojson }})"
+    x-data="rowEditor({{ transcript.id }})"
     data-sort-date="{{ transcript.created_at.isoformat() }}"
     data-sort-name="{{ display_label }}"
+    data-initial-name="{{ display_label }}"
+    data-original-filename="{{ transcript.original_filename }}"
     {% if is_pending %}
     hx-get="/api/transcripts/{{ transcript.id }}/row"
     hx-trigger="every 5s"
