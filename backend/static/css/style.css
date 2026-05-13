@@ -2182,3 +2182,187 @@ a.history-item-filename:hover {
         font-size: 14px;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.3: 詳細画面のスマホ最適化 (#5)
+
+   対象:
+   - detail-header (タイトル / breadcrumb / meta / expiry)
+   - audio-player-section
+   - detail-toolbar (編集ボタン / エクスポート)
+   - segment-card / speaker-badge / segment-text / segment-text-edit
+   - speaker-popup (話者編集ポップアップ)
+
+   iOS の <input>/<textarea> のフォーカスズーム回避のため、編集系の
+   フォントサイズは 16px 以上にする。
+   ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+    /* === 詳細ヘッダー === */
+    .detail-header {
+        padding: 14px 16px;
+        margin-bottom: 12px;
+    }
+
+    .breadcrumb {
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
+    .detail-title {
+        font-size: 17px;
+    }
+
+    .detail-title-row {
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+
+    .detail-title-edit-btn {
+        width: 36px;
+        height: 36px;
+    }
+    .detail-title-edit-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .detail-title-edit {
+        min-width: 0;
+        flex: 1 1 100%; /* スマホでは独立行にして input を全幅化 */
+    }
+
+    .detail-title-input {
+        font-size: 16px; /* iOS zoom 回避 */
+        padding: 8px 10px;
+        min-height: 40px;
+    }
+
+    .detail-meta {
+        gap: 8px 12px;
+        font-size: 12px;
+        margin-bottom: 10px;
+    }
+
+    /* === 音声プレイヤー === */
+    .audio-player-section {
+        padding: 10px 12px;
+        margin-bottom: 16px;
+    }
+
+    .audio-player {
+        min-width: 0; /* PC の 280px 制約を解除 */
+        flex: 1 1 100%;
+        height: 40px;
+    }
+
+    .audio-delete-btn {
+        font-size: 13px;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* === ツールバー === */
+    .detail-toolbar {
+        padding: 10px 12px;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .detail-toolbar .btn,
+    .detail-toolbar .btn-with-icon {
+        min-height: 40px;
+        padding: 8px 14px;
+        font-size: 14px;
+    }
+
+    /* エクスポートメニューはスマホでもドロップダウン (画面外にはみ出さない) */
+    .export-options {
+        right: 0;
+        left: auto;
+        min-width: 220px;
+        max-width: calc(100vw - 24px);
+    }
+
+    .export-option {
+        padding: 12px 14px;
+        min-height: 56px; /* 2 行構成なので少し高く */
+    }
+
+    /* === セグメントカード === */
+    .segment-card {
+        padding: 12px 14px;
+    }
+
+    .segment-header {
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    /* 話者バッジ: 親指で押しやすいサイズ。話者編集ポップアップの起点 */
+    .speaker-badge {
+        padding: 6px 14px;
+        font-size: 13px;
+        min-height: 36px;
+    }
+
+    .segment-time {
+        font-size: 12px;
+    }
+
+    .segment-edited {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    /* セグメント本文: 読みやすさ優先 */
+    .segment-text {
+        font-size: 15px;
+        line-height: 1.7;
+    }
+
+    /* textarea は iOS zoom 回避のため 16px */
+    .segment-text-edit {
+        font-size: 16px;
+        padding: 10px 12px;
+        line-height: 1.7;
+    }
+
+    /* === 話者編集ポップアップ === */
+    /* スマホでは popup を画面端からはみ出さない幅にクランプ。
+       JS 側の動的 top/left 計算は維持しつつ、最大幅 + タッチ最適化。 */
+    .speaker-popup {
+        width: calc(100vw - 24px);
+        max-width: 360px;
+    }
+
+    .speaker-popup-input {
+        font-size: 16px; /* iOS zoom 回避 */
+        padding: 10px 12px;
+        min-height: 44px;
+    }
+
+    .speaker-popup-candidate {
+        padding: 12px;
+        font-size: 14px;
+        min-height: 48px;
+    }
+
+    .speaker-popup-action {
+        padding: 12px 14px;
+        font-size: 14px;
+        min-height: 44px;
+    }
+
+    /* === カウントダウン表示 === */
+    .detail-expiry {
+        font-size: 13px;
+        padding: 6px 12px;
+    }
+
+    .detail-expiry-icon {
+        width: 14px;
+        height: 14px;
+    }
+}
