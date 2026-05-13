@@ -375,17 +375,91 @@ html, body {
     border-radius: 8px;
 }
 
+/* v1.1: 音声プレイヤーを sticky 配置にして、編集中もスクロールしても操作可能に。
+   z-index は detail-toolbar (5) より上、speaker-popup (50) より下に置く。 */
+.audio-player-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.95);
+}
+
 .audio-player-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
 .audio-player {
     flex: 1;
-    min-width: 280px;
+    min-width: 200px;
     height: 36px;
+}
+
+/* v1.1: ±3 秒スキップボタン。アイコン (curved arrow) + 数字 (3) の組合せ */
+.audio-skip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 44px;
+    height: 36px;
+    padding: 4px 6px;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.audio-skip-btn:hover {
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.audio-skip-btn:active {
+    transform: translateY(1px);
+}
+
+.audio-skip-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.audio-skip-btn-num {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* v1.1: 再生速度ドロップダウン (LocalStorage に保存) */
+.audio-speed-select {
+    height: 36px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 64px;
+}
+
+.audio-speed-select:hover {
+    border-color: var(--color-primary);
+}
+
+.audio-speed-select:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.3);
+    outline-offset: 1px;
+    border-color: var(--color-primary);
 }
 
 .audio-delete-btn {
@@ -395,6 +469,72 @@ html, body {
 
 .audio-delete-btn:hover {
     color: #ef4444;
+}
+
+/* v1.1: 音声なし transcript のインフォメッセージ
+   音声プレイヤーが本来あった位置に、控えめな注釈として表示する */
+.transcript-no-audio-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: #f1f5f9;
+    color: var(--color-text-muted);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.transcript-no-audio-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+    margin-top: 1px;
+}
+
+/* スマホ向け調整: コンパクト化 + 速度ドロップダウンと削除ボタンの配置調整 */
+@media (max-width: 640px) {
+    .audio-player-section {
+        padding: 8px 10px;
+    }
+
+    .audio-player-sticky {
+        /* スマホヘッダー直下に来る。ヘッダーは sticky ではないので top: 0 で OK */
+        top: 0;
+    }
+
+    .audio-player {
+        min-width: 0;
+        flex: 1 1 100%;  /* スマホでは音声プレイヤーを 1 行目に独立配置 */
+        height: 40px;
+        order: 1;
+    }
+
+    /* スマホでは ±3 秒、速度、削除を 2 行目にまとめる */
+    .audio-player-row {
+        gap: 6px;
+    }
+
+    .audio-skip-btn {
+        order: 2;
+        width: 56px;
+        height: 40px;
+    }
+
+    .audio-speed-select {
+        order: 3;
+        height: 40px;
+        font-size: 14px;
+        flex: 0 1 auto;
+        margin-left: auto; /* 右寄せ */
+    }
+
+    .audio-delete-btn {
+        order: 4;
+        font-size: 13px;
+    }
 }
 
 .history-item-actions {
