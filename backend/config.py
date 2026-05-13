@@ -65,9 +65,39 @@ class Settings:
     # 月初は日本時間 0:00 でリセット。Railway の Variables から変更する。
     monthly_cost_limit_yen: int
 
+    # 自動削除までの保管日数 (v1.0.2)。完了から N 日経過した文字起こしを
+    # 音声・テキスト・DB レコードごと物理削除する。0 で自動削除無効。
+    data_retention_days: int
+
+    # ストレージ上限 (バイト)。Railway Hobby Plan の 5 GB を default に。
+    # GB は SI 表記 (10^9) で扱う。プラン変更や Pro 移行時にここを上げる。
+    storage_limit_bytes: int
+
+    # 使用率の閾値 (%)。WARNING ≤ DANGER ≤ HARD_LIMIT の順で大きくなる前提。
+    # WARNING: 黄色バナー表示開始。DANGER: 赤バナー表示開始。
+    # HARD_LIMIT: アップロード受付を拒否する境界。
+    storage_warning_percent: int
+    storage_danger_percent: int
+    storage_hard_limit_percent: int
+
     @property
     def is_production(self) -> bool:
         return self.env.lower() == "production"
+
+    @property
+    def storage_hard_limit_bytes(self) -> int:
+        """アップロード拒否の境界 (バイト)。"""
+        return int(self.storage_limit_bytes * self.storage_hard_limit_percent / 100)
+
+    @property
+    def storage_warning_bytes(self) -> int:
+        """黄色バナー表示の境界 (バイト)。"""
+        return int(self.storage_limit_bytes * self.storage_warning_percent / 100)
+
+    @property
+    def storage_danger_bytes(self) -> int:
+        """赤バナー表示の境界 (バイト)。"""
+        return int(self.storage_limit_bytes * self.storage_danger_percent / 100)
 
     @property
     def has_google_oauth(self) -> bool:
@@ -103,6 +133,22 @@ def load_settings() -> Settings:
         ),
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
+        # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
+        # Railway Hobby Plan (5 GB) と DECISIONS 2026-05-13 で確定した
+        # 60 日保管 / 70% 警告 / 90% 危険 / 95% アップロード拒否を使う。
+        data_retention_days=_safe_int(_env("DATA_RETENTION_DAYS", "60")),
+        storage_limit_bytes=_safe_int(
+            _env("STORAGE_LIMIT_BYTES", str(5_000_000_000))
+        ),
+        storage_warning_percent=_clamp_percent(
+            _env("STORAGE_WARNING_PERCENT", "70")
+        ),
+        storage_danger_percent=_clamp_percent(
+            _env("STORAGE_DANGER_PERCENT", "90")
+        ),
+        storage_hard_limit_percent=_clamp_percent(
+            _env("STORAGE_HARD_LIMIT_PERCENT", "95")
+        ),
     )
 
 
@@ -110,5 +156,13 @@ def _safe_int(value: str) -> int:
     """環境変数の値を int に変換する。無効値は 0 として扱う。"""
     try:
         return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _clamp_percent(value: str) -> int:
+    """0〜100 にクランプした int を返す。無効値は 0。"""
+    try:
+        return max(0, min(100, int(value)))
     except (TypeError, ValueError):
         return 0

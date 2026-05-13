@@ -27,11 +27,16 @@ from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
 from backend.transcribe.eta import compute_eta_text
 from backend.transcribe.display import has_stored_audio, transcript_display_name
+from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage import (
     UploadTooLargeError,
     delete_stored_audio,
     find_stored_audio,
     save_upload_to_tmp,
+)
+from backend.transcribe.storage_usage import (
+    get_summary as get_storage_summary,
+    would_exceed_hard_limit,
 )
 from backend.transcribe.tasks import process_transcript
 
@@ -42,6 +47,8 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 templates.env.globals["eta_text"] = compute_eta_text
 templates.env.globals["display_name"] = transcript_display_name
 templates.env.globals["has_audio"] = has_stored_audio
+templates.env.globals["expiry_status"] = expiry_status
+templates.env.globals["storage_usage"] = get_storage_summary
 
 router = APIRouter()
 
@@ -122,6 +129,29 @@ async def create_transcript(
                 },
             )
 
+    # ──── ストレージ容量チェック (v1.0.2) ──────────────────────────────────
+    # Content-Length が分かれば受信開始前に拒否できる。これでアップロード
+    # 時間を浪費せずに済む。クライアント側でも予防警告するが、最終的な
+    # 安全網はここ。
+    incoming_size = file.size if file.size is not None else 0
+    if incoming_size > 0 and would_exceed_hard_limit(incoming_size):
+        usage = get_storage_summary()
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "STORAGE_HARD_LIMIT_EXCEEDED",
+                "message": (
+                    f"ストレージが満杯です ({usage.used_pretty} / {usage.limit_pretty})。"
+                    f"古い文字起こしを削除してから再度アップロードしてください。"
+                ),
+                "usage": {
+                    "used_bytes": usage.used_bytes,
+                    "limit_bytes": usage.limit_bytes,
+                    "percent": usage.percent,
+                },
+            },
+        )
+
     # ──── ファイル保存 ─────────────────────────────────────────────────────
     try:
         save_path, size_bytes = await save_upload_to_tmp(file, max_bytes=MAX_UPLOAD_BYTES)
@@ -131,6 +161,35 @@ async def create_transcript(
             detail={
                 "code": "FILE_TOO_LARGE",
                 "message": "ファイルサイズが 2GB を超えています。",
+            },
+        )
+
+    # 受信完了後にもう一度ストレージ容量を確認する。受信中に他ユーザーの
+    # アップロードが完了して上限を超えるレース状態を吸収する。超過時は
+    # 保存した tmp を掃除して 413 を返す。
+    if would_exceed_hard_limit(size_bytes):
+        try:
+            save_path.unlink(missing_ok=True)
+            cleanup_dir = save_path.parent
+            if cleanup_dir.exists():
+                import shutil
+                shutil.rmtree(cleanup_dir, ignore_errors=True)
+        except Exception:
+            logger.exception("容量超過の保存ファイル掃除失敗")
+        usage = get_storage_summary()
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "STORAGE_HARD_LIMIT_EXCEEDED",
+                "message": (
+                    f"ストレージが満杯です ({usage.used_pretty} / {usage.limit_pretty})。"
+                    f"古い文字起こしを削除してから再度アップロードしてください。"
+                ),
+                "usage": {
+                    "used_bytes": usage.used_bytes,
+                    "limit_bytes": usage.limit_bytes,
+                    "percent": usage.percent,
+                },
             },
         )
 

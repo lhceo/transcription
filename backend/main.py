@@ -44,17 +44,36 @@ _STATIC_DIR = _BACKEND_DIR / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """起動時に Alembic マイグレーションを実行する。
+    """起動時の初期化と、バックグラウンドタスクの起動/停止。
 
-    Railway 等の永続ボリュームは pre-deploy ステップではマウントされず
-    Start フェーズで初めて利用可能になるため、マイグレーションはここで走らせる。
+    1. Alembic マイグレーション (Railway 永続ボリュームは Start フェーズで
+       初めてマウントされるためここで実行)
+    2. 自動削除バックグラウンドタスクの起動 (v1.0.2)
     """
+    # 1. マイグレーション
     alembic_ini = _REPO_ROOT / "alembic.ini"
     logger.info("Alembic マイグレーション開始: %s", alembic_ini)
     cfg = AlembicConfig(str(alembic_ini))
     command.upgrade(cfg, "head")
     logger.info("Alembic マイグレーション完了")
-    yield
+
+    # 2. 自動削除タスクを起動 (5 分後に初回スキャン、その後 24 時間ごと)
+    import asyncio
+    from backend.transcribe.retention import retention_loop
+
+    retention_task = asyncio.create_task(retention_loop())
+    logger.info("自動削除バックグラウンドタスク起動")
+
+    try:
+        yield
+    finally:
+        # シャットダウン時にタスクをキャンセル
+        retention_task.cancel()
+        try:
+            await retention_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("自動削除バックグラウンドタスク停止")
 
 
 app = FastAPI(
@@ -104,8 +123,12 @@ templates.env.globals["eta_text"] = compute_eta_text
 
 from backend.transcribe.cost import current_month_cost_yen  # noqa: E402
 from backend.transcribe.display import has_stored_audio, transcript_display_name  # noqa: E402
+from backend.transcribe.retention import expiry_status  # noqa: E402
+from backend.transcribe.storage_usage import get_summary as get_storage_summary  # noqa: E402
 templates.env.globals["display_name"] = transcript_display_name
 templates.env.globals["has_audio"] = has_stored_audio
+templates.env.globals["expiry_status"] = expiry_status
+templates.env.globals["storage_usage"] = get_storage_summary
 
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
