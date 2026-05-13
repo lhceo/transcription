@@ -24,6 +24,7 @@
         data-storage-hard-limit-percent="95"
         x-data="uploadForm()"
         @htmx:before-request="onStart()"
+        @htmx:xhr:progress="onProgress($event)"
         @htmx:after-request="onDone($event)"
     >
         {# ファイル入力は常に DOM に存在させる（x-if の外）。
@@ -83,18 +84,52 @@
 
             <button type="submit" class="btn btn-primary btn-large" :disabled="uploading">
                 <span x-show="!uploading">アップロード開始</span>
-                <span x-show="uploading">アップロード中…</span>
+                <span x-show="uploading" x-cloak>アップロード中…</span>
             </button>
         </div>
 
-        <div class="upload-status" x-show="statusMessage" x-cloak>
-            <p x-text="statusMessage" :class="statusClass"></p>
-            {# v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設。
-               クリックで履歴セクションへスクロール + 古い順ソートに切替。 #}
+        {# v1.0.3: アップロード進捗バー (#6)
+           HTMX の htmx:xhr:progress イベントで loaded/total を取得し、
+           ユーザーに「いまどれだけ送信したか」を可視化する。
+           モバイル回線で数分かかるケースの体感品質を改善する。 #}
+        <div class="upload-progress" x-show="uploading" x-cloak>
+            <div class="upload-progress-header">
+                <span class="upload-progress-label">アップロード中</span>
+                <span class="upload-progress-percent" x-text="`${progress}%`"></span>
+            </div>
+            <div class="upload-progress-bar">
+                <div class="upload-progress-bar-fill" :style="`width: ${progress}%`"></div>
+            </div>
+            <p class="upload-progress-detail" x-text="progressDetail"></p>
+        </div>
+
+        {# v1.0.3: 成功・エラー時の表示。成功時は明示的な完了確認、
+           エラー時はメッセージ + (必要なら) 整理リンク。 #}
+        <div class="upload-status" x-show="statusMessage && !uploading" x-cloak>
+            {# 成功時: アイコン + 完了文言 #}
+            <div class="upload-success" x-show="statusClass === 'status-success'" x-cloak>
+                <svg class="upload-success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <div class="upload-success-text">
+                    <strong>アップロード完了</strong>
+                    <p>文字起こしを開始しました。完了まで履歴から進捗を確認できます。</p>
+                </div>
+            </div>
+            {# エラー時: 従来通り赤テキスト #}
+            <p
+                x-show="statusClass !== 'status-success'"
+                x-cloak
+                x-text="statusMessage"
+                :class="statusClass"
+            ></p>
+            {# v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設 #}
             <button
                 type="button"
                 class="btn-link upload-cleanup-link"
                 x-show="showCleanupAction"
+                x-cloak
                 @click="triggerCleanup()"
             >古いものから整理する</button>
         </div>
@@ -153,6 +188,9 @@ function uploadForm() {
         statusClass: '',
         // v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設
         showCleanupAction: false,
+        // v1.0.3: アップロード進捗 (htmx:xhr:progress イベントから更新)
+        progress: 0,
+        progressDetail: '',
 
         get prettySize() {
             if (!this.fileSize) return '';
@@ -271,14 +309,44 @@ function uploadForm() {
 
         onStart() {
             this.uploading = true;
-            this.statusMessage = 'アップロード中…';
-            this.statusClass = 'status-info';
+            this.statusMessage = '';   // 旧メッセージをクリア (進捗バーに置き換わる)
+            this.statusClass = '';
+            this.progress = 0;
+            this.progressDetail = '';
+            this.showCleanupAction = false;
+        },
+
+        // v1.0.3: HTMX の htmx:xhr:progress イベントハンドラ。
+        // event.detail.loaded / total が利用可能なら % とバイト数を更新する。
+        // lengthComputable が false のサーバー応答ではバーは進まないが、
+        // 通常のアップロードは Content-Length を持つので問題ない。
+        onProgress(e) {
+            const d = e.detail;
+            if (!d || !d.lengthComputable) return;
+            const loaded = d.loaded;
+            const total = d.total;
+            if (total > 0) {
+                this.progress = Math.min(99, Math.round((loaded / total) * 100));
+                // 99% で頭打ち: 送信完了 → サーバー処理開始の間に「100% だけど待たされる」
+                // 体感を避ける。レスポンスが返った瞬間に完了 UI に切り替わるので、
+                // 直前まで「もう少し」を演出する意図。
+                this.progressDetail = `${this._prettyBytes(loaded)} / ${this._prettyBytes(total)}`;
+            }
+        },
+
+        _prettyBytes(bytes) {
+            const mb = bytes / (1024 * 1024);
+            if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+            if (mb >= 1) return mb.toFixed(1) + ' MB';
+            return (bytes / 1024).toFixed(0) + ' KB';
         },
 
         onDone(e) {
             this.uploading = false;
+            this.progress = 0;
+            this.progressDetail = '';
             if (e.detail.successful) {
-                this.statusMessage = 'アップロードが完了しました。';
+                this.statusMessage = 'アップロード完了';
                 this.statusClass = 'status-success';
                 this.showCleanupAction = false;
                 this.reset();

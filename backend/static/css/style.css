@@ -593,8 +593,100 @@ html, body {
     font-family: inherit;
 }
 
+/* v1.0.3: アップロード進捗バー (#6)
+   - htmx:xhr:progress イベントで loaded/total が更新される
+   - モバイル回線で数分かかるケースでもユーザーに進行状況を可視化する */
+.upload-progress {
+    margin-top: 12px;
+    padding: 14px 16px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+}
+
+.upload-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+
+.upload-progress-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e40af;
+}
+
+.upload-progress-percent {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e40af;
+    font-variant-numeric: tabular-nums;
+}
+
+.upload-progress-bar {
+    height: 8px;
+    background: #dbeafe;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.upload-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+}
+
+.upload-progress-detail {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #1e3a8a;
+    font-variant-numeric: tabular-nums;
+}
+
+/* v1.0.3: 成功時の明示的な完了確認 UI (#6)
+   従来の小さなテキストではなく、チェックアイコン + 完了文言で安心感を提供 */
+.upload-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+}
+
+.upload-success-icon {
+    width: 24px;
+    height: 24px;
+    color: #059669;
+    flex-shrink: 0;
+}
+
+.upload-success-text strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: #065f46;
+    margin-bottom: 2px;
+}
+
+.upload-success-text p {
+    font-size: 12px;
+    color: #047857;
+    line-height: 1.5;
+}
+
+/* v1.0.3: 子要素 (.upload-success / 各 status-* / 整理リンク) が
+   それぞれ自前のパディングを持つようになったので、親はマージンだけ持つ。 */
 .upload-status {
     margin-top: 12px;
+}
+
+.upload-status .status-info,
+.upload-status .status-success,
+.upload-status .status-error {
     padding: 10px 14px;
     border-radius: 6px;
 }
