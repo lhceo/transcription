@@ -2007,3 +2007,88 @@ a.history-item-filename:hover {
         font-size: 13px;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.3: 履歴行のスマホ最適化 (#4 part 2)
+
+   - タッチターゲットを 36px 以上に
+   - ファイル名を少し大きく、読みやすく
+   - メタ情報のフォントサイズ調整
+   - ステータスバッジを目立たせる
+   ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+    .history-item {
+        padding: 14px 0;
+        gap: 8px;
+    }
+
+    /* ファイル名は大きめ + 読みやすく */
+    .history-item-filename {
+        font-size: 15px;
+        max-width: none; /* ellipsis は親の overflow に任せる */
+    }
+
+    /* 鉛筆ボタンは PC の 28x28 → 36x36 でタップしやすく */
+    .history-item-rename-btn {
+        width: 36px;
+        height: 36px;
+        opacity: 0.7; /* スマホは hover がないので最初から見やすく */
+    }
+    .history-item-rename-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* リネーム input はスマホでは全幅に近づける */
+    .history-item-rename-input {
+        min-width: 0;
+        max-width: none;
+        flex: 1 1 100%;
+        font-size: 15px;
+        padding: 8px 10px;
+    }
+    .history-item-rename-edit {
+        width: 100%;
+    }
+
+    /* メタ情報を読みやすく。font-size を少し上げて、項目間の gap を確保 */
+    .history-item-meta {
+        gap: 8px 14px;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    /* ステータスバッジを目立たせる (現在の文字起こし状態がパッと見でわかるように) */
+    .history-item-status {
+        font-size: 11px;
+        padding: 3px 10px;
+    }
+
+    /* アクションボタン (再生・削除) を 36x36 タッチターゲットに */
+    .history-item-play,
+    .history-item-delete {
+        width: 36px;
+        height: 36px;
+    }
+    .history-item-play svg,
+    .history-item-delete svg {
+        width: 18px;
+        height: 18px;
+    }
+    .history-item-actions {
+        gap: 6px;
+        align-self: flex-start; /* タイトルと縦位置を揃える (メタが折り返したとき下に伸びても上端基準) */
+    }
+
+    /* 期限カウントダウンバッジもスマホで少しだけ大きく */
+    .history-item-expiry {
+        font-size: 11px;
+        padding: 3px 10px;
+    }
+
+    /* 音声プレイヤー (展開時) もスマホで使いやすく */
+    .history-item-player audio {
+        height: 40px;
+    }
+}
