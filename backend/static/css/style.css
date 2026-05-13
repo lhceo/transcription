@@ -1481,6 +1481,10 @@ a.history-item-filename:hover {
     line-height: 1.7;
     color: var(--color-text);
     white-space: pre-wrap;
+    /* v1.1: クリックでシークできる (View mode)。テキスト選択の cursor
+       (text I-beam) と「タップで何か起こる」cursor (pointer) のどちらに
+       するか迷うところだが、デフォルトの text のままにしてユーザーは
+       選択操作ができる。クリックすれば seek もする (副次的な動作)。 */
     cursor: text;
 }
 

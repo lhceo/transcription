@@ -256,13 +256,15 @@
                         {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
                     </header>
 
-                    {# 閲覧モード：div で表示。ダブルクリックで編集モードに入る (PC のみ)。
+                    {# 閲覧モード：div で表示。
+                       v1.1: クリック = シーク (+ 停止中も自動再生)。
                        v1.1: 文字単位ハイライト用に <span> を 2 つに分割
                        (.segment-text-progress + .segment-text-remaining)。
-                       JS が再生中、線形補間で 2 つの span のテキストを更新する。 #}
+                       v1.0.3: ダブルクリック (PC のみ) で編集モードに入る (既存)。 #}
                     <div
                         class="segment-text"
                         x-show="!editMode"
+                        @click="seekToSegmentFromEvent($event)"
                         @dblclick="enterEditMode()"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
@@ -525,6 +527,72 @@ function segmentsApp(transcriptId, historyNames) {
             });
             // v1.1: 音声プレイヤーの timeupdate にフックして同期ハイライトを開始
             this.setupAudioSync();
+            // v1.1: PC キーボードショートカット (Space / ←→)
+            this.setupKeyboardShortcuts();
+        },
+
+        // v1.1: PC 用キーボードショートカット
+        // - Space: 再生/停止
+        // - ←/→: ±3秒戻る/進む
+        // textarea / input フォーカス中、修飾キー併用時は何もしない (タイプ操作・
+        // ブラウザ標準ショートカットを邪魔しない)。スマホでは key event が
+        // 発火しないので影響なし。
+        setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                // 修飾キー併用は無視 (Cmd+Space の Spotlight 等とぶつけない)
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+                // 入力中のフォーム要素にフォーカスがある時は無視
+                const target = e.target;
+                const tag = (target.tagName || '').toLowerCase();
+                if (tag === 'textarea' || tag === 'input' || tag === 'select' || target.isContentEditable) {
+                    return;
+                }
+
+                const audio = document.querySelector('.audio-player-section audio');
+                if (!audio) return;
+
+                if (e.code === 'Space' || e.key === ' ') {
+                    e.preventDefault();
+                    if (audio.paused) {
+                        audio.play().catch(() => { /* 再生開始拒否は無視 */ });
+                    } else {
+                        audio.pause();
+                    }
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    audio.currentTime = Math.max(0, audio.currentTime - 3);
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const dur = audio.duration || 0;
+                    audio.currentTime = dur > 0
+                        ? Math.min(dur, audio.currentTime + 3)
+                        : audio.currentTime + 3;
+                }
+            });
+        },
+
+        // v1.1: セグメント本文クリック → そのセグメント開始時刻にシーク
+        // (View mode のみ。Edit mode は textarea フォーカスで編集)
+        seekToSegmentFromEvent(event) {
+            // editMode 中は seekToSegment しない (テキスト編集に集中する)
+            if (this.editMode) return;
+            const target = event.currentTarget || event.target;
+            const card = target.closest ? target.closest('.segment-card') : null;
+            if (!card) return;
+            this.seekToCard(card);
+        },
+
+        seekToCard(card) {
+            const start = parseFloat(card.dataset.startSeconds);
+            if (!Number.isFinite(start)) return;
+            const audio = document.querySelector('.audio-player-section audio');
+            if (!audio) return;
+            audio.currentTime = start;
+            // 停止中は自動再生 (確定スコープ: クリック = ここを聴くを 1 アクションで)
+            if (audio.paused) {
+                audio.play().catch(() => { /* 再生開始拒否は無視 */ });
+            }
         },
 
         // v1.1: 音声プレイヤーの timeupdate イベントで同期ハイライトを更新する
@@ -950,6 +1018,10 @@ function segmentsApp(transcriptId, historyNames) {
             viewDiv.style.display = this.editMode ? 'none' : '';
             this.setSegmentTextContent(viewDiv, newSeg.text);
             viewDiv.addEventListener('dblclick', () => this.enterEditMode());
+            // v1.1: クリック = シーク (View mode のみ。editMode 中の判定は
+            // seekToSegmentFromEvent 内で行う)。Alpine の @click は動的挿入
+            // 要素には効かないので addEventListener で直接バインド。
+            viewDiv.addEventListener('click', (ev) => this.seekToSegmentFromEvent(ev));
 
             const textarea = document.createElement('textarea');
             textarea.className = 'segment-text-edit';
