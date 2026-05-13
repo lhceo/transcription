@@ -45,7 +45,8 @@ _AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 def audio_storage_path(transcript_id: int, suffix: str) -> Path:
     """永続側の音声ファイルのパスを返す。
 
-    suffix は ".mp3" / ".mp4" 等 (先頭ピリオドありの拡張子)。
+    suffix は ".mp3" / ".mp4" / ".m4a" / ".wav" / ".mov" 等
+    (先頭ピリオドありの拡張子)。
     """
     s = suffix.lower()
     if not s.startswith("."):

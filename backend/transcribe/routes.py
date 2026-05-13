@@ -23,7 +23,7 @@ from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript
-from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
+from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
     next_month_start_jst_text,
@@ -93,7 +93,10 @@ async def create_transcript(
             status_code=415,
             detail={
                 "code": "INVALID_FILE_FORMAT",
-                "message": "対応していないファイル形式です。mp3 か mp4 をご利用ください。",
+                "message": (
+                    "対応していないファイル形式です。"
+                    "mp3 / mp4 / m4a / wav / mov をご利用ください。"
+                ),
             },
         )
 
@@ -340,7 +343,7 @@ async def get_audio(
         )
 
     suffix = path.suffix.lower()
-    media_type = "audio/mpeg" if suffix == ".mp3" else "video/mp4"
+    media_type = MEDIA_TYPES.get(suffix, "application/octet-stream")
     return FileResponse(path=str(path), media_type=media_type)
 
 

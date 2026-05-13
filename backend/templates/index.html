@@ -33,7 +33,7 @@
             type="file"
             name="file"
             id="file-input"
-            accept=".mp3,.mp4,audio/mpeg,audio/mp4,video/mp4"
+            accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
             class="hidden-file-input"
             @change="onFileChange($event)"
         >
@@ -60,7 +60,7 @@
                     <label class="btn btn-primary" for="file-input">
                         ファイルを選択
                     </label>
-                    <p class="dropzone-hint">対応形式: mp3, mp4 ／ 最大 2GB</p>
+                    <p class="dropzone-hint">対応形式: mp3 / mp4 / m4a / wav / mov ／ 最大 2GB</p>
                 </div>
             </template>
             <template x-if="fileName">
@@ -187,9 +187,11 @@ function uploadForm() {
             this.statusClass = '';
             this.showCleanupAction = false;
             // 拡張子チェック（クライアント側、UX 向上のみ。サーバー側でも検証する）
+            // v1.0.3 で mp3/mp4 に加え m4a/wav/mov を追加 (iPhone ボイスメモ等対応)
             const ext = f.name.toLowerCase().split('.').pop();
-            if (ext !== 'mp3' && ext !== 'mp4') {
-                this.statusMessage = '対応していないファイル形式です。mp3 か mp4 をご利用ください。';
+            const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'mov'];
+            if (!allowedExts.includes(ext)) {
+                this.statusMessage = '対応していないファイル形式です。mp3 / mp4 / m4a / wav / mov をご利用ください。';
                 this.statusClass = 'status-error';
                 this.reset();
                 return;
@@ -234,7 +236,13 @@ function uploadForm() {
         },
 
         readDuration(file) {
-            const isVideo = (file.type || '').startsWith('video/') || file.name.toLowerCase().endsWith('.mp4');
+            // v1.0.3: mp4 / mov は動画コンテナとして <video> で読み込む。
+            // m4a / wav / mp3 は音声のみなので <audio> で読み込む。
+            // file.type が空でも拡張子で判定できるようにフォールバック。
+            const lower = file.name.toLowerCase();
+            const isVideo = (file.type || '').startsWith('video/')
+                || lower.endsWith('.mp4')
+                || lower.endsWith('.mov');
             const el = document.createElement(isVideo ? 'video' : 'audio');
             el.preload = 'metadata';
             el.muted = true;
