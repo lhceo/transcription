@@ -626,7 +626,9 @@ html, body {
 .history-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
     margin-bottom: 12px;
 }
 
@@ -638,6 +640,58 @@ html, body {
 .history-count {
     font-size: 12px;
     color: var(--color-text-muted);
+    margin-right: auto; /* 右側のソート UI と離す */
+}
+
+/* v1.0.2: 履歴一覧のソートドロップダウン */
+.history-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+
+.history-sort-label {
+    white-space: nowrap;
+}
+
+.history-sort-select {
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+}
+
+.history-sort-select:hover {
+    border-color: var(--color-primary);
+}
+
+.history-sort-select:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.3);
+    outline-offset: 1px;
+    border-color: var(--color-primary);
+}
+
+/* v1.0.2: アップロード時の「古いものから整理する」リンク */
+.upload-cleanup-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--color-primary);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.upload-cleanup-link:hover {
+    color: var(--color-primary-hover);
 }
 
 .history-list {

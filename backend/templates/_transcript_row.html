@@ -1,10 +1,13 @@
-{# 履歴の1行。processing 中は HTMX で 5秒ごとに自分自身を再取得して状態更新する。 #}
+{# 履歴の1行。processing 中は HTMX で 5秒ごとに自分自身を再取得して状態更新する。
+   v1.0.2: data-sort-* 属性でクライアント側ソート (Alpine.js) に対応。 #}
 {% set is_pending = transcript.status in ('uploaded', 'processing') %}
 {% set audio_available = transcript.status == 'completed' and has_audio(transcript) %}
 <li
     class="history-item"
     id="transcript-{{ transcript.id }}"
     x-data="{ playerOpen: false }"
+    data-sort-date="{{ transcript.created_at.isoformat() }}"
+    data-sort-name="{{ display_name(transcript) }}"
     {% if is_pending %}
     hx-get="/api/transcripts/{{ transcript.id }}/row"
     hx-trigger="every 5s"

@@ -6,6 +6,11 @@
 {# v1.0.2: 月次コスト表示はヘッダーの cost インジケーター (base.html) に移行。
    既存の monthly-cost-summary セクションは廃止。 #}
 
+{# v1.0.2: クライアント側予防警告で使う、現在のストレージ使用量の
+   サーバーレンダ時点のスナップショット。ユーザーがファイルを選んだ
+   瞬間に「これをアップしたら 95% を超える」を判定する。 #}
+{% set _upload_su = storage_usage() %}
+
 <section class="upload-section">
     <form
         id="upload-form"
@@ -14,6 +19,9 @@
         hx-target="#history-list"
         hx-swap="afterbegin"
         hx-disabled-elt="find button, find select"
+        data-storage-used="{{ _upload_su.used_bytes }}"
+        data-storage-limit="{{ _upload_su.limit_bytes }}"
+        data-storage-hard-limit-percent="95"
         x-data="uploadForm()"
         @htmx:before-request="onStart()"
         @htmx:after-request="onDone($event)"
@@ -81,14 +89,45 @@
 
         <div class="upload-status" x-show="statusMessage" x-cloak>
             <p x-text="statusMessage" :class="statusClass"></p>
+            {# v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設。
+               クリックで履歴セクションへスクロール + 古い順ソートに切替。 #}
+            <button
+                type="button"
+                class="btn-link upload-cleanup-link"
+                x-show="showCleanupAction"
+                @click="triggerCleanup()"
+            >古いものから整理する</button>
         </div>
     </form>
 </section>
 
-<section class="history">
+{# v1.0.2: 履歴セクション。クライアント側ソート (Alpine.js) と
+   アップロードフォームからの「整理リンク」イベントに反応する。 #}
+<section
+    class="history"
+    id="history-section"
+    x-data="historyList()"
+    @cleanup-request.window="applyCleanupRequest()"
+>
     <div class="history-header">
         <h3 class="section-title">これまでの文字起こし</h3>
         <span class="history-count">{{ transcripts|length }} 件</span>
+        {# ソートドロップダウン: 履歴が 2 件以上ある時のみ表示 #}
+        {% if transcripts and transcripts|length > 1 %}
+        <label class="history-sort">
+            <span class="history-sort-label">並び順:</span>
+            <select
+                class="history-sort-select"
+                x-model="sortMode"
+                @change="applySort()"
+            >
+                <option value="date-desc">新しい順</option>
+                <option value="date-asc">古い順</option>
+                <option value="name-asc">名前順 (あ→ん)</option>
+                <option value="name-desc">名前順 (ん→あ)</option>
+            </select>
+        </label>
+        {% endif %}
     </div>
     <ul id="history-list" class="history-list">
         {% if transcripts %}
@@ -112,6 +151,8 @@ function uploadForm() {
         uploading: false,
         statusMessage: '',
         statusClass: '',
+        // v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設
+        showCleanupAction: false,
 
         get prettySize() {
             if (!this.fileSize) return '';
@@ -144,6 +185,7 @@ function uploadForm() {
             this.fileSize = f.size;
             this.statusMessage = '';
             this.statusClass = '';
+            this.showCleanupAction = false;
             // 拡張子チェック（クライアント側、UX 向上のみ。サーバー側でも検証する）
             const ext = f.name.toLowerCase().split('.').pop();
             if (ext !== 'mp3' && ext !== 'mp4') {
@@ -158,9 +200,37 @@ function uploadForm() {
                 this.reset();
                 return;
             }
+            // v1.0.2: ストレージ上限の予防警告。サーバーレンダ時点の使用量
+            // (data-storage-used) + 今のファイルサイズが 95% を超えるなら
+            // 送信前に止める。同時利用のレースで失敗するケースもあるが、
+            // 明らかにダメなケースをここで弾けるだけ十分な親切設計。
+            const form = document.getElementById('upload-form');
+            const usedBytes = parseInt(form.dataset.storageUsed || '0', 10);
+            const limitBytes = parseInt(form.dataset.storageLimit || '0', 10);
+            const hardPct = parseInt(form.dataset.storageHardLimitPercent || '95', 10);
+            if (limitBytes > 0 && usedBytes + f.size > limitBytes * hardPct / 100) {
+                const usedGB = (usedBytes / 1_000_000_000).toFixed(1);
+                const limitGB = (limitBytes / 1_000_000_000).toFixed(1);
+                this.statusMessage = `ストレージが満杯です (${usedGB} GB / ${limitGB} GB)。古いデータを削除してから再度アップロードしてください。`;
+                this.statusClass = 'status-error';
+                this.showCleanupAction = true;
+                this.reset();
+                return;
+            }
             // 音声長を読み取ってフォームに格納（処理時間目安の表示に使う）。
             // 失敗しても送信はそのまま続行する。
             this.readDuration(f);
+        },
+
+        // v1.0.2: 「古いものから整理する」リンクの動作。
+        // 履歴セクションへスクロールしつつ、Alpine カスタムイベントで
+        // ソート切替を依頼する (履歴側 historyList() で受信)。
+        triggerCleanup() {
+            window.dispatchEvent(new CustomEvent('cleanup-request'));
+            const section = document.getElementById('history-section');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         },
 
         readDuration(file) {
@@ -202,6 +272,7 @@ function uploadForm() {
             if (e.detail.successful) {
                 this.statusMessage = 'アップロードが完了しました。';
                 this.statusClass = 'status-success';
+                this.showCleanupAction = false;
                 this.reset();
                 // 履歴の空メッセージを消す
                 const empty = document.querySelector('.history-empty');
@@ -210,14 +281,56 @@ function uploadForm() {
             }
             // サーバー側のエラーメッセージ (例: 月次上限超過) があれば表示する
             let serverMessage = '';
+            let errorCode = '';
             try {
                 const body = JSON.parse(e.detail.xhr.responseText || '{}');
-                if (body && body.detail && body.detail.message) {
-                    serverMessage = body.detail.message;
+                if (body && body.detail) {
+                    serverMessage = body.detail.message || '';
+                    errorCode = body.detail.code || '';
                 }
             } catch (_) { /* fallthrough */ }
             this.statusMessage = serverMessage || 'アップロードに失敗しました。再度お試しください。';
             this.statusClass = 'status-error';
+            // v1.0.2: サーバー側がストレージ上限超過を返した場合は整理リンクを併設
+            this.showCleanupAction = (errorCode === 'STORAGE_HARD_LIMIT_EXCEEDED');
+        },
+    };
+}
+
+// v1.0.2: 履歴一覧のクライアント側ソート。4 モード (日付昇降・名前昇降)。
+// アップロードフォームからの cleanup-request カスタムイベントにも反応し、
+// 「古い順」に切り替えるショートカットとして機能する。
+function historyList() {
+    return {
+        sortMode: 'date-desc',
+
+        applySort() {
+            const list = document.getElementById('history-list');
+            if (!list) return;
+            // 空メッセージはソート対象外
+            const items = Array.from(list.querySelectorAll('.history-item'));
+            if (items.length < 2) return;
+            const mode = this.sortMode;
+            items.sort((a, b) => {
+                if (mode === 'date-desc') {
+                    return (b.dataset.sortDate || '').localeCompare(a.dataset.sortDate || '');
+                } else if (mode === 'date-asc') {
+                    return (a.dataset.sortDate || '').localeCompare(b.dataset.sortDate || '');
+                } else if (mode === 'name-asc') {
+                    return (a.dataset.sortName || '').localeCompare(b.dataset.sortName || '', 'ja');
+                } else if (mode === 'name-desc') {
+                    return (b.dataset.sortName || '').localeCompare(a.dataset.sortName || '', 'ja');
+                }
+                return 0;
+            });
+            // DOM 上で並び替え
+            items.forEach(item => list.appendChild(item));
+        },
+
+        // アップロードフォームからの「整理リンク」イベントで呼ばれる
+        applyCleanupRequest() {
+            this.sortMode = 'date-asc';
+            this.applySort();
         },
     };
 }
