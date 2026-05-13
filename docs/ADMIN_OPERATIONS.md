@@ -17,7 +17,7 @@
 | 文字起こし API | AssemblyAI (https://www.assemblyai.com/) |
 | 認証 | Google OAuth (`@lionheart.co.jp` ドメインのみ許可) |
 | DB | SQLite (`/data/app.db`、Railway の永続ボリューム) |
-| 音声ファイル保管 | `/data/audio/{transcript_id}.{mp3 or mp4}` |
+| 音声ファイル保管 | `/data/audio/{transcript_id}.{mp3 / mp4 / m4a / wav / mov}` |
 | ストレージ上限 | **5 GB**（Hobby Plan の制限） |
 
 設定値はすべて **Railway の Variables** で管理しています。コードに直書きしていません。
@@ -127,7 +127,7 @@
 ### 5.2 ストレージ容量の監視（Hobby Plan は 5 GB 上限）
 
 ⚠️ **重要**: 現在 Railway の Hobby Plan で運用しており、**ストレージ上限は 5 GB** です。
-音声 1 件あたり約 50〜120 MB（mp3/mp4 1〜2 時間ぶん）。社内 5〜8 人 × 月 10〜20 件ペースだと、**1〜2 ヶ月で 5 GB 到達する可能性**があります。
+音声 1 件あたり約 50〜120 MB（mp3 / mp4 / m4a / wav / mov、1〜2 時間ぶん）。社内 5〜8 人 × 月 10〜20 件ペースだと、**1〜2 ヶ月で 5 GB 到達する可能性**があります。
 
 v1.0.2 で以下の自動運用を導入したため、通常時は手動運用は不要です。
 
@@ -252,7 +252,7 @@ v1.0.2 で**自動削除が標準動作**になりました（5.2 節参照）�
 
 ### 7.3 アップロードが「失敗」になる
 
-1. ファイル形式が `.mp3` / `.mp4` か確認（他の形式は弾かれます）
+1. ファイル形式が `.mp3` / `.mp4` / `.m4a` / `.wav` / `.mov` のいずれかか確認（他の形式は弾かれます）
 2. サイズが 2GB 以下か確認
 3. AssemblyAI 側で API キー失効・残高不足の可能性 → AssemblyAI ダッシュボードで確認
 4. Railway の Logs で「`AssemblyAI 呼び出しで失敗`」を検索

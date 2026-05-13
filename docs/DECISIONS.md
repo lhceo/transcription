@@ -7,6 +7,63 @@
 
 ---
 
+## 2026-05-13: v1.0.3 スマホ対応の実装中に学んだ判断
+
+v1.0.3 のスコープ自体は同日のセッション (下記「v1.0.2 ストレージ管理機能とスマホ対応スコープを確定」) で決定済み。ここでは**実装中に踏んだ罠と、その結果採用した判断**を記録する。
+
+### 1. iOS Safari の `position: fixed` はキーボード裏に隠れる
+
+「ここで分割」FAB を画面下部に固定したが、iOS Safari ではソフトキーボード表示時に**レイアウトビューポート基準**で配置されるため、キーボードの裏に隠れた。
+
+**採用した解決策**: `visualViewport API` でキーボード高さを JS で取得し、CSS 変数 `--keyboard-height` に書き込む。CSS 側は `bottom: calc(16px + max(var(--keyboard-height), env(safe-area-inset-bottom)))` で常にキーボード上端のすぐ上に追従する (コミット 662b02b)。
+
+**学び**: モバイル Web の fixed positioning は visual viewport を意識する必要がある。`position: fixed; bottom: 0` は安全に見えて、実は iOS で罠になる。
+
+### 2. bottom sheet を安易に使わない
+
+UX-1 の当初計画では「ヘッダー指標タップ → スマホでは bottom sheet」と決めていたが、実機検証で以下の問題が判明:
+
+1. タップ位置 (右上のアイコン) と表示位置 (画面下) の連続性が崩れ、認知負荷が上がる
+2. 同じヘッダー領域にある**ハンバーガーメニューはタップ位置の直下に展開**するのに、ストレージだけ bottom sheet で挙動が一貫しない
+3. bottom sheet は画面の半分を占有する重量級 UI で、数行の状態表示には過剰
+4. 画面下部要素との重なり/見切れが発生する
+
+**採用した解決策**: PC と同じ「タップ位置直下のドロップダウン」で統一。スマホでは `max-width: calc(100vw - 24px)` で画面端のはみ出しを防ぐ (コミット ed856c5)。
+
+**学び**: bottom sheet が正解になるのは**長いリストからの選択、多段階入力、モーダル的な操作**など。**状態確認の小さな情報**には過剰で、タップ位置 → 表示位置の連続性を守るドロップダウンを優先する。詳細は memory `feedback_tap_to_display_continuity.md`。
+
+### 3. Jinja の `|tojson` は HTML 属性内で使わない
+
+ダッシュボードリネーム実装で `x-data="rowEditor({{ id }}, {{ name|tojson }}, ...)"` と書いたが、`|tojson` の出力ダブルクォートが HTML 属性のクォート境界と衝突し、本番でファイル名が表示されない不具合 (commit 1c3061a → fix 5f6470b)。
+
+**採用した解決策**: 初期データを `<li data-initial-name="{{ name }}">` のように data-* 属性として渡し、Alpine の `init()` で `this.$el.dataset.initialName` から読む。Jinja autoescape が `'` `"` `<` `>` を HTML エンティティに自動エスケープしてくれる。
+
+**学び**: `|tojson` は `<script>` ブロック専用。HTML 属性内では使わない。詳細は memory `feedback_tojson_html_attr.md`。
+
+### 4. iOS の input フォーカスズーム回避は font-size: 16px
+
+スマホで `<select>` や `<input>` をタップしたとき、フォントサイズが 13-15px だと iOS Safari がページを自動ズームイン (Form Zoom)。これは「読みやすくする」という Apple の意図だが、UI が壊れて見える。
+
+**採用した解決策**: モバイルメディアクエリで `.form-select` / `.detail-title-input` / `.segment-text-edit` / `.speaker-popup-input` のフォントサイズを 16px 以上に固定。
+
+**学び**: フォーカス可能要素はモバイルで 16px 以上必須。タッチターゲット (44px) と font-size (16px) はモバイル UI の二大鉄則。
+
+### 5. PC のダブルクリック編集モード入りはスマホで無効化
+
+詳細画面で本文ダブルクリックすると編集モードに入る Notta 互換動線があったが、iOS の拡大ジェスチャー (ダブルタップでズーム) と衝突。ユーザーが意図せず編集モードに入る事故を防ぐため、スマホでは `enterEditMode()` で `window.matchMedia('(max-width: 640px)')` 検出して無効化 (コミット 6da0845)。
+
+**学び**: クロスプラットフォーム UI では「PC で便利な操作」が「モバイルで邪魔」になる組み合わせを意識する。PC 用ショートカット (Shift+Return、ダブルクリック等) はメディアクエリ条件で分岐する。
+
+### 6. SQLite の `DateTime(timezone=True)` は嘘
+
+v1.0.2 で `expires_at` 計算を実装したところ本番で `TypeError: can't subtract offset-naive and offset-aware datetimes`。SQLite は `DateTime(timezone=True)` でも保存時に tzinfo を捨てる。
+
+**採用した解決策**: 読み戻し時に `_ensure_utc_aware()` で naive を UTC として解釈 (コミット 7a4c7de)。
+
+**学び**: v1.0.2 の hotfix だが v1.0.3 のドキュメント更新時に追記。SQLite + SQLAlchemy で datetime を扱うときは aware/naive の境界を意識する。アプリの書き込みは常に UTC で aware にしていれば、読み戻し時の変換は安全。
+
+---
+
 ## 2026-05-13: v1.0.2 ストレージ管理機能とスマホ対応スコープを確定
 
 ### 背景
