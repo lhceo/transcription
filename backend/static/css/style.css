@@ -1826,31 +1826,41 @@ a.history-item-filename:hover {
    ─────────────────────────────────────────────────────────────── */
 
 .segment-split-btn {
-    /* 編集モード時の表示は JS / x-show が制御するが、フォーカス状態に
-       応じた可視性は CSS のみで制御する。display を弄ると JS との
-       競合が起きるので opacity / pointer-events を使う。 */
+    /* 画面下部右側に fixed で配置する FAB (Floating Action Button) スタイル。
+       カードの末尾に inline 配置すると、長文セグメントを編集中はボタンが
+       スクロール下に隠れて見つけにくい問題があった (2026-05-13 検証で
+       スマホで顕著)。fixed + bottom で常に同じ位置に表示する。
+       env(safe-area-inset-bottom) で iOS のホームインジケーターと干渉しない。 */
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 50;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 4px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: 500;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1.4;
-    color: var(--color-primary);
-    background: var(--color-surface);
+    color: var(--color-surface);
+    background: var(--color-primary);
     border: 1px solid var(--color-primary);
-    border-radius: 6px;
+    border-radius: 999px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
     cursor: pointer;
     /* 通常は隠す。フォーカス時のみ visible に */
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.15s ease, background 0.12s ease, color 0.12s ease;
+    transform: translateY(8px);
+    transition:
+        opacity 0.18s ease,
+        transform 0.18s ease,
+        background 0.12s ease;
 }
 
 .segment-split-btn-icon {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
 }
 
@@ -1858,28 +1868,26 @@ a.history-item-filename:hover {
 .segment-text-edit:focus ~ .segment-split-btn {
     opacity: 1;
     pointer-events: auto;
+    transform: translateY(0);
 }
 
-/* ボタン自体への hover も visible に保つ (フォーカスが外れた瞬間に
-   消えてクリックできないのを防ぐ。pointerdown.prevent で focus は
-   textarea に残るが、フォールバックとして) */
-.segment-split-btn:hover,
+/* ボタン自体への hover (フォーカスが外れた瞬間に消えてクリックできない
+   のを防ぐ。pointerdown.prevent で focus は textarea に残るが、念のため) */
+.segment-split-btn:hover {
+    background: var(--color-primary-hover);
+}
+
 .segment-split-btn:focus {
-    opacity: 1;
-    pointer-events: auto;
-    background: var(--color-primary);
-    color: var(--color-surface);
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    outline-offset: 2px;
 }
 
-/* スマホで親指で押しやすいよう、タッチ可能領域を広げる */
+/* スマホでは少し小さめに収めつつ、タップしやすいサイズを維持 */
 @media (max-width: 640px) {
     .segment-split-btn {
-        padding: 8px 14px;
+        right: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        padding: 10px 14px;
         font-size: 13px;
-        margin-top: 6px;
-    }
-    .segment-split-btn-icon {
-        width: 14px;
-        height: 14px;
     }
 }
