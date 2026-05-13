@@ -1830,10 +1830,17 @@ a.history-item-filename:hover {
        カードの末尾に inline 配置すると、長文セグメントを編集中はボタンが
        スクロール下に隠れて見つけにくい問題があった (2026-05-13 検証で
        スマホで顕著)。fixed + bottom で常に同じ位置に表示する。
-       env(safe-area-inset-bottom) で iOS のホームインジケーターと干渉しない。 */
+       --keyboard-height は JS (visualViewport API) でソフトキーボードの
+       高さを書き込む。env(safe-area-inset-bottom) は iOS のホーム
+       インジケーター領域を避ける。max() でどちらか大きい方を採用 (キーボード
+       が出ているときは --keyboard-height が勝つ、出ていないときは
+       safe-area-inset-bottom が効く)。 */
     position: fixed;
     right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(
+        16px
+        + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
+    );
     z-index: 50;
     display: inline-flex;
     align-items: center;
@@ -1886,7 +1893,10 @@ a.history-item-filename:hover {
 @media (max-width: 640px) {
     .segment-split-btn {
         right: 12px;
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(
+            12px
+            + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
+        );
         padding: 10px 14px;
         font-size: 13px;
     }

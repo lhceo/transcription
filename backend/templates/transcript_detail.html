@@ -905,5 +905,32 @@ function segmentsApp(transcriptId, historyNames) {
         },
     };
 }
+
+// v1.0.3: iOS / Android のソフトキーボード表示時、「ここで分割」ボタンが
+// キーボード裏に隠れる問題への対策。
+//
+// position: fixed; bottom: 16px は LAYOUT viewport 基準で配置されるため、
+// キーボードが visual viewport を縮めても影響を受けない (キーボードの
+// 後ろに配置されてしまう)。
+// visualViewport API でキーボード高さを取得し、CSS 変数 --keyboard-height
+// に書き込むことで CSS 側で計算する。
+(function setupKeyboardOffset() {
+    if (!window.visualViewport) return;
+    const root = document.documentElement;
+    function updateKeyboardHeight() {
+        const vv = window.visualViewport;
+        // キーボード高さ = レイアウトビューポート底 - (visual viewport の底)
+        //              = window.innerHeight - (vv.offsetTop + vv.height)
+        const kbHeight = Math.max(
+            0,
+            window.innerHeight - (vv.offsetTop + vv.height),
+        );
+        root.style.setProperty('--keyboard-height', `${kbHeight}px`);
+    }
+    window.visualViewport.addEventListener('resize', updateKeyboardHeight);
+    window.visualViewport.addEventListener('scroll', updateKeyboardHeight);
+    // 初期化時にも実行 (キーボードが既に上がっている場合)
+    updateKeyboardHeight();
+})();
 </script>
 {% endblock %}
