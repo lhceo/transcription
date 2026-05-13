@@ -70,6 +70,28 @@
         {% endif %}
         <span class="meta-item">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
     </div>
+    {# v1.0.2: 自動削除カウントダウン。詳細画面では safe (30 日超) も
+       控えめに常時表示する。完了していない transcript には出ない。 #}
+    {% set _es = expiry_status(transcript) %}
+    {% if _es.expires_at %}
+        <div class="detail-expiry expiry-{{ _es.level }}">
+            <svg class="detail-expiry-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span class="detail-expiry-text">
+                {% if _es.level == 'critical' %}
+                    まもなく自動削除されます
+                {% elif _es.level == 'expired' %}
+                    自動削除予定
+                {% else %}
+                    あと {{ _es.days_left }} 日で自動削除されます
+                {% endif %}
+            </span>
+        </div>
+    {% endif %}
 </section>
 
 {% if has_audio(transcript) %}

@@ -65,6 +65,20 @@
             <span class="history-item-date">
                 {{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}
             </span>
+            {# v1.0.2: 自動削除カウントダウン。30 日超 (safe) は非表示、
+               7〜30 日 (warning) 黄、1〜7 日 (danger) 赤、当日 (critical) 赤。 #}
+            {% set _es = expiry_status(transcript) %}
+            {% if _es.show_on_dashboard %}
+                <span class="history-item-expiry expiry-{{ _es.level }}">
+                    {% if _es.level == 'critical' %}
+                        まもなく削除
+                    {% elif _es.level == 'expired' %}
+                        削除予定
+                    {% else %}
+                        あと {{ _es.days_left }} 日で削除
+                    {% endif %}
+                </span>
+            {% endif %}
         </div>
         {% if transcript.status == 'failed' and transcript.error_message %}
             <div class="history-item-error">

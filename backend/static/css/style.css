@@ -1608,3 +1608,77 @@ a.history-item-filename:hover {
         padding: 8px 16px;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.2: 自動削除カウントダウン表示 (履歴行 + 詳細画面)
+
+   表示ポリシー:
+   - 履歴行 (.history-item-expiry): 30 日超は非表示 (テンプレで制御)、
+     warning は黄、danger / critical / expired は赤
+   - 詳細画面 (.detail-expiry): 常時表示。safe は控えめグレー、
+     warning は黄、danger / critical / expired は赤
+   ─────────────────────────────────────────────────────────────── */
+
+/* 履歴行 (meta line 末尾) */
+.history-item-expiry {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.history-item-expiry.expiry-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.history-item-expiry.expiry-danger,
+.history-item-expiry.expiry-critical,
+.history-item-expiry.expiry-expired {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* 詳細画面 (タイトル下、meta の直下) */
+.detail-expiry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+    border-radius: 6px;
+}
+
+.detail-expiry-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.detail-expiry.expiry-safe {
+    color: var(--color-text-muted);
+    background: transparent;
+    padding-left: 0;
+    padding-right: 0;
+    font-weight: 400;
+}
+
+.detail-expiry.expiry-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.detail-expiry.expiry-danger,
+.detail-expiry.expiry-critical,
+.detail-expiry.expiry-expired {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 600;
+}
