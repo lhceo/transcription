@@ -46,11 +46,25 @@ class ExpiryStatus:
     show_on_dashboard: bool
 
 
+def _ensure_utc_aware(dt: datetime) -> datetime:
+    """naive datetime を UTC として解釈し aware datetime に変換する。
+
+    SQLite は `DateTime(timezone=True)` カラムでも保存時に tzinfo を捨てる
+    ため、DB から読み戻した completed_at 等は naive になる。本アプリは
+    書き込みを常に `datetime.now(timezone.utc)` で行っているので、naive
+    な値は UTC として解釈してよい。
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def transcript_expires_at(transcript: Any) -> datetime | None:
     """文字起こしの自動削除予定日時を返す。
 
     - 完了 (`completed_at` あり) かつ retention_days > 0 のときだけ値を返す
     - 未完了 / 自動削除無効化時は None
+    - SQLite からの naive datetime は UTC として扱う
     """
     completed_at = getattr(transcript, "completed_at", None)
     if completed_at is None:
@@ -59,7 +73,7 @@ def transcript_expires_at(transcript: Any) -> datetime | None:
     retention = settings.data_retention_days
     if retention <= 0:
         return None
-    return completed_at + timedelta(days=retention)
+    return _ensure_utc_aware(completed_at) + timedelta(days=retention)
 
 
 def _classify_level(days_left: int) -> ExpiryLevel:
