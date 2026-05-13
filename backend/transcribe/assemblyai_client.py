@@ -139,9 +139,25 @@ class AssemblyAIClient:
         return response.json()
 
     # ── /v2/transcript/:id (delete) ────────────────────────────────────────
+    # 削除はバックグラウンドジョブの最後に呼ばれるクリーンアップ操作。
+    # AssemblyAI 障害時にデフォルト 60 秒の読み取りタイムアウトまで待つと、
+    # event loop 上のジョブ完了処理が長時間ブロックされる。10 秒で打ち切る。
+    DELETE_TIMEOUT_SECONDS = 10
+
     async def delete_transcript(self, transcript_id: str) -> None:
         """AssemblyAI のサーバーから音声と結果データを削除依頼する。"""
-        response = await self._client.delete(f"/v2/transcript/{transcript_id}")
+        try:
+            response = await self._client.delete(
+                f"/v2/transcript/{transcript_id}",
+                timeout=httpx.Timeout(self.DELETE_TIMEOUT_SECONDS, connect=5),
+            )
+        except httpx.TimeoutException:
+            logger.warning(
+                "AssemblyAI 削除タイムアウト: id=%s (%ss で打ち切り)",
+                transcript_id,
+                self.DELETE_TIMEOUT_SECONDS,
+            )
+            return
         if response.status_code not in (200, 204):
             # 削除失敗はログだけ残して握りつぶす（処理は完了させたい）
             logger.warning(

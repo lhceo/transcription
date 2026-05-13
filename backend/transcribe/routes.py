@@ -16,12 +16,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Segment, Speaker, Transcript
+from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
 from backend.transcribe.eta import compute_eta_text
@@ -414,8 +415,6 @@ async def transcript_detail(
 
 def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
     """ユーザーが過去に使った話者名（直近順）。"""
-    from backend.db.models import SpeakerHistory
-
     rows = db.scalars(
         select(SpeakerHistory)
         .where(SpeakerHistory.user_id == user_id)
@@ -454,29 +453,31 @@ async def get_transcript_status(
 
 
 def _record_speaker_history(user_id: int, name: str, db: Session) -> None:
-    """話者名の使用履歴を記録する。重複しない名前のみ。"""
-    from datetime import datetime, timezone
+    """話者名の使用履歴を記録する。重複しない名前のみ。
 
-    from backend.db.models import SpeakerHistory
-
+    同一ユーザーが複数タブで同じ名前をほぼ同時にリネームしても、
+    UniqueConstraint(user_id, name) 違反で 500 にならないよう
+    SQLite の UPSERT (INSERT ... ON CONFLICT DO UPDATE) で原子的に処理する。
+    """
     name = (name or "").strip()
     if not name:
         return
-    existing = db.scalar(
-        select(SpeakerHistory).where(
-            SpeakerHistory.user_id == user_id, SpeakerHistory.name == name
-        )
-    )
+
     now = datetime.now(timezone.utc)
-    if existing is not None:
-        existing.last_used_at = now
-        existing.use_count = existing.use_count + 1
-    else:
-        db.add(
-            SpeakerHistory(
-                user_id=user_id, name=name, last_used_at=now, use_count=1
-            )
-        )
+    stmt = sqlite_insert(SpeakerHistory).values(
+        user_id=user_id,
+        name=name,
+        last_used_at=now,
+        use_count=1,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_id", "name"],
+        set_={
+            "last_used_at": now,
+            "use_count": SpeakerHistory.__table__.c.use_count + 1,
+        },
+    )
+    db.execute(stmt)
 
 
 def _check_speaker_name_collision(
