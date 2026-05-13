@@ -305,6 +305,75 @@ function uploadForm() {
     };
 }
 
+// v1.0.3: 履歴行ごとの Alpine state。プレイヤー開閉 + ファイル名インライン編集。
+// 詳細画面の titleEditor() と同じ操作モデルを採用 (Enter で保存、Esc で
+// キャンセル、鉛筆ボタンで編集モードに入る)。バックエンドは既存の
+// PATCH /api/transcripts/{id} を流用。
+function rowEditor(transcriptId, initialName, originalFilename) {
+    return {
+        // 既存の音声プレイヤー開閉状態
+        playerOpen: false,
+        // リネーム用 state
+        editing: false,
+        currentName: initialName,
+        draft: '',
+        saving: false,
+
+        startEdit() {
+            this.draft = this.currentName;
+            this.editing = true;
+            this.$nextTick(() => {
+                const input = this.$refs.titleInput;
+                if (input) { input.focus(); input.select(); }
+            });
+        },
+
+        cancelEdit() {
+            this.editing = false;
+            this.draft = '';
+        },
+
+        async saveTitle() {
+            if (this.saving) return;
+            const newName = (this.draft || '').trim();
+            this.saving = true;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newName }),
+                });
+                if (!res.ok) {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const body = await res.json();
+                        if (body && body.detail && body.detail.message) msg = body.detail.message;
+                    } catch (_) { /* fallthrough */ }
+                    alert(msg);
+                    return;
+                }
+                const body = await res.json();
+                // 空にした場合は title=null が返るので original_filename にフォールバック
+                let nameToShow = body.title;
+                if (!nameToShow) {
+                    nameToShow = body.original_filename || originalFilename || '';
+                }
+                this.currentName = nameToShow;
+                this.editing = false;
+                this.draft = '';
+                // ソート用の data 属性も更新して、現在のソート結果が壊れないようにする
+                if (this.$root && this.$root.dataset) {
+                    this.$root.dataset.sortName = nameToShow;
+                }
+            } catch (e) {
+                alert('保存に失敗しました');
+            } finally {
+                this.saving = false;
+            }
+        },
+    };
+}
+
 // v1.0.2: 履歴一覧のクライアント側ソート。4 モード (日付昇降・名前昇降)。
 // アップロードフォームからの cleanup-request カスタムイベントにも反応し、
 // 「古い順」に切り替えるショートカットとして機能する。

@@ -743,6 +743,67 @@ html, body {
     max-width: 600px;
 }
 
+/* v1.0.3: 履歴行内のファイル名リネーム UI */
+.history-item-name-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0; /* flex 子要素の overflow 用 */
+}
+
+.history-item-rename-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 6px;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.history-item-rename-btn:hover {
+    opacity: 1;
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--color-primary);
+}
+
+.history-item-rename-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.history-item-rename-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.history-item-rename-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 480px;
+    padding: 4px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.history-item-rename-input:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.3);
+    outline-offset: 1px;
+    border-color: var(--color-primary);
+}
+
 .history-item-meta {
     display: flex;
     gap: 12px;
