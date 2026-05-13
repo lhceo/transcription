@@ -1305,9 +1305,21 @@ a.history-item-filename:hover {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
+    /* v1.1: 音声プレイヤー (sticky top: 0、高さ ~60px) の真下に sticky させる。
+       v1.0 までは top: 8 だったが、v1.1 で sticky audio-player を追加した
+       ため、ツールバーがプレイヤーの裏に隠れて「編集を終了」を見失う問題が
+       発生。top を 70px (audio-player の高さ ~60 + 余白 10) に変更。 */
     position: sticky;
-    top: 8px;
+    top: 70px;
     z-index: 5;
+}
+
+@media (max-width: 640px) {
+    .detail-toolbar {
+        /* スマホでは音声プレイヤーが折り返して 80px 強になることがあるので
+           少し多めの余白を確保。 */
+        top: 90px;
+    }
 }
 
 .edit-hint {
