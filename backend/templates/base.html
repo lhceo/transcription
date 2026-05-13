@@ -19,6 +19,52 @@
             <nav class="nav">
                 {% block nav %}
                 {% if user %}
+                {# v1.0.2: ヘッダーにストレージ使用量インジケーター。
+                   通常時はグレー、警告域 (>= STORAGE_WARNING_PERCENT) で
+                   黄色、危険域 (>= STORAGE_DANGER_PERCENT) で赤になる。
+                   クリックで詳細ポップオーバーが開く。 #}
+                {% set _su = storage_usage() %}
+                <div class="header-indicator" x-data="{ open: false }">
+                    <button
+                        type="button"
+                        class="header-indicator-btn header-indicator-storage status-{{ _su.level }}"
+                        @click="open = !open"
+                        :aria-expanded="open.toString()"
+                        title="ストレージ使用量"
+                    >
+                        <svg class="header-indicator-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                            <path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"></path>
+                        </svg>
+                        <span class="header-indicator-value">{{ _su.percent }}%</span>
+                    </button>
+                    <div
+                        class="header-indicator-popover"
+                        x-show="open"
+                        x-cloak
+                        x-transition
+                        @click.outside="open = false"
+                        @keydown.escape.window="open = false"
+                    >
+                        <h4 class="header-indicator-popover-title">ストレージ使用量</h4>
+                        <div class="header-indicator-popover-bar">
+                            <div
+                                class="header-indicator-popover-bar-fill status-{{ _su.level }}"
+                                style="width: {{ _su.percent if _su.percent <= 100 else 100 }}%"
+                            ></div>
+                        </div>
+                        <p class="header-indicator-popover-value">
+                            {{ _su.used_pretty }} / {{ _su.limit_pretty }}
+                            <span class="header-indicator-popover-percent">({{ _su.percent }}%)</span>
+                        </p>
+                        {% if _su.is_danger %}
+                        <p class="header-indicator-popover-hint hint-danger">容量が満杯に近づいています。古い文字起こしを削除してください。</p>
+                        {% elif _su.is_warning %}
+                        <p class="header-indicator-popover-hint hint-warning">古い文字起こしを整理しましょう。</p>
+                        {% endif %}
+                    </div>
+                </div>
                 <a href="/help" class="nav-link nav-link-with-icon">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="10"></circle>
@@ -42,6 +88,34 @@
         </div>
     </header>
     {% endblock %}
+
+    {# v1.0.2: ストレージ警告バナー (70% 以上で表示)。
+       70-90% は黄色、90% 超は赤。ログイン済みかつ閾値超過時のみ表示。 #}
+    {% if user %}
+        {% set _banner_su = storage_usage() %}
+        {% if _banner_su.is_warning %}
+        <div class="storage-banner storage-banner-{{ _banner_su.level }}" role="alert">
+            <div class="container storage-banner-inner">
+                <svg class="storage-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span class="storage-banner-text">
+                    {% if _banner_su.is_danger %}
+                        容量が満杯に近づいています:
+                        <strong>{{ _banner_su.used_pretty }} / {{ _banner_su.limit_pretty }} ({{ _banner_su.percent }}%)</strong>
+                        — 削除してから新規アップロードしてください
+                    {% else %}
+                        ストレージ使用量:
+                        <strong>{{ _banner_su.used_pretty }} / {{ _banner_su.limit_pretty }} ({{ _banner_su.percent }}%)</strong>
+                        — 古い文字起こしを整理しましょう
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
 
     <main class="app-main">
         <div class="container">

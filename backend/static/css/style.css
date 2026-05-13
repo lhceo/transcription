@@ -1462,3 +1462,199 @@ a.history-item-filename:hover {
         columns: 1;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.2: ヘッダーストレージインジケーター + 警告バナー
+   ─────────────────────────────────────────────────────────────── */
+
+/* 共通: ステータス別のアクセントカラー。ストレージ・コスト両方で使う */
+.status-ok {
+    --indicator-color: var(--color-text-muted);
+    --indicator-bg: rgba(100, 116, 139, 0.08);
+    --indicator-border: var(--color-border);
+}
+.status-warning {
+    --indicator-color: #92400e;
+    --indicator-bg: #fef3c7;
+    --indicator-border: #fcd34d;
+}
+.status-danger {
+    --indicator-color: #991b1b;
+    --indicator-bg: #fee2e2;
+    --indicator-border: #fca5a5;
+}
+
+/* ヘッダー右側のインジケーター (ストレージ / コスト) */
+.header-indicator {
+    position: relative;
+    display: inline-flex;
+}
+
+.header-indicator-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--indicator-color);
+    background: var(--indicator-bg);
+    border: 1px solid var(--indicator-border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s ease, transform 0.06s ease;
+}
+
+.header-indicator-btn:hover {
+    background: var(--indicator-bg);
+    filter: brightness(0.96);
+}
+
+.header-indicator-btn:active {
+    transform: translateY(1px);
+}
+
+.header-indicator-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.header-indicator-value {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ポップオーバー (クリックで開く詳細表示) */
+.header-indicator-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 260px;
+    padding: 14px 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    z-index: 100;
+}
+
+.header-indicator-popover-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 10px;
+}
+
+.header-indicator-popover-bar {
+    height: 6px;
+    background: var(--color-border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.header-indicator-popover-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    background: var(--color-text-muted); /* ok */
+}
+
+.header-indicator-popover-bar-fill.status-warning {
+    background: #f59e0b;
+}
+
+.header-indicator-popover-bar-fill.status-danger {
+    background: #ef4444;
+}
+
+.header-indicator-popover-value {
+    font-size: 13px;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.header-indicator-popover-percent {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.header-indicator-popover-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.header-indicator-popover-hint.hint-warning {
+    color: #92400e;
+}
+
+.header-indicator-popover-hint.hint-danger {
+    color: #991b1b;
+    font-weight: 600;
+}
+
+/* 警告バナー (ヘッダーと main の間に出る) */
+.storage-banner {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.storage-banner-warning {
+    background: #fef3c7;
+    border-bottom-color: #fcd34d;
+}
+
+.storage-banner-danger {
+    background: #fee2e2;
+    border-bottom-color: #fca5a5;
+}
+
+.storage-banner-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.storage-banner-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.storage-banner-warning .storage-banner-icon,
+.storage-banner-warning .storage-banner-text {
+    color: #92400e;
+}
+
+.storage-banner-danger .storage-banner-icon,
+.storage-banner-danger .storage-banner-text {
+    color: #991b1b;
+    font-weight: 600;
+}
+
+.storage-banner-text strong {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* スマホ対応 (本格的なスマホ対応は v1.0.3 だが、ヘッダーが破綻しない最小調整は入れておく) */
+@media (max-width: 640px) {
+    .header-indicator-value {
+        display: none; /* 数値は隠してアイコン + 色だけにする */
+    }
+    .header-indicator-btn {
+        padding: 4px 8px;
+    }
+    .header-indicator-popover {
+        right: -8px;
+        min-width: 240px;
+    }
+    .storage-banner-inner {
+        font-size: 12px;
+        padding: 8px 16px;
+    }
+}
