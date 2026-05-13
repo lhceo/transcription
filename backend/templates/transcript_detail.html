@@ -256,22 +256,23 @@
                         {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
                     </header>
 
-                    {# 閲覧モード：div で表示。
-                       v1.1: クリック = シーク (+ 停止中も自動再生)。
-                       v1.1: 文字単位ハイライト用に <span> を 2 つに分割
-                       (.segment-text-progress + .segment-text-remaining)。
-                       v1.0.3: ダブルクリック (PC のみ) で編集モードに入る (既存)。 #}
+                    {# v1.1 Option C インラインエディタ:
+                       - View mode: クリック = シーク
+                       - Edit mode: クリック = この segment を textarea 化 + focus
+                       - Edit mode で他のセグメントを編集中はカラオケ div 表示 (黄色マーカー進行)
+                       - 文字単位ハイライト用に <span> を 2 つに分割
+                       - v1.0.3: ダブルクリック (PC のみ) で編集モードに入る + この segment を編集対象に #}
                     <div
                         class="segment-text"
-                        x-show="!editMode"
+                        x-show="!shouldShowTextarea({{ seg.id }})"
                         @click="seekToSegmentFromEvent($event)"
-                        @dblclick="enterEditMode()"
+                        @dblclick="enterEditModeForSegment($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
-                    {# 編集モード：textarea で表示 #}
+                    {# 編集モード + この segment を編集中: textarea が表示される #}
                     <textarea
                         class="segment-text-edit"
-                        x-show="editMode"
+                        x-show="shouldShowTextarea({{ seg.id }})"
                         x-cloak
                         data-segment-id="{{ seg.id }}"
                         @blur="onSegmentBlur($event)"
@@ -279,13 +280,11 @@
                         @keydown="onSegmentKeydown($event)"
                     >{{ seg.text_content }}</textarea>
                     {# v1.0.3: 「ここで分割」ボタン。textarea にフォーカスがあるときだけ
-                       表示 (CSS の :focus + 兄弟セレクタ)。pointerdown.prevent で
-                       focus 移動を阻止し、カーソル位置を保持したまま splitSegment を
-                       呼ぶ。PC では Shift+Return も併存する。 #}
+                       表示 (CSS の :focus + 兄弟セレクタ)。 #}
                     <button
                         type="button"
                         class="segment-split-btn"
-                        x-show="editMode"
+                        x-show="shouldShowTextarea({{ seg.id }})"
                         x-cloak
                         @pointerdown="$event.preventDefault()"
                         @click="onSplitButtonClick($event)"
@@ -539,16 +538,41 @@ function segmentsApp(transcriptId, historyNames) {
         autoScrollPaused: false,
         // 自動スクロール実行中フラグ (scroll event の自分起因/手動起因の区別)
         isAutoScrolling: false,
+        // v1.1 Option C インラインエディタ: 現在 textarea を表示しているセグメント ID。
+        // editMode が ON でも focusedEditingSegmentId が null なら全てのカードが
+        // カラオケ div を表示 (textarea は隠れる)。クリックで該当セグメントだけ
+        // textarea に変換される。null = 「どれも編集中ではない」
+        focusedEditingSegmentId: null,
+
+        // v1.1 Option C: このセグメントの textarea を表示すべきか判定。
+        // テンプレートの x-show="shouldShowTextarea({{ seg.id }})" から呼ばれる。
+        shouldShowTextarea(segId) {
+            return this.editMode && this.focusedEditingSegmentId === segId;
+        },
 
         init() {
             // textarea の自動サイズ調整を初期化
             this.$nextTick(() => this.resizeAllTextareas());
             // Shift+Return で動的に追加されたカードには x-show が効かないので、
-            // editMode の変化を監視して view/edit 表示を手動同期する。
+            // editMode / focusedEditingSegmentId の変化を監視して
+            // view/edit 表示を手動同期する。
             this.$watch('editMode', () => {
                 this.syncSegmentDisplay();
-                if (this.editMode) {
-                    this.$nextTick(() => this.resizeAllTextareas());
+                // 編集モードを OFF にしたら、編集中だった textarea があれば
+                // blur (save 経由) してフォーカス状態もクリアする
+                if (!this.editMode && this.focusedEditingSegmentId !== null) {
+                    this.endEditingCurrentSegment();
+                }
+            });
+            this.$watch('focusedEditingSegmentId', () => {
+                this.syncSegmentDisplay();
+                // textarea になった瞬間にサイズ調整
+                if (this.focusedEditingSegmentId !== null) {
+                    this.$nextTick(() => {
+                        const card = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
+                        const ta = card?.querySelector('.segment-text-edit');
+                        if (ta) this.fitToContent(ta);
+                    });
                 }
             });
             // v1.1: 音声プレイヤーの timeupdate にフックして同期ハイライトを開始
@@ -557,6 +581,34 @@ function segmentsApp(transcriptId, historyNames) {
             this.setupKeyboardShortcuts();
             // v1.1: 手動スクロール検知 (auto-scroll の中断条件)
             this.setupManualScrollDetection();
+        },
+
+        // v1.1: 編集を終了する前に、編集中の textarea があれば blur (save 経由) する
+        endEditingCurrentSegment() {
+            const id = this.focusedEditingSegmentId;
+            if (id === null) return;
+            const card = document.querySelector(`.segment-card[data-segment-id="${id}"]`);
+            const ta = card?.querySelector('.segment-text-edit');
+            if (ta && document.activeElement === ta) {
+                ta.blur(); // onSegmentBlur が動いて save される
+            }
+            this.focusedEditingSegmentId = null;
+        },
+
+        // v1.1: ダブルクリック (PC のみ) → 編集モード ON + この segment を編集対象に
+        enterEditModeForSegment(event) {
+            // スマホでは @dblclick を起点とする編集モード入りを無効化
+            // (v1.0.3 と同方針、iOS の拡大ジェスチャー衝突回避)
+            if (window.matchMedia('(max-width: 640px)').matches) return;
+            const target = event.currentTarget || event.target;
+            const card = target.closest ? target.closest('.segment-card') : null;
+            if (!card) return;
+            this.editMode = true;
+            this.focusedEditingSegmentId = parseInt(card.dataset.segmentId, 10);
+            this.$nextTick(() => {
+                const ta = card.querySelector('.segment-text-edit');
+                if (ta) { ta.focus(); this.fitToContent(ta); }
+            });
         },
 
         // v1.1: ユーザーの手動スクロール (wheel / touchmove) を検知して
@@ -656,14 +708,32 @@ function segmentsApp(transcriptId, historyNames) {
             });
         },
 
-        // v1.1: セグメント本文クリック → そのセグメント開始時刻にシーク
-        // (View mode のみ。Edit mode は textarea フォーカスで編集)
+        // v1.1: セグメント本文クリック動作はモード依存
+        // - View mode: そのセグメント開始時刻にシーク + 停止中なら自動再生
+        // - Edit mode: そのセグメントを textarea に変換して focus (Option C インラインエディタ)
         seekToSegmentFromEvent(event) {
-            // editMode 中は seekToSegment しない (テキスト編集に集中する)
-            if (this.editMode) return;
             const target = event.currentTarget || event.target;
             const card = target.closest ? target.closest('.segment-card') : null;
             if (!card) return;
+
+            if (this.editMode) {
+                // v1.1 Option C: この segment を編集対象に
+                const cardId = parseInt(card.dataset.segmentId, 10);
+                // 別の segment の textarea が編集中なら先に blur して save
+                if (this.focusedEditingSegmentId !== null && this.focusedEditingSegmentId !== cardId) {
+                    const prevCard = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
+                    const prevTa = prevCard?.querySelector('.segment-text-edit');
+                    if (prevTa && document.activeElement === prevTa) prevTa.blur();
+                }
+                this.focusedEditingSegmentId = cardId;
+                this.$nextTick(() => {
+                    const ta = card.querySelector('.segment-text-edit');
+                    if (ta) { ta.focus(); this.fitToContent(ta); }
+                });
+                return;
+            }
+
+            // View mode: シーク + 自動再生
             this.seekToCard(card);
         },
 
@@ -801,16 +871,20 @@ function segmentsApp(transcriptId, historyNames) {
             }
         },
 
+        // v1.1 Option C: 各カードの segment-text div / textarea / 分割ボタンの
+        // 表示を focusedEditingSegmentId に基づき切替する。
+        // - 編集中の 1 セグメント: textarea + 分割ボタン
+        // - それ以外: segment-text div (カラオケ可能)
         syncSegmentDisplay() {
-            document.querySelectorAll('#segment-list .segment-text').forEach(d => {
-                d.style.display = this.editMode ? 'none' : '';
-            });
-            document.querySelectorAll('#segment-list .segment-text-edit').forEach(t => {
-                t.style.display = this.editMode ? '' : 'none';
-            });
-            // v1.0.3: 動的挿入カードの「ここで分割」ボタンも同期
-            document.querySelectorAll('#segment-list .segment-split-btn').forEach(b => {
-                b.style.display = this.editMode ? '' : 'none';
+            document.querySelectorAll('#segment-list .segment-card').forEach(card => {
+                const cardId = parseInt(card.dataset.segmentId, 10);
+                const isEditingThis = this.editMode && cardId === this.focusedEditingSegmentId;
+                const textDiv = card.querySelector('.segment-text');
+                const textarea = card.querySelector('.segment-text-edit');
+                const splitBtn = card.querySelector('.segment-split-btn');
+                if (textDiv) textDiv.style.display = isEditingThis ? 'none' : '';
+                if (textarea) textarea.style.display = isEditingThis ? '' : 'none';
+                if (splitBtn) splitBtn.style.display = isEditingThis ? '' : 'none';
             });
         },
 
@@ -936,6 +1010,20 @@ function segmentsApp(transcriptId, historyNames) {
             const original = t.dataset.originalText !== undefined
                 ? t.dataset.originalText
                 : t.defaultValue.trim();
+
+            // v1.1 Option C: blur 後にこの segment の編集状態を解除するか判定。
+            // 別の segment-text-edit にフォーカスが移った場合 (= ユーザーが
+            // 他のカードをクリックして編集対象を変えた場合) は解除しない。
+            // setTimeout(0) で click handler の focusedEditingSegmentId 更新を
+            // 先に走らせる。
+            setTimeout(() => {
+                if (this.focusedEditingSegmentId === segmentId) {
+                    // 編集対象が変わっていない = 真の blur (どこにもフォーカス移動なし、
+                    // または非 textarea 要素にフォーカス) → 編集状態を解除
+                    this.focusedEditingSegmentId = null;
+                }
+            }, 0);
+
             if (newText === original) return;
 
             try {
@@ -1041,13 +1129,19 @@ function segmentsApp(transcriptId, historyNames) {
                 currentCard.after(newCard);
                 this.recolorByName();
 
-                // 新カードのテキストエリアにフォーカス
-                const newTextarea = newCard.querySelector('.segment-text-edit');
-                if (newTextarea) {
-                    this.fitToContent(newTextarea);
-                    newTextarea.focus();
-                    newTextarea.setSelectionRange(0, 0);
-                }
+                // v1.1 Option C: 分割後は新カードを編集対象に切り替える
+                // (focusedEditingSegmentId を更新 → watcher で syncSegmentDisplay
+                // が走り、新カードの textarea が表示される)
+                this.focusedEditingSegmentId = data.new.id;
+                // $nextTick で表示が反映されてから focus
+                this.$nextTick(() => {
+                    const newTextarea = newCard.querySelector('.segment-text-edit');
+                    if (newTextarea) {
+                        this.fitToContent(newTextarea);
+                        newTextarea.focus();
+                        newTextarea.setSelectionRange(0, 0);
+                    }
+                });
             } catch (e) {
                 alert('分割に失敗しました: ' + e.message);
             }
@@ -1106,7 +1200,7 @@ function segmentsApp(transcriptId, historyNames) {
             viewDiv.className = 'segment-text';
             viewDiv.style.display = this.editMode ? 'none' : '';
             this.setSegmentTextContent(viewDiv, newSeg.text);
-            viewDiv.addEventListener('dblclick', () => this.enterEditMode());
+            viewDiv.addEventListener('dblclick', (e) => this.enterEditModeForSegment(e));
             // v1.1: クリック = シーク (View mode のみ。editMode 中の判定は
             // seekToSegmentFromEvent 内で行う)。Alpine の @click は動的挿入
             // 要素には効かないので addEventListener で直接バインド。
