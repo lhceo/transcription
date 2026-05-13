@@ -1813,24 +1813,20 @@ a.history-item-filename:hover {
         margin-top: 4px;
     }
 
-    /* ストレージ/コストインジケーターのポップオーバーを bottom sheet 化
-       スマホでは画面下から出るシートとして表示する (UX-1 確定通り) */
+    /* ストレージ/コストインジケーターのポップオーバーは
+       PC と同じドロップダウン挙動 (タップ位置の直下に展開) を維持する。
+       2026-05-13 のスマホ実機検証で、bottom sheet 表示は「タップ位置と
+       表示位置の連続性」を崩し、ハンバーガーメニューと一貫性が取れず、
+       かつページ下部要素との重なり/見切れ問題を発生させたため撤回。
+       画面端でのはみ出しは max-width: calc(100vw - 24px) で防ぐ。 */
     .header-indicator-popover {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        top: auto;
-        min-width: 0;
-        margin: 0;
-        padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-        border-radius: 14px 14px 0 0;
-        box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);
-        z-index: 120;
+        min-width: 240px;
+        max-width: calc(100vw - 24px);
+        padding: 14px 16px;
     }
     .header-indicator-popover-title {
-        font-size: 15px;
-        margin-bottom: 14px;
+        font-size: 14px;
+        margin-bottom: 10px;
     }
 }
 
