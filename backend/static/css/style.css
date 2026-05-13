@@ -447,58 +447,8 @@ html, body {
 
 /* ── 月次コスト表示 ─────────────────────────────────────── */
 
-.monthly-cost-summary {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding: 10px 16px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    font-size: 13px;
-    flex-wrap: wrap;
-}
-
-.monthly-cost-label {
-    color: var(--color-text-muted);
-    font-weight: 600;
-}
-
-.monthly-cost-value {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--color-text);
-}
-
-.monthly-cost-limit {
-    color: var(--color-text-muted);
-    font-weight: 500;
-    margin-left: 4px;
-}
-
-.monthly-cost-bar {
-    flex: 1;
-    min-width: 120px;
-    height: 6px;
-    background: #e5e7eb;
-    border-radius: 999px;
-    overflow: hidden;
-}
-
-.monthly-cost-bar-fill {
-    height: 100%;
-    background: #3b82f6;
-    transition: width 0.3s ease;
-}
-
-.monthly-cost-bar-fill.is-warn {
-    background: #f59e0b;
-}
-
-.monthly-cost-bar-fill.is-over {
-    background: #ef4444;
-}
+/* v1.0.2: 月次コストサマリは header-indicator-cost (base.html) に移行。
+   関連スタイルは末尾の v1.0.2 セクション参照。 */
 
 /* ── アップロードフォーム ─────────────────────────────────── */
 

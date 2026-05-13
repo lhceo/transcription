@@ -24,7 +24,11 @@ from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
-from backend.transcribe.cost import next_month_start_jst_text, will_exceed_limit
+from backend.transcribe.cost import (
+    get_cost_summary,
+    next_month_start_jst_text,
+    will_exceed_limit,
+)
 from backend.transcribe.eta import compute_eta_text
 from backend.transcribe.display import has_stored_audio, transcript_display_name
 from backend.transcribe.retention import expiry_status
@@ -49,6 +53,7 @@ templates.env.globals["display_name"] = transcript_display_name
 templates.env.globals["has_audio"] = has_stored_audio
 templates.env.globals["expiry_status"] = expiry_status
 templates.env.globals["storage_usage"] = get_storage_summary
+templates.env.globals["cost_usage"] = get_cost_summary
 
 router = APIRouter()
 

@@ -121,7 +121,7 @@ templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 from backend.transcribe.eta import compute_eta_text  # noqa: E402
 templates.env.globals["eta_text"] = compute_eta_text
 
-from backend.transcribe.cost import current_month_cost_yen  # noqa: E402
+from backend.transcribe.cost import get_cost_summary  # noqa: E402
 from backend.transcribe.display import has_stored_audio, transcript_display_name  # noqa: E402
 from backend.transcribe.retention import expiry_status  # noqa: E402
 from backend.transcribe.storage_usage import get_summary as get_storage_summary  # noqa: E402
@@ -129,6 +129,7 @@ templates.env.globals["display_name"] = transcript_display_name
 templates.env.globals["has_audio"] = has_stored_audio
 templates.env.globals["expiry_status"] = expiry_status
 templates.env.globals["storage_usage"] = get_storage_summary
+templates.env.globals["cost_usage"] = get_cost_summary
 
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)
@@ -149,7 +150,12 @@ async def home(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> HTMLResponse:
-    """ホーム画面。認証必須。アップロード UI + 履歴一覧。"""
+    """ホーム画面。認証必須。アップロード UI + 履歴一覧。
+
+    v1.0.2 以降、月次コストはヘッダーの cost インジケーター (base.html)
+    で表示するためここでは渡さない。ストレージ使用量も同様にヘッダー側で
+    取得する。
+    """
     stmt = (
         select(Transcript)
         .where(Transcript.user_id == user["id"])
@@ -159,9 +165,6 @@ async def home(
     )
     transcripts = list(db.scalars(stmt))
 
-    monthly_cost = current_month_cost_yen(db)
-    monthly_limit = settings.monthly_cost_limit_yen
-
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -170,8 +173,6 @@ async def home(
             "env": settings.env,
             "user": user,
             "transcripts": transcripts,
-            "monthly_cost": monthly_cost,
-            "monthly_limit": monthly_limit,
         },
     )
 

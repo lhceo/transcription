@@ -19,11 +19,11 @@
             <nav class="nav">
                 {% block nav %}
                 {% if user %}
-                {# v1.0.2: ヘッダーにストレージ使用量インジケーター。
-                   通常時はグレー、警告域 (>= STORAGE_WARNING_PERCENT) で
-                   黄色、危険域 (>= STORAGE_DANGER_PERCENT) で赤になる。
+                {# v1.0.2: ヘッダーにストレージ + コスト使用量インジケーター。
+                   通常時はグレー、警告域で黄色、危険域で赤になる。
                    クリックで詳細ポップオーバーが開く。 #}
                 {% set _su = storage_usage() %}
+                {% set _cu = cost_usage() %}
                 <div class="header-indicator" x-data="{ open: false }">
                     <button
                         type="button"
@@ -62,6 +62,53 @@
                         <p class="header-indicator-popover-hint hint-danger">容量が満杯に近づいています。古い文字起こしを削除してください。</p>
                         {% elif _su.is_warning %}
                         <p class="header-indicator-popover-hint hint-warning">古い文字起こしを整理しましょう。</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="header-indicator" x-data="{ open: false }">
+                    <button
+                        type="button"
+                        class="header-indicator-btn header-indicator-cost status-{{ _cu.level if _cu.level != 'unlimited' else 'ok' }}"
+                        @click="open = !open"
+                        :aria-expanded="open.toString()"
+                        title="今月の利用額"
+                    >
+                        <svg class="header-indicator-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span class="header-indicator-value">{{ _cu.cost_pretty }}</span>
+                    </button>
+                    <div
+                        class="header-indicator-popover"
+                        x-show="open"
+                        x-cloak
+                        x-transition
+                        @click.outside="open = false"
+                        @keydown.escape.window="open = false"
+                    >
+                        <h4 class="header-indicator-popover-title">今月の利用額</h4>
+                        {% if _cu.has_limit %}
+                        <div class="header-indicator-popover-bar">
+                            <div
+                                class="header-indicator-popover-bar-fill status-{{ _cu.level }}"
+                                style="width: {{ _cu.percent if _cu.percent <= 100 else 100 }}%"
+                            ></div>
+                        </div>
+                        <p class="header-indicator-popover-value">
+                            {{ _cu.cost_pretty }} / {{ _cu.limit_pretty }}
+                            <span class="header-indicator-popover-percent">({{ _cu.percent }}%)</span>
+                        </p>
+                        {% if _cu.is_danger %}
+                        <p class="header-indicator-popover-hint hint-danger">月次予算に達しました。新規アップロードは月初までお待ちください。</p>
+                        {% elif _cu.is_warning %}
+                        <p class="header-indicator-popover-hint hint-warning">予算の {{ _cu.percent }}% に達しています。</p>
+                        {% endif %}
+                        {% else %}
+                        <p class="header-indicator-popover-value">
+                            {{ _cu.cost_pretty }}
+                            <span class="header-indicator-popover-percent">/ 上限なし</span>
+                        </p>
                         {% endif %}
                     </div>
                 </div>

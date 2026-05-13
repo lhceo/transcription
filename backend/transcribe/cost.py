@@ -10,15 +10,23 @@ DB 上の日時は UTC で保存されているので、月初の境界を UTC �
 
 from __future__ import annotations
 
+import logging
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.config import load_settings
+from backend.db import SessionLocal
 from backend.db.models import Transcript
+
+logger = logging.getLogger(__name__)
+
+CostLevel = Literal["ok", "warning", "danger", "unlimited"]
 
 # 1 時間あたりの概算コスト (円)。実料金 / 為替に応じて調整。
 COST_YEN_PER_HOUR: dict[str, int] = {
@@ -105,6 +113,83 @@ def will_exceed_limit(
     estimate_with_margin = int(math.ceil(base_estimate * (1.0 + safety_margin)))
     current = current_month_cost_yen(db)
     return (current + estimate_with_margin > limit_yen, estimate_with_margin, current)
+
+
+@dataclass(frozen=True)
+class CostSummary:
+    """月次コストのスナップショット。ヘッダーインジケーター用。"""
+
+    cost_yen: int
+    # 上限。0 なら上限なし運用。
+    limit_yen: int
+    # 0-100+ の int。上限なしなら 0 を返す。
+    percent: int
+    # 表示用テキスト
+    cost_pretty: str
+    # 上限の表示。上限なしなら None
+    limit_pretty: str | None
+    level: CostLevel
+
+    @property
+    def has_limit(self) -> bool:
+        return self.limit_yen > 0
+
+    @property
+    def is_warning(self) -> bool:
+        return self.level in ("warning", "danger")
+
+    @property
+    def is_danger(self) -> bool:
+        return self.level == "danger"
+
+
+# コストの閾値 (%)。ストレージとは別に「80% で注意、100% で危険」とする。
+_COST_WARNING_PERCENT = 80
+_COST_DANGER_PERCENT = 100
+
+
+def get_cost_summary() -> CostSummary:
+    """現在の月次コストサマリを返す。テンプレートグローバルで使う。
+
+    DB セッションは自前で開く (リクエストスコープの依存とは独立)。
+    SQLite なので開閉コストは無視できる。
+    """
+    settings = load_settings()
+    limit = settings.monthly_cost_limit_yen
+    try:
+        with SessionLocal() as db:
+            cost = current_month_cost_yen(db)
+    except Exception:
+        logger.exception("月次コスト集計に失敗")
+        cost = 0
+
+    if limit <= 0:
+        # 上限なし運用
+        return CostSummary(
+            cost_yen=cost,
+            limit_yen=0,
+            percent=0,
+            cost_pretty=f"¥{cost:,}",
+            limit_pretty=None,
+            level="unlimited",
+        )
+
+    percent = int(cost * 100 / limit) if limit > 0 else 0
+    if percent >= _COST_DANGER_PERCENT:
+        level: CostLevel = "danger"
+    elif percent >= _COST_WARNING_PERCENT:
+        level = "warning"
+    else:
+        level = "ok"
+
+    return CostSummary(
+        cost_yen=cost,
+        limit_yen=limit,
+        percent=percent,
+        cost_pretty=f"¥{cost:,}",
+        limit_pretty=f"¥{limit:,}",
+        level=level,
+    )
 
 
 def next_month_start_jst_text(now_utc: datetime | None = None) -> str:

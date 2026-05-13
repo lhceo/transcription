@@ -3,24 +3,8 @@
 {% block title %}ホーム - 音声文字起こし{% endblock %}
 
 {% block content %}
-<section class="monthly-cost-summary">
-    <div class="monthly-cost-label">今月の利用額</div>
-    <div class="monthly-cost-value">
-        ¥{{ "{:,}".format(monthly_cost) }}
-        {% if monthly_limit and monthly_limit > 0 %}
-            <span class="monthly-cost-limit">/ ¥{{ "{:,}".format(monthly_limit) }}</span>
-        {% else %}
-            <span class="monthly-cost-limit">/ 上限なし</span>
-        {% endif %}
-    </div>
-    {% if monthly_limit and monthly_limit > 0 %}
-        {% set pct = (monthly_cost * 100 / monthly_limit)|round(0, 'floor')|int %}
-        <div class="monthly-cost-bar">
-            <div class="monthly-cost-bar-fill {% if pct >= 100 %}is-over{% elif pct >= 80 %}is-warn{% endif %}"
-                 style="width: {{ pct if pct <= 100 else 100 }}%"></div>
-        </div>
-    {% endif %}
-</section>
+{# v1.0.2: 月次コスト表示はヘッダーの cost インジケーター (base.html) に移行。
+   既存の monthly-cost-summary セクションは廃止。 #}
 
 <section class="upload-section">
     <form
