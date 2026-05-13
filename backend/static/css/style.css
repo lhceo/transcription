@@ -2092,3 +2092,93 @@ a.history-item-filename:hover {
         height: 40px;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.3: アップロード UI のスマホ最適化 (#4 part 3)
+
+   - ドロップゾーンのパディング / フォントサイズ調整
+   - 「ファイルを選択」「アップロード開始」ボタンを 44-48px の
+     タッチターゲットに
+   - <select> は font-size: 16px に (iOS Safari がフォーカス時に
+     ページをズームインする挙動を防ぐ。13-15px だと自動ズーム発生)
+   - 「アップロード開始」を全幅化 + 大きく
+   ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+    .upload-section {
+        margin-bottom: 24px;
+    }
+
+    .dropzone {
+        padding: 24px 14px;
+    }
+
+    .dropzone-text {
+        font-size: 14px;
+    }
+
+    .dropzone-or {
+        font-size: 11px;
+    }
+
+    .dropzone-hint {
+        font-size: 11px;
+        line-height: 1.5;
+        margin-top: 10px;
+    }
+
+    /* 「ファイルを選択」ボタン (label.btn-primary)、「取り消す」ボタン */
+    .dropzone-empty .btn,
+    .dropzone-file .btn-link {
+        padding: 11px 20px;
+        font-size: 15px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* upload-controls の内側パディングを少し詰める */
+    .upload-controls {
+        padding: 14px;
+    }
+
+    .form-row {
+        margin-bottom: 14px;
+    }
+
+    .form-label {
+        font-size: 13px;
+        margin-bottom: 8px;
+    }
+
+    /* <select> は iOS のフォーカスズーム回避のため 16px 以上必須。
+       padding/min-height でタッチターゲット 44px を確保。 */
+    .form-select {
+        font-size: 16px;
+        padding: 12px;
+        min-height: 44px;
+    }
+
+    /* アップロード開始ボタン: 全幅 + 大きめ */
+    .upload-controls .btn-large {
+        width: 100%;
+        padding: 14px;
+        font-size: 16px;
+        min-height: 48px;
+    }
+
+    .upload-status {
+        font-size: 13px;
+        padding: 11px 14px;
+    }
+
+    /* 「古いものから整理する」リンクもタッチしやすく */
+    .upload-cleanup-link {
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        margin-top: 8px;
+        font-size: 14px;
+    }
+}
