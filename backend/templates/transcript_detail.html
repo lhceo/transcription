@@ -481,6 +481,11 @@ function segmentsApp(transcriptId, historyNames) {
 
         enterEditMode() {
             if (this.editMode) return;
+            // v1.0.3: スマホでは @dblclick を起点とする編集モード入りを無効化。
+            // iOS の拡大ジェスチャー (ダブルタップでズーム) と衝突して
+            // ユーザーが意図せず編集モードに入る事故を防ぐ。
+            // 編集モードへの入り口は「編集する」ボタンに一本化する。
+            if (window.matchMedia('(max-width: 640px)').matches) return;
             this.editMode = true;
             this.$nextTick(() => this.resizeAllTextareas());
         },
