@@ -213,6 +213,29 @@
                         @input="onSegmentInput($event)"
                         @keydown="onSegmentKeydown($event)"
                     >{{ seg.text_content }}</textarea>
+                    {# v1.0.3: 「ここで分割」ボタン。textarea にフォーカスがあるときだけ
+                       表示 (CSS の :focus + 兄弟セレクタ)。pointerdown.prevent で
+                       focus 移動を阻止し、カーソル位置を保持したまま splitSegment を
+                       呼ぶ。PC では Shift+Return も併存する。 #}
+                    <button
+                        type="button"
+                        class="segment-split-btn"
+                        x-show="editMode"
+                        x-cloak
+                        @pointerdown="$event.preventDefault()"
+                        @click="onSplitButtonClick($event)"
+                        aria-label="カーソル位置でセグメントを分割"
+                        title="カーソル位置でセグメントを分割します"
+                    >
+                        <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="6" cy="6" r="3"></circle>
+                            <circle cx="6" cy="18" r="3"></circle>
+                            <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                            <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                            <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                        </svg>
+                        <span>ここで分割</span>
+                    </button>
                 </li>
             {% endfor %}
         </ol>
@@ -399,6 +422,10 @@ function segmentsApp(transcriptId, historyNames) {
             document.querySelectorAll('#segment-list .segment-text-edit').forEach(t => {
                 t.style.display = this.editMode ? '' : 'none';
             });
+            // v1.0.3: 動的挿入カードの「ここで分割」ボタンも同期
+            document.querySelectorAll('#segment-list .segment-split-btn').forEach(b => {
+                b.style.display = this.editMode ? '' : 'none';
+            });
         },
 
         recolorByName() {
@@ -562,6 +589,19 @@ function segmentsApp(transcriptId, historyNames) {
             }
         },
 
+        // v1.0.3: 「ここで分割」ボタンのクリックハンドラ。
+        // ボタン直前の textarea を探して splitSegmentAtCursor を呼ぶ。
+        // pointerdown.prevent でフォーカスは textarea に残っているので、
+        // textarea.selectionStart に分割位置が保持されている。
+        // (Shift+Return キー操作と同じロジックを再利用)
+        onSplitButtonClick(event) {
+            const card = event.currentTarget.closest('.segment-card');
+            if (!card) return;
+            const textarea = card.querySelector('.segment-text-edit');
+            if (!textarea) return;
+            this.splitSegmentAtCursor(textarea);
+        },
+
         // ── セグメント分割 ─────────────────────────────────────────
         async splitSegmentAtCursor(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
@@ -679,9 +719,32 @@ function segmentsApp(transcriptId, historyNames) {
             textarea.addEventListener('input', (e) => this.onSegmentInput(e));
             textarea.addEventListener('keydown', (e) => this.onSegmentKeydown(e));
 
+            // v1.0.3: 動的に作られた新カードにも「ここで分割」ボタンを付ける。
+            // Alpine の @click / @pointerdown は動的挿入では効かないので
+            // addEventListener で直接バインドする (badge と同じ理由)。
+            const splitBtn = document.createElement('button');
+            splitBtn.type = 'button';
+            splitBtn.className = 'segment-split-btn';
+            splitBtn.title = 'カーソル位置でセグメントを分割します';
+            splitBtn.setAttribute('aria-label', 'カーソル位置でセグメントを分割');
+            splitBtn.style.display = this.editMode ? '' : 'none';
+            splitBtn.innerHTML = `
+                <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="6" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                    <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                    <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                </svg>
+                <span>ここで分割</span>
+            `;
+            splitBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+            splitBtn.addEventListener('click', (e) => this.onSplitButtonClick(e));
+
             li.appendChild(header);
             li.appendChild(viewDiv);
             li.appendChild(textarea);
+            li.appendChild(splitBtn);
 
             return li;
         },

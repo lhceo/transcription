@@ -1810,7 +1810,76 @@ a.history-item-filename:hover {
 @media (max-width: 640px) {
     .edit-hint {
         /* スマホで該当しないショートカット説明は丸ごと非表示。
-           「ここで分割」ボタン (v1.0.3 #2 で追加予定) に役割を移譲する。 */
+           「ここで分割」ボタン (v1.0.3 #2 で追加) に役割を移譲する。 */
         display: none;
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   v1.0.3: 「ここで分割」ボタン (#2)
+
+   - 編集モード時のみ DOM に存在 (x-show / style.display で制御)
+   - textarea にフォーカスがあるときだけ視覚的に出現
+     (:focus + 一般兄弟セレクタ ~ で制御)
+   - PC では Shift+Return も併存。ボタンは初心者ユーザーへの案内
+   - スマホでは Shift キーがないのでボタンが唯一の分割手段
+   ─────────────────────────────────────────────────────────────── */
+
+.segment-split-btn {
+    /* 編集モード時の表示は JS / x-show が制御するが、フォーカス状態に
+       応じた可視性は CSS のみで制御する。display を弄ると JS との
+       競合が起きるので opacity / pointer-events を使う。 */
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--color-primary);
+    background: var(--color-surface);
+    border: 1px solid var(--color-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    /* 通常は隠す。フォーカス時のみ visible に */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.segment-split-btn-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+/* textarea にフォーカスがあるとき、同じ card 内のボタンを表示 */
+.segment-text-edit:focus ~ .segment-split-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ボタン自体への hover も visible に保つ (フォーカスが外れた瞬間に
+   消えてクリックできないのを防ぐ。pointerdown.prevent で focus は
+   textarea に残るが、フォールバックとして) */
+.segment-split-btn:hover,
+.segment-split-btn:focus {
+    opacity: 1;
+    pointer-events: auto;
+    background: var(--color-primary);
+    color: var(--color-surface);
+}
+
+/* スマホで親指で押しやすいよう、タッチ可能領域を広げる */
+@media (max-width: 640px) {
+    .segment-split-btn {
+        padding: 8px 14px;
+        font-size: 13px;
+        margin-top: 6px;
+    }
+    .segment-split-btn-icon {
+        width: 14px;
+        height: 14px;
     }
 }
