@@ -545,7 +545,8 @@ function segmentsApp(transcriptId, historyNames) {
         focusedEditingSegmentId: null,
 
         // v1.1 Option C: このセグメントの textarea を表示すべきか判定。
-        // テンプレートの x-show="shouldShowTextarea({{ seg.id }})" から呼ばれる。
+        // テンプレートの x-show="shouldShowTextarea(segIdHere)" から呼ばれる
+        // (Jinja で各セグメントの id が静的に展開される)。
         shouldShowTextarea(segId) {
             return this.editMode && this.focusedEditingSegmentId === segId;
         },
