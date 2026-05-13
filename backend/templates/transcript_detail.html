@@ -231,7 +231,9 @@
                     id="segment-{{ seg.id }}"
                     data-segment-id="{{ seg.id }}"
                     data-speaker-label="{{ seg.speaker_label }}"
-                    data-color-index="{{ color_idx }}">
+                    data-color-index="{{ color_idx }}"
+                    data-start-seconds="{{ seg.start_seconds }}"
+                    data-end-seconds="{{ seg.end_seconds }}">
                     <header class="segment-header">
                         <button
                             type="button"
@@ -254,12 +256,15 @@
                         {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
                     </header>
 
-                    {# 閲覧モード：div で表示。ダブルクリックで編集モードに入る #}
+                    {# 閲覧モード：div で表示。ダブルクリックで編集モードに入る (PC のみ)。
+                       v1.1: 文字単位ハイライト用に <span> を 2 つに分割
+                       (.segment-text-progress + .segment-text-remaining)。
+                       JS が再生中、線形補間で 2 つの span のテキストを更新する。 #}
                     <div
                         class="segment-text"
                         x-show="!editMode"
                         @dblclick="enterEditMode()"
-                    >{{ seg.text_content }}</div>
+                    ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
                     {# 編集モード：textarea で表示 #}
                     <textarea
@@ -503,6 +508,10 @@ function segmentsApp(transcriptId, historyNames) {
             fromCandidate: false,
         },
 
+        // v1.1: 同期ハイライト用 state
+        // 直近で active となったセグメント card の id (DOM ノード変更の検知に使う)。
+        activeSegmentEl: null,
+
         init() {
             // textarea の自動サイズ調整を初期化
             this.$nextTick(() => this.resizeAllTextareas());
@@ -514,6 +523,125 @@ function segmentsApp(transcriptId, historyNames) {
                     this.$nextTick(() => this.resizeAllTextareas());
                 }
             });
+            // v1.1: 音声プレイヤーの timeupdate にフックして同期ハイライトを開始
+            this.setupAudioSync();
+        },
+
+        // v1.1: 音声プレイヤーの timeupdate イベントで同期ハイライトを更新する
+        setupAudioSync() {
+            const audio = document.querySelector('.audio-player-section audio');
+            if (!audio) return; // 音声なし transcript では同期再生 UI 自体を出さない
+            audio.addEventListener('timeupdate', () => {
+                this.updateSyncHighlight(audio.currentTime);
+            });
+            // 再生終了時もハイライトを最終位置に保持 (止まったままにする)
+            audio.addEventListener('ended', () => {
+                this.updateSyncHighlight(audio.duration || audio.currentTime);
+            });
+        },
+
+        // v1.1: 現在の再生時刻 → アクティブセグメント決定 + 文字単位の線形補間で
+        // ハイライトを更新する。timeupdate イベント (約 4Hz) ごとに呼ばれる。
+        updateSyncHighlight(currentTime) {
+            const cards = document.querySelectorAll('#segment-list .segment-card');
+            if (cards.length === 0) return;
+
+            // currentTime が start <= currentTime <= end (もしくは start <= currentTime
+            // で次のセグメント未到達) を満たす最後のセグメントが active。
+            // セグメントは start_seconds 昇順で並ぶ前提 (DB の order_index に従う)。
+            let activeCard = null;
+            for (const card of cards) {
+                const start = parseFloat(card.dataset.startSeconds);
+                if (!Number.isFinite(start)) continue;
+                if (start <= currentTime) {
+                    activeCard = card;
+                } else {
+                    break; // currentTime より start が大きいセグメントが見つかったので終了
+                }
+            }
+            if (!activeCard) {
+                // 再生開始前 (currentTime < 最初の start) → 全カード非アクティブ
+                this.clearActiveCardClass(cards);
+                this.activeSegmentEl = null;
+                return;
+            }
+
+            // セグメントが切り替わったら class 付け替え
+            if (activeCard !== this.activeSegmentEl) {
+                this.clearActiveCardClass(cards);
+                activeCard.classList.add('segment-card-active');
+                this.activeSegmentEl = activeCard;
+            }
+
+            // 線形補間で進行割合を算出
+            const start = parseFloat(activeCard.dataset.startSeconds);
+            const end = parseFloat(activeCard.dataset.endSeconds);
+            const duration = end - start;
+            let ratio = 0;
+            if (duration > 0) {
+                ratio = (currentTime - start) / duration;
+                if (ratio < 0) ratio = 0;
+                if (ratio > 1) ratio = 1;
+            } else {
+                ratio = 1; // 長さ 0 のセグメントは即フル
+            }
+
+            this.applyProgressToCard(activeCard, ratio);
+        },
+
+        clearActiveCardClass(cards) {
+            cards.forEach(c => {
+                if (c.classList.contains('segment-card-active')) {
+                    c.classList.remove('segment-card-active');
+                    this.applyProgressToCard(c, 0); // 旧アクティブカードはハイライト解除
+                }
+            });
+        },
+
+        // v1.1: span 構造を保ちつつテキストを差し替えるヘルパー。
+        // セグメント編集の保存・分割で view div のテキストを更新する全パスが
+        // ここを通る。progress + remaining の合計が新テキストになるように
+        // 設定し、現在のハイライト状態を維持できる場合は維持する。
+        setSegmentTextContent(div, newText) {
+            if (!div) return;
+            let progressSpan = div.querySelector('.segment-text-progress');
+            let remainSpan = div.querySelector('.segment-text-remaining');
+            if (!progressSpan || !remainSpan) {
+                // 動的生成 or 旧構造の保険 (span がない場合は再構築)
+                div.innerHTML = '';
+                progressSpan = document.createElement('span');
+                progressSpan.className = 'segment-text-progress';
+                remainSpan = document.createElement('span');
+                remainSpan.className = 'segment-text-remaining';
+                div.appendChild(progressSpan);
+                div.appendChild(remainSpan);
+            }
+            // 編集・分割後はハイライト位置を 0 にリセット (テキスト構造が
+            // 変わったので、現在の再生位置との文字数対応も再計算が必要)。
+            // 次の timeupdate で再描画される。
+            progressSpan.textContent = '';
+            remainSpan.textContent = newText;
+        },
+
+        // 文字単位ハイライト: ratio (0〜1) に応じて progress span / remaining span の
+        // テキストを更新する。文字数 × ratio の位置で分割。
+        applyProgressToCard(card, ratio) {
+            const div = card.querySelector('.segment-text');
+            if (!div) return;
+            const progressSpan = div.querySelector('.segment-text-progress');
+            const remainSpan = div.querySelector('.segment-text-remaining');
+            if (!progressSpan || !remainSpan) return;
+            const fullText = (progressSpan.textContent || '') + (remainSpan.textContent || '');
+            const n = Math.floor(fullText.length * ratio);
+            const progressText = fullText.substring(0, n);
+            const remainText = fullText.substring(n);
+            // 値が変わったときだけ DOM 更新 (timeupdate ごとの無駄な書き換えを抑える)
+            if (progressSpan.textContent !== progressText) {
+                progressSpan.textContent = progressText;
+            }
+            if (remainSpan.textContent !== remainText) {
+                remainSpan.textContent = remainText;
+            }
         },
 
         syncSegmentDisplay() {
@@ -665,7 +793,8 @@ function segmentsApp(transcriptId, historyNames) {
                 const card = t.closest('.segment-card');
                 if (card) {
                     const viewDiv = card.querySelector('.segment-text');
-                    if (viewDiv) viewDiv.textContent = newText;
+                    // v1.1: span 構造を保つヘルパー経由で更新
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
                     if (!card.querySelector('[data-edited]')) {
                         const time = card.querySelector('.segment-time');
                         const badge = document.createElement('span');
@@ -731,7 +860,15 @@ function segmentsApp(transcriptId, historyNames) {
                 const currentCard = textarea.closest('.segment-card');
                 if (currentCard) {
                     const viewDiv = currentCard.querySelector('.segment-text');
-                    if (viewDiv) viewDiv.textContent = data.current.text;
+                    // v1.1: span 構造を保つヘルパー経由で更新
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, data.current.text);
+                    // v1.1: 分割で時間も変わるので data-* も更新する
+                    if (data.current.start_seconds !== undefined) {
+                        currentCard.dataset.startSeconds = String(data.current.start_seconds);
+                    }
+                    if (data.current.end_seconds !== undefined) {
+                        currentCard.dataset.endSeconds = String(data.current.end_seconds);
+                    }
                     if (!currentCard.querySelector('[data-edited]')) {
                         const time = currentCard.querySelector('.segment-time');
                         const badge = document.createElement('span');
@@ -771,6 +908,9 @@ function segmentsApp(transcriptId, historyNames) {
             li.dataset.segmentId = String(newSeg.id);
             li.dataset.speakerLabel = newSeg.speaker_label;
             li.dataset.colorIndex = String(colorIdx);
+            // v1.1: 同期再生で必要 (timeupdate から active segment を特定する)
+            li.dataset.startSeconds = String(newSeg.start_seconds);
+            li.dataset.endSeconds = String(newSeg.end_seconds);
 
             const header = document.createElement('header');
             header.className = 'segment-header';
@@ -804,10 +944,11 @@ function segmentsApp(transcriptId, historyNames) {
             header.appendChild(edited);
 
             // 閲覧モード div（編集中は x-show で非表示）
+            // v1.1: 文字単位ハイライト用の span 構造で作る
             const viewDiv = document.createElement('div');
             viewDiv.className = 'segment-text';
             viewDiv.style.display = this.editMode ? 'none' : '';
-            viewDiv.textContent = newSeg.text;
+            this.setSegmentTextContent(viewDiv, newSeg.text);
             viewDiv.addEventListener('dblclick', () => this.enterEditMode());
 
             const textarea = document.createElement('textarea');
