@@ -7,28 +7,46 @@
 社内会議・お客様打ち合わせの音声を **話者分離付きで文字起こし** するアプリ。  
 Notta（年20万円規模の有料サービス）からの脱却が動機。
 
-## 現在のステータス（2026-05-12 時点）
+## 現在のステータス（2026-05-13 時点、v1.1 リリース完了）
 
-- ✅ **Web アプリ v1.0 リリース完了** — Railway で本番稼働中
+- ✅ **v1.x 系すべてリリース完了** — Railway で本番稼働中
 - 本番 URL: `https://transcription-production-f1c1.up.railway.app`
-- 現在ブランチ: `web-app-rewrite`（main ではない）／最新タグ: `v1.0-production`
+- 現在ブランチ: `web-app-rewrite`（main ではない）
 - Mac アプリ版は `v0.1-mac-app-snapshot` タグで凍結済み（参照のみ）
-- フェーズ 1〜8 すべて完了。次は **v1.1（音声同期再生）** を計画中
-- 既知の改善候補は `docs/ROADMAP.md` の「v1.0.1 以降の改善候補」セクション参照
 
-### 直近で実装済みの v1.0 機能
+### タグ履歴
+
+| タグ | 内容 |
+|---|---|
+| `v1.0-production` | Web アプリ初版（Google OAuth、AssemblyAI 文字起こし、話者リネーム、エクスポート） |
+| `v1.0.1` | コード掃除 7 件 + ドキュメント整合 |
+| `v1.0.2` | 自動削除 60 日 + ストレージ管理（バー・ガード・ソート） |
+| `v1.0.3` | スマホ対応 + ダッシュボードリネーム |
+| `v1.1` | 音声同期再生 + Notta 互換インラインエディタ（最新） |
+
+### 直近で実装済みの主要機能（v1.0 → v1.1 で積み上げ）
 - Google OAuth (lionheart.co.jp ドメイン限定)
-- 音声アップロード (mp3/mp4, 最大 2GB / 約2時間)
-- AssemblyAI 経由の日本語文字起こし + 話者分離
-- セグメント編集 / Shift+Return で分割 / TXT・SRT・JSON エクスポート
+- 音声アップロード (mp3/mp4/m4a/wav/mov、最大 2GB / 約2時間)
+- AssemblyAI 経由の日本語文字起こし + 話者分離（iPhone ボイスメモでも実用上 OK）
+- 音声サーバー保管（A-4 撤回、`/data/audio/{id}.{ext}`）
+- セグメント編集 / Shift+Return + 「ここで分割」FAB / TXT・SRT・JSON エクスポート
 - 話者リネーム (Notta 方式: 個別 ／ すべてに適用、同名禁止＋候補選択は例外)
-- 同じ表示名は同じ色（出現順 8 色循環）
+- 自動削除 60 日（音声+テキスト全削除、カウントダウン表示）
+- ストレージ使用量バー（ヘッダーアイコン + 警告時バナー）
+- 履歴ソート 4 モード（日付・名前の昇降）
+- スマホ完全対応（タッチ最適化、iOS zoom 回避、ハンバーガーメニュー、bottom sheet 撤回でドロップダウン統一）
+- アップロード進捗バー + 完了確認 UI
+- 音声同期再生（カラオケハイライト、クリックシーク、自動スクロール、±3秒、速度変更、PC ショートカット）
+- インラインエディタ（編集モード中も他カードのカラオケが進行）
 
-### 次セッション開始時のチェック
-1. `git status` / `git log --oneline -10` で現状確認
-2. `docs/ROADMAP.md` 末尾の「次のアクション」と「v1.0.1 以降の改善候補」を確認
-3. `docs/DECISIONS.md` 冒頭で直近の判断を確認
-4. 必要なら本番 URL をシークレットウィンドウで開いて挙動確認
+### 次セッション開始時のチェック（必須）
+
+1. `git status` / `git log --oneline -10` で現状確認（クリーンか、最新タグ何か）
+2. `git tag -l "v1.*"` でリリース履歴
+3. **`memory/MEMORY.md` を確認** — このセッションでの判断・学び・確定事項が記録されている
+4. `docs/ROADMAP.md` の「現在のステータス」と「未着手だが意識しておきたい論点」を確認
+5. `docs/DECISIONS.md` の冒頭（最新の判断履歴）を確認
+6. 必要なら本番 URL をシークレットウィンドウで動作確認
 
 ## 重要な前提
 
@@ -39,17 +57,27 @@ Notta（年20万円規模の有料サービス）からの脱却が動機。
 5. **お客様情報を含む音声**を扱うので、機密性に配慮する
 6. **コスト目標**: Notta（年15-20万）の何分の1かに抑える
 
-## 技術スタック（v1.0 確定版）
+## 技術スタック（v1.1 確定版）
 
 | レイヤ | 採用 |
 |---|---|
 | UI | Jinja2 テンプレート + Alpine.js + HTMX |
 | バックエンド | FastAPI + Uvicorn (`--proxy-headers` + Railway HTTPS 終端) |
-| 文字起こし / 話者分離 | **AssemblyAI** (クラウド API、処理後音声は即削除 A-4) |
+| 文字起こし / 話者分離 | **AssemblyAI** (クラウド API、サーバー保管に変更済み = A-4 撤回) |
 | 認証 | **Google OAuth** (authlib + Starlette SessionMiddleware, 14日 Cookie) |
-| ホスティング | **Railway** (Railpack, 永続ボリューム `/data` に SQLite) |
-| データ永続化 | SQLite + Alembic (FastAPI lifespan で起動時に `upgrade head`) |
+| ホスティング | **Railway** Hobby Plan ($5/月、ストレージ 5 GB 上限) |
+| データ永続化 | SQLite + Alembic (FastAPI lifespan で起動時に `upgrade head`、永続ボリューム `/data`) |
 | デプロイ | `Procfile` の web: のみ。release: は削除済み (lifespan で代替) |
+| 自動削除タスク | FastAPI lifespan で起動する asyncio loop (1 日 1 回スキャン、60 日経過で物理削除) |
+| 音声配信 | `GET /api/transcripts/{id}/audio` (認証 + 所有権チェック + Range 対応) |
+
+### 重要な仕様判断（再掲）
+
+- **音声は `/data/audio/{transcript_id}.{ext}` に永続保管**（A-4 ポリシー撤回、DECISIONS 2026-05-12）。手動削除（音声のみ / 全削除）+ 自動削除 60 日で運用
+- **対応形式**: mp3 / mp4 / m4a / wav / mov（iPhone ボイスメモ対応含む）
+- **タイムゾーン**: SQLite から読み戻した naive datetime は UTC として扱う（retention.py の `_ensure_utc_aware`、v1.0.2 hotfix）
+- **Alpine x-data に動的データを渡すとき**: `|tojson` は HTML 属性内で使わない（クォート衝突）。data-* 属性経由か window 変数経由
+- **モバイル UI**: タップ位置と表示位置の連続性を守る（bottom sheet ではなくドロップダウン）。タッチターゲット 36-44px、iOS zoom 回避 16px、visualViewport API でキーボード追従
 
 ## 開発の進め方ルール
 
