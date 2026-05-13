@@ -1706,21 +1706,131 @@ a.history-item-filename:hover {
     font-variant-numeric: tabular-nums;
 }
 
-/* スマホ対応 (本格的なスマホ対応は v1.0.3 だが、ヘッダーが破綻しない最小調整は入れておく) */
+/* v1.0.3: ハンバーガーメニュー (#4 スマホ対応)
+   PC: display: contents で透過、子要素がフレックスレイアウトに直接乗る
+   スマホ: 通常ヘッダー要素を畳んでハンバーガーボタン → ドロップダウン化 */
+.nav-collapsible {
+    display: contents;
+}
+
+.nav-hamburger {
+    /* PC では非表示。スマホメディアクエリで display: inline-flex に */
+    display: none;
+}
+
+.nav-collapsible-items {
+    /* PC ではナビの一部としてインライン表示 */
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* スマホ対応 (#4)
+   - インジケーターは数値を隠してアイコン + 色のみで識別
+   - ヘルプ・ユーザーメニューはハンバーガーに畳む
+   - インジケーターのポップオーバーは bottom sheet スタイルに切替 */
 @media (max-width: 640px) {
     .header-indicator-value {
         display: none; /* 数値は隠してアイコン + 色だけにする */
     }
     .header-indicator-btn {
-        padding: 4px 8px;
-    }
-    .header-indicator-popover {
-        right: -8px;
-        min-width: 240px;
+        padding: 6px 10px;
+        min-width: 36px;
+        min-height: 36px; /* タッチターゲット最小 36px */
+        justify-content: center;
     }
     .storage-banner-inner {
         font-size: 12px;
         padding: 8px 16px;
+    }
+
+    /* ヘッダー右側の要素を畳んでハンバーガー化 */
+    .nav-collapsible {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .nav-hamburger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        color: var(--color-text);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.12s ease;
+    }
+    .nav-hamburger:hover,
+    .nav-hamburger[aria-expanded="true"] {
+        background: rgba(15, 23, 42, 0.06);
+    }
+    .nav-hamburger svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .nav-collapsible-items {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 220px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 8px 0;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+        z-index: 100;
+        display: none;
+    }
+    .nav-collapsible-items.is-open {
+        display: flex;
+    }
+    .nav-collapsible-items .nav-link {
+        padding: 12px 16px;
+        font-size: 14px;
+        border-radius: 0;
+    }
+    .nav-collapsible-items .user-menu {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 12px 16px;
+        border-top: 1px solid var(--color-border);
+        margin-top: 4px;
+    }
+    .nav-collapsible-items .user-name {
+        font-size: 13px;
+        color: var(--color-text-muted);
+    }
+    .nav-collapsible-items .logout-form {
+        margin-top: 4px;
+    }
+
+    /* ストレージ/コストインジケーターのポップオーバーを bottom sheet 化
+       スマホでは画面下から出るシートとして表示する (UX-1 確定通り) */
+    .header-indicator-popover {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        min-width: 0;
+        margin: 0;
+        padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+        border-radius: 14px 14px 0 0;
+        box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);
+        z-index: 120;
+    }
+    .header-indicator-popover-title {
+        font-size: 15px;
+        margin-bottom: 14px;
     }
 }
 

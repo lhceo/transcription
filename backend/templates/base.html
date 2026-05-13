@@ -112,22 +112,43 @@
                         {% endif %}
                     </div>
                 </div>
-                <a href="/help" class="nav-link nav-link-with-icon">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    <span>ヘルプ</span>
-                </a>
-                <div class="user-menu">
-                    {% if user.picture %}
-                    <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
-                    {% endif %}
-                    <span class="user-name">{{ user.name }}</span>
-                    <form method="post" action="/auth/logout" class="logout-form">
-                        <button type="submit" class="btn-link">ログアウト</button>
-                    </form>
+                {# v1.0.3: スマホ幅ではヘルプ + ユーザーメニューをハンバーガーに畳む。
+                   ストレージ/コストインジケーターは状態確認の重要度が高いので
+                   ハンバーガー外に残す。display: contents でフレックスレイアウトを
+                   PC では透過させ、スマホで relative + dropdown に切り替える。 #}
+                <div class="nav-collapsible" x-data="{ menuOpen: false }" @click.outside="menuOpen = false" @keydown.escape.window="menuOpen = false">
+                    <button
+                        type="button"
+                        class="nav-hamburger"
+                        @click="menuOpen = !menuOpen"
+                        :aria-expanded="menuOpen.toString()"
+                        aria-label="メニュー"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <line x1="3" y1="12" x2="21" y2="12"></line>
+                            <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                    </button>
+                    <div class="nav-collapsible-items" :class="{ 'is-open': menuOpen }">
+                        <a href="/help" class="nav-link nav-link-with-icon">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                            <span>ヘルプ</span>
+                        </a>
+                        <div class="user-menu">
+                            {% if user.picture %}
+                            <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+                            {% endif %}
+                            <span class="user-name">{{ user.name }}</span>
+                            <form method="post" action="/auth/logout" class="logout-form">
+                                <button type="submit" class="btn-link">ログアウト</button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
                 {% endif %}
                 {% endblock %}
