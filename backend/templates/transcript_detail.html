@@ -306,6 +306,27 @@
         </ol>
     {% endif %}
 
+    {# v1.1: 「現在の発言に戻る」FAB
+       手動スクロールで autoScrollPaused = true になっている時のみ表示。
+       タップで auto-scroll を再開し、アクティブセグメントへスクロール。
+       「ここで分割」FAB (画面右下、プライマリ青) と位置・色で住み分け:
+       こちらは画面下中央、ダークグレー半透明 (補助操作の視覚階層)。 #}
+    <button
+        type="button"
+        class="resync-fab"
+        x-show="autoScrollPaused && activeSegmentEl"
+        x-cloak
+        x-transition
+        @click="resyncToActive()"
+        aria-label="現在の発言に戻る"
+    >
+        <svg class="resync-fab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        <span>現在の発言に戻る</span>
+    </button>
+
     {# ──── 話者編集ポップアップ ──── #}
     <div
         class="speaker-popup"
@@ -513,6 +534,11 @@ function segmentsApp(transcriptId, historyNames) {
         // v1.1: 同期ハイライト用 state
         // 直近で active となったセグメント card の id (DOM ノード変更の検知に使う)。
         activeSegmentEl: null,
+        // v1.1: 自動スクロール制御。ユーザーが手動スクロールしたら true に。
+        // 「現在の発言に戻る」FAB をタップすると false に戻して再開する。
+        autoScrollPaused: false,
+        // 自動スクロール実行中フラグ (scroll event の自分起因/手動起因の区別)
+        isAutoScrolling: false,
 
         init() {
             // textarea の自動サイズ調整を初期化
@@ -529,6 +555,64 @@ function segmentsApp(transcriptId, historyNames) {
             this.setupAudioSync();
             // v1.1: PC キーボードショートカット (Space / ←→)
             this.setupKeyboardShortcuts();
+            // v1.1: 手動スクロール検知 (auto-scroll の中断条件)
+            this.setupManualScrollDetection();
+        },
+
+        // v1.1: ユーザーの手動スクロール (wheel / touchmove) を検知して
+        // auto-scroll を一時停止する。scroll イベントを直接見るとプログラム
+        // 起因の scrollIntoView も拾ってしまうため、入力イベントから判定する。
+        // delta-y > 5px の閾値は誤検知 (微小なタッチ移動) 対策。
+        setupManualScrollDetection() {
+            // touchmove は始点 → 現在の Y 差分で判定 (タップでは発火しない)
+            let touchStartY = null;
+            window.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0]?.clientY ?? null;
+            }, { passive: true });
+            window.addEventListener('touchmove', (e) => {
+                if (touchStartY === null) return;
+                const currentY = e.touches[0]?.clientY ?? touchStartY;
+                if (Math.abs(currentY - touchStartY) > 5) {
+                    this.autoScrollPaused = true;
+                }
+            }, { passive: true });
+
+            // wheel は値が来た瞬間に手動スクロール扱い (閾値なしでよい)
+            window.addEventListener('wheel', () => {
+                this.autoScrollPaused = true;
+            }, { passive: true });
+        },
+
+        // v1.1: アクティブセグメントがビューポート内にあるか判定。
+        // sticky な音声プレイヤーの高さ分はオフセット (重ねない)
+        isCardInViewport(card) {
+            const rect = card.getBoundingClientRect();
+            // sticky な audio-player-section の bottom を「可視エリアの上端」とする
+            const audioSection = document.querySelector('.audio-player-sticky');
+            const topGuard = audioSection ? audioSection.getBoundingClientRect().bottom : 0;
+            // ビューポートの下端 - 余裕 (24px) を「可視エリアの下端」とする
+            return rect.top >= topGuard && rect.top <= window.innerHeight - 24;
+        },
+
+        // v1.1: 該当カードまで smooth scroll する。scroll-margin-top を CSS で
+        // 設定済みなので、sticky プレイヤーに隠れない位置に止まる。
+        doAutoScroll(card) {
+            this.isAutoScrolling = true;
+            card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // smooth scroll 完了の callback は browser API になく、500ms 経過で
+            // 「完了とみなす」素朴な実装。途中でユーザーがホイール/タッチで
+            // 介入したらそれが優先される。
+            setTimeout(() => { this.isAutoScrolling = false; }, 500);
+        },
+
+        // v1.1: 「現在の発言に戻る」FAB ハンドラ
+        // - 一時停止フラグを解除
+        // - アクティブセグメントへスクロール
+        resyncToActive() {
+            this.autoScrollPaused = false;
+            if (this.activeSegmentEl) {
+                this.doAutoScroll(this.activeSegmentEl);
+            }
         },
 
         // v1.1: PC 用キーボードショートカット
@@ -634,11 +718,16 @@ function segmentsApp(transcriptId, historyNames) {
                 return;
             }
 
-            // セグメントが切り替わったら class 付け替え
+            // セグメントが切り替わったら class 付け替え + auto-scroll 判定
             if (activeCard !== this.activeSegmentEl) {
                 this.clearActiveCardClass(cards);
                 activeCard.classList.add('segment-card-active');
                 this.activeSegmentEl = activeCard;
+                // v1.1: auto-scroll (ビューポート外なら追従)。
+                // 手動スクロールでユーザーが介入していたら何もしない。
+                if (!this.autoScrollPaused && !this.isCardInViewport(activeCard)) {
+                    this.doAutoScroll(activeCard);
+                }
             }
 
             // 線形補間で進行割合を算出

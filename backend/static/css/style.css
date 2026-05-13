@@ -1405,6 +1405,12 @@ a.history-item-filename:hover {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
+/* v1.1: scrollIntoView で sticky な audio-player の裏に隠れないよう、
+   セグメントの上に余白を確保 (audio player 高さ + 余裕 = 70px) */
+.segment-card {
+    scroll-margin-top: 70px;
+}
+
 /* v1.1: 音声再生中のアクティブセグメント。薄い水色背景でカード全体を強調。
    トランジションで切替時に自然にフェード。 */
 .segment-card.segment-card-active {
@@ -2620,5 +2626,70 @@ a.history-item-filename:hover {
     .detail-expiry-icon {
         width: 14px;
         height: 14px;
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   v1.1: 「現在の発言に戻る」FAB (#4)
+
+   手動スクロールで auto-scroll が一時停止しているとき、現在の再生位置に
+   戻るためのフローティングボタン。
+   位置: 画面下中央 (「ここで分割」FAB の右下と位置で住み分け)
+   色: セカンダリのダークグレー半透明 (「ここで分割」のプライマリ青よりも
+        優先度低の補助動作として視覚階層を明示)
+   キーボード追従: --keyboard-height (v1.0.3 で実装した visualViewport
+                  ベースの CSS 変数) を使ってキーボード上に追従
+   ─────────────────────────────────────────────────────────────── */
+
+.resync-fab {
+    position: fixed;
+    bottom: calc(
+        20px
+        + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
+    );
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;  /* 「ここで分割」(z-index 50) より一段下 */
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    color: var(--color-surface);
+    background: rgba(15, 23, 42, 0.85);  /* スレート 900 半透明 */
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.2);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    transition: background 0.15s ease, transform 0.06s ease;
+}
+
+.resync-fab:hover {
+    background: rgba(15, 23, 42, 0.95);
+}
+
+.resync-fab:active {
+    transform: translateX(-50%) translateY(1px);
+}
+
+.resync-fab-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+    .resync-fab {
+        bottom: calc(
+            14px
+            + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
+        );
+        padding: 10px 16px;
+        font-size: 13px;
     }
 }
