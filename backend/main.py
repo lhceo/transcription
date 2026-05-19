@@ -144,6 +144,65 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "version": app.version})
 
 
+@app.get("/api/admin/disk-status")
+async def disk_status(user: CurrentUser) -> JSONResponse:
+    """ディスク使用量の診断。管理者確認用。"""
+    import os
+    import shutil
+    from backend.db.session import _DB_PATH, DATABASE_URL
+
+    def dir_size(path: str) -> dict:
+        p = Path(path)
+        if not p.exists():
+            return {"exists": False, "path": path}
+        try:
+            total = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+            count = sum(1 for f in p.rglob("*") if f.is_file())
+            return {"exists": True, "path": path, "bytes": total, "files": count,
+                    "pretty": f"{total / 1_000_000:.1f} MB"}
+        except Exception as e:
+            return {"exists": True, "path": path, "error": str(e)}
+
+    def file_info(path: str) -> dict:
+        p = Path(path)
+        if not p.exists():
+            return {"exists": False, "path": path}
+        try:
+            return {"exists": True, "path": path, "bytes": p.stat().st_size,
+                    "pretty": f"{p.stat().st_size / 1_000_000:.2f} MB"}
+        except Exception as e:
+            return {"exists": True, "path": path, "error": str(e)}
+
+    def disk_free(path: str) -> dict:
+        try:
+            stat = shutil.disk_usage(path)
+            return {
+                "path": path,
+                "total_gb": round(stat.total / 1e9, 2),
+                "used_gb": round(stat.used / 1e9, 2),
+                "free_gb": round(stat.free / 1e9, 2),
+                "used_pct": round(stat.used * 100 / stat.total, 1),
+            }
+        except Exception as e:
+            return {"path": path, "error": str(e)}
+
+    db_path = str(_DB_PATH)
+    db_url = DATABASE_URL
+
+    return JSONResponse({
+        "database_url": db_url,
+        "db_file": file_info(db_path),
+        "db_wal": file_info(db_path + "-wal"),
+        "db_shm": file_info(db_path + "-shm"),
+        "data_dir": dir_size("/data"),
+        "app_data_dir": dir_size("/app/data"),
+        "tmp_uploads": dir_size(str(Path(os.environ.get("UPLOAD_TMP_DIR", "")) or (Path(__file__).resolve().parent.parent / "tmp" / "uploads"))),
+        "disk_data": disk_free("/data"),
+        "disk_app": disk_free("/app"),
+        "disk_tmp": disk_free("/tmp"),
+    })
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
