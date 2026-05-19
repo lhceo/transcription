@@ -355,16 +355,34 @@ function uploadForm() {
                 if (empty) empty.remove();
                 return;
             }
-            // サーバー側のエラーメッセージ (例: 月次上限超過) があれば表示する
+            // サーバー側のエラーメッセージを取り出す。
+            // レスポンス形式は状況によって異なる:
+            //   通常エラー: {"detail": {"code": "...", "message": "..."}}
+            //   401 未認証: {"code": "UNAUTHENTICATED", "message": "..."}
+            //   422 バリデーション: {"detail": [...]}
             let serverMessage = '';
             let errorCode = '';
+            const httpStatus = e.detail.xhr ? e.detail.xhr.status : 0;
+            const rawBody = e.detail.xhr ? e.detail.xhr.responseText : '';
+            console.error('[upload] failed', { status: httpStatus, body: rawBody });
             try {
-                const body = JSON.parse(e.detail.xhr.responseText || '{}');
-                if (body && body.detail) {
+                const body = JSON.parse(rawBody || '{}');
+                if (body && body.detail && typeof body.detail === 'object' && !Array.isArray(body.detail)) {
                     serverMessage = body.detail.message || '';
                     errorCode = body.detail.code || '';
+                } else if (body && body.message) {
+                    serverMessage = body.message || '';
+                    errorCode = body.code || '';
                 }
             } catch (_) { /* fallthrough */ }
+            // 401 は必ず「セッション切れ」を案内する
+            if (httpStatus === 401 && !serverMessage) {
+                serverMessage = 'セッションが切れました。ページを再読み込みしてログインしてください。';
+            }
+            // 0 はネットワーク切断 / タイムアウト
+            if (httpStatus === 0 && !serverMessage) {
+                serverMessage = 'ネットワークエラーが発生しました。接続を確認して再度お試しください。';
+            }
             this.statusMessage = serverMessage || 'アップロードに失敗しました。再度お試しください。';
             this.statusClass = 'status-error';
             // v1.0.2: サーバー側がストレージ上限超過を返した場合は整理リンクを併設
