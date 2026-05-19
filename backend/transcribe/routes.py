@@ -171,6 +171,15 @@ async def create_transcript(
                 "message": "ファイルサイズが 2GB を超えています。",
             },
         )
+    except Exception as exc:
+        logger.exception("ファイル一時保存に失敗: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FILE_SAVE_ERROR",
+                "message": f"ファイル保存に失敗しました ({type(exc).__name__}): {exc}",
+            },
+        )
 
     # 受信完了後にもう一度ストレージ容量を確認する。受信中に他ユーザーの
     # アップロードが完了して上限を超えるレース状態を吸収する。超過時は
@@ -205,19 +214,29 @@ async def create_transcript(
     # AssemblyAI 未設定の時は uploaded（処理されない）、設定済なら processing
     initial_status = "processing" if settings.has_assemblyai else "uploaded"
 
-    transcript = Transcript(
-        user_id=user["id"],
-        original_filename=file.filename,
-        file_size_bytes=size_bytes,
-        audio_duration_seconds=parsed_duration,
-        status=initial_status,
-        model_tier=model_tier,
-        language="ja",
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(transcript)
-    db.commit()
-    db.refresh(transcript)
+    try:
+        transcript = Transcript(
+            user_id=user["id"],
+            original_filename=file.filename,
+            file_size_bytes=size_bytes,
+            audio_duration_seconds=parsed_duration,
+            status=initial_status,
+            model_tier=model_tier,
+            language="ja",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(transcript)
+        db.commit()
+        db.refresh(transcript)
+    except Exception as exc:
+        logger.exception("DB レコード作成に失敗: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "DB_ERROR",
+                "message": f"データベースエラーが発生しました ({type(exc).__name__}): {exc}",
+            },
+        )
 
     logger.info(
         "Transcript レコード作成: id=%s user_id=%s filename=%s size=%s tier=%s status=%s",
@@ -241,11 +260,21 @@ async def create_transcript(
         )
 
     # ──── レスポンス（HTMX で履歴行を append する HTML 断片） ───────────
-    return templates.TemplateResponse(
-        request,
-        "_transcript_row.html",
-        {"transcript": transcript},
-    )
+    try:
+        return templates.TemplateResponse(
+            request,
+            "_transcript_row.html",
+            {"transcript": transcript},
+        )
+    except Exception as exc:
+        logger.exception("テンプレート描画に失敗: transcript_id=%s %s", transcript.id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "TEMPLATE_ERROR",
+                "message": f"レスポンス生成に失敗しました ({type(exc).__name__}): {exc}",
+            },
+        )
 
 
 @router.get("/api/transcripts", response_class=HTMLResponse)
