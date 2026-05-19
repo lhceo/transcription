@@ -22,6 +22,7 @@
         data-storage-used="{{ _upload_su.used_bytes }}"
         data-storage-limit="{{ _upload_su.limit_bytes }}"
         data-storage-hard-limit-percent="95"
+        data-max-upload-bytes="{{ max_upload_bytes }}"
         x-data="uploadForm()"
         @htmx:before-request="onStart()"
         @htmx:xhr:progress="onProgress($event)"
@@ -61,7 +62,7 @@
                     <label class="btn btn-primary" for="file-input">
                         ファイルを選択
                     </label>
-                    <p class="dropzone-hint">対応形式: mp3 / mp4 / m4a / wav / mov ／ 最大 2GB</p>
+                    <p class="dropzone-hint" x-text="dropzoneHint"></p>
                 </div>
             </template>
             <template x-if="fileName">
@@ -192,6 +193,23 @@ function uploadForm() {
         progress: 0,
         progressDetail: '',
 
+        get maxUploadBytes() {
+            const form = document.getElementById('upload-form');
+            return parseInt(form?.dataset.maxUploadBytes || '0', 10) || (2 * 1024 * 1024 * 1024);
+        },
+
+        get dropzoneHint() {
+            const max = this.maxUploadBytes;
+            const mb = max / (1024 * 1024);
+            let sizeStr;
+            if (mb >= 1024) {
+                sizeStr = (mb / 1024).toFixed(1).replace(/\.0$/, '') + ' GB';
+            } else {
+                sizeStr = Math.floor(mb) + ' MB';
+            }
+            return `対応形式: mp3 / mp4 / m4a / wav / mov ／ 最大 ${sizeStr}`;
+        },
+
         get prettySize() {
             if (!this.fileSize) return '';
             const mb = this.fileSize / (1024 * 1024);
@@ -234,8 +252,10 @@ function uploadForm() {
                 this.reset();
                 return;
             }
-            if (f.size > 2 * 1024 * 1024 * 1024) {
-                this.statusMessage = 'ファイルサイズが 2GB を超えています。';
+            if (f.size > this.maxUploadBytes) {
+                const mb = this.maxUploadBytes / (1024 * 1024);
+                const sizeStr = mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : Math.floor(mb) + ' MB';
+                this.statusMessage = `ファイルサイズが上限（${sizeStr}）を超えています。`;
                 this.statusClass = 'status-error';
                 this.reset();
                 return;

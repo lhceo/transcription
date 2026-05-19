@@ -341,6 +341,7 @@ async def home(
     )
     transcripts = list(db.scalars(stmt))
 
+    from backend.transcribe.storage_usage import get_effective_max_upload_bytes
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -349,6 +350,7 @@ async def home(
             "env": settings.env,
             "user": user,
             "transcripts": transcripts,
+            "max_upload_bytes": get_effective_max_upload_bytes(),
         },
     )
 

@@ -182,6 +182,24 @@ def get_summary() -> StorageUsageSummary:
     )
 
 
+def get_effective_max_upload_bytes() -> int:
+    """実際にアップロード可能な最大ファイルサイズ（バイト）を返す。
+
+    技術的な上限 MAX_UPLOAD_BYTES と実ディスク空き容量の小さい方。
+    ディスクの 5% を DB・WAL 書き込み用に確保した残りを上限とする。
+    """
+    from backend.transcribe.constants import MAX_UPLOAD_BYTES
+    try:
+        du = shutil.disk_usage(str(_DATA_ROOT))
+        # 5% を DB 書き込み用に確保してから残りを上限とする
+        safety = max(10 * 1024 * 1024, int(du.total * 0.05))  # 最低 10 MB
+        available = max(0, du.free - safety)
+        return min(MAX_UPLOAD_BYTES, available)
+    except OSError:
+        from backend.transcribe.constants import MAX_UPLOAD_BYTES
+        return MAX_UPLOAD_BYTES
+
+
 def would_exceed_hard_limit(additional_bytes: int) -> bool:
     """指定バイトを追加した場合にハードリミットを超えるか判定。
 
