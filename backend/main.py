@@ -147,7 +147,6 @@ async def health() -> JSONResponse:
 @app.get("/api/admin/disk-status")
 async def disk_status(user: CurrentUser) -> JSONResponse:
     """ディスク使用量の診断。管理者確認用。"""
-    import os
     import shutil
     from backend.db.session import _DB_PATH, DATABASE_URL
 
@@ -186,20 +185,58 @@ async def disk_status(user: CurrentUser) -> JSONResponse:
         except Exception as e:
             return {"path": path, "error": str(e)}
 
-    db_path = str(_DB_PATH)
-    db_url = DATABASE_URL
+    # 音声ファイル一覧（transcriptID別サイズ）
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+    audio_files = []
+    if _AUDIO_DIR.exists():
+        for f in sorted(_AUDIO_DIR.iterdir()):
+            if f.is_file():
+                audio_files.append({
+                    "filename": f.name,
+                    "bytes": f.stat().st_size,
+                    "pretty": f"{f.stat().st_size / 1_000_000:.1f} MB",
+                })
 
+    db_path = str(_DB_PATH)
     return JSONResponse({
-        "database_url": db_url,
+        "database_url": DATABASE_URL,
         "db_file": file_info(db_path),
         "db_wal": file_info(db_path + "-wal"),
         "db_shm": file_info(db_path + "-shm"),
         "data_dir": dir_size("/data"),
-        "app_data_dir": dir_size("/app/data"),
-        "tmp_uploads": dir_size(str(Path(os.environ.get("UPLOAD_TMP_DIR", "")) or (Path(__file__).resolve().parent.parent / "tmp" / "uploads"))),
+        "audio_files": audio_files,
         "disk_data": disk_free("/data"),
         "disk_app": disk_free("/app"),
-        "disk_tmp": disk_free("/tmp"),
+    })
+
+
+@app.post("/api/admin/free-audio-space")
+async def free_audio_space(user: CurrentUser) -> JSONResponse:
+    """緊急: ディスクフル時に音声ファイルをDBへの書き込みなしで削除する。
+
+    DBが書き込み不能な状態でもこのエンドポイントは動作する。
+    ファイルを削除後、通常の削除操作が可能になる。
+    """
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+    deleted = []
+    errors = []
+    freed_bytes = 0
+    if _AUDIO_DIR.exists():
+        for f in sorted(_AUDIO_DIR.iterdir()):
+            if f.is_file():
+                size = f.stat().st_size
+                try:
+                    f.unlink()
+                    deleted.append({"filename": f.name, "bytes": size})
+                    freed_bytes += size
+                    logger.info("緊急領域解放: 音声削除 %s (%d bytes)", f.name, size)
+                except Exception as e:
+                    errors.append({"filename": f.name, "error": str(e)})
+    return JSONResponse({
+        "deleted": deleted,
+        "errors": errors,
+        "freed_bytes": freed_bytes,
+        "freed_pretty": f"{freed_bytes / 1_000_000:.1f} MB",
     })
 
 
