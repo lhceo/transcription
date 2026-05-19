@@ -212,11 +212,7 @@ async def disk_status(user: CurrentUser) -> JSONResponse:
 
 @app.post("/api/admin/free-audio-space")
 async def free_audio_space(user: CurrentUser) -> JSONResponse:
-    """緊急: ディスクフル時に音声ファイルをDBへの書き込みなしで削除する。
-
-    DBが書き込み不能な状態でもこのエンドポイントは動作する。
-    ファイルを削除後、通常の削除操作が可能になる。
-    """
+    """緊急: ディスクフル時に音声ファイルをDBへの書き込みなしで削除する。"""
     from backend.transcribe.storage_usage import _AUDIO_DIR
     deleted = []
     errors = []
@@ -238,6 +234,90 @@ async def free_audio_space(user: CurrentUser) -> JSONResponse:
         "freed_bytes": freed_bytes,
         "freed_pretty": f"{freed_bytes / 1_000_000:.1f} MB",
     })
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """緊急管理ページ。ログイン必須。"""
+    import shutil
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+
+    audio_files = []
+    if _AUDIO_DIR.exists():
+        for f in sorted(_AUDIO_DIR.iterdir()):
+            if f.is_file():
+                audio_files.append(f"{f.name} ({f.stat().st_size / 1_000_000:.1f} MB)")
+
+    try:
+        du = shutil.disk_usage("/data")
+        disk_info = f"合計 {du.total/1e9:.2f} GB / 使用 {du.used/1e9:.2f} GB / 空き {du.free/1e9:.2f} GB ({du.used*100//du.total}%)"
+    except Exception as e:
+        disk_info = f"取得失敗: {e}"
+
+    files_html = "".join(f"<li>{f}</li>" for f in audio_files) if audio_files else "<li>ファイルなし</li>"
+
+    html = f"""<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><title>緊急管理</title>
+<style>body{{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 20px}}
+.danger{{background:#fee;border:1px solid #f99;padding:16px;border-radius:8px;margin:16px 0}}
+button{{background:#e53e3e;color:#fff;border:none;padding:12px 24px;font-size:16px;border-radius:6px;cursor:pointer}}
+button:hover{{background:#c53030}}</style></head>
+<body>
+<h1>緊急ディスク管理</h1>
+<p><strong>/data ディスク使用量:</strong> {disk_info}</p>
+<h2>音声ファイル一覧</h2>
+<ul>{files_html}</ul>
+<div class="danger">
+<h2>⚠️ 全音声ファイルを削除</h2>
+<p>ディスクがフルで新規アップロードができない状態のため、音声ファイルのみ削除して空き領域を確保します。<br>
+文字起こしテキストは残ります。音声の再生はできなくなります。</p>
+<form method="post" action="/api/admin/free-audio-space-redirect"
+      onsubmit="return confirm('本当に全ての音声ファイルを削除しますか？')">
+  <button type="submit">全音声ファイルを削除して空きを確保する</button>
+</form>
+</div>
+<p><a href="/">← ホームに戻る</a></p>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.post("/api/admin/free-audio-space-redirect", response_class=HTMLResponse)
+async def free_audio_space_redirect(request: Request, user: CurrentUser) -> HTMLResponse:
+    """フォーム POST から呼ばれる版（ブラウザリダイレクト付き）。"""
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+    import shutil
+    freed_bytes = 0
+    deleted_count = 0
+    if _AUDIO_DIR.exists():
+        for f in sorted(_AUDIO_DIR.iterdir()):
+            if f.is_file():
+                size = f.stat().st_size
+                try:
+                    f.unlink()
+                    freed_bytes += size
+                    deleted_count += 1
+                    logger.info("緊急領域解放: 音声削除 %s (%d bytes)", f.name, size)
+                except Exception as e:
+                    logger.warning("音声削除失敗: %s %s", f.name, e)
+    try:
+        du = shutil.disk_usage("/data")
+        disk_info = f"合計 {du.total/1e9:.2f} GB / 使用 {du.used/1e9:.2f} GB / 空き {du.free/1e9:.2f} GB ({du.used*100//du.total}%)"
+    except Exception:
+        disk_info = "取得失敗"
+    html = f"""<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><title>削除完了</title>
+<style>body{{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 20px}}
+.ok{{background:#f0fff4;border:1px solid #9ae6b4;padding:16px;border-radius:8px}}</style></head>
+<body>
+<h1>削除完了</h1>
+<div class="ok">
+<p>✅ {deleted_count} 件の音声ファイルを削除しました（{freed_bytes/1_000_000:.1f} MB 解放）</p>
+<p><strong>現在のディスク:</strong> {disk_info}</p>
+</div>
+<p>これで新しいファイルをアップロードできるようになりました。</p>
+<p><a href="/">← ホームに戻る</a></p>
+</body></html>"""
+    return HTMLResponse(html)
 
 
 @app.get("/", response_class=HTMLResponse)
