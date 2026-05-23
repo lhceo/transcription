@@ -151,12 +151,22 @@
             <option value="1.75">1.75x</option>
             <option value="2">2x</option>
         </select>
+    </div>
+    <div class="audio-player-footer">
         <button
             type="button"
-            class="btn-link audio-delete-btn"
+            class="audio-delete-btn"
             @click="confirmDelete()"
             title="音声ファイルだけを削除します（文字起こしテキストは残ります）"
-        >音声を削除</button>
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                <path d="M10 11v6M14 11v6"></path>
+                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            音声ファイルを削除
+        </button>
     </div>
 </section>
 {% else %}
@@ -176,7 +186,7 @@
          x-data="segmentsApp(window.__SEGMENTS_INIT.transcriptId, window.__SEGMENTS_INIT.historyNames)">
 
     {# ──── ツールバー：編集モード切替＋エクスポート ──── #}
-    <div class="detail-toolbar">
+    <div class="detail-toolbar" :class="editMode ? 'detail-toolbar-editing' : ''">
         <button
             type="button"
             class="btn btn-with-icon"
