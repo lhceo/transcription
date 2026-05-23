@@ -148,6 +148,20 @@
     <div class="history-header">
         <h3 class="section-title">これまでの文字起こし</h3>
         <span class="history-count">{{ transcripts|length }} 件</span>
+        {# 完了通知の許可ボタン。Notification API が使えて未決定のときのみ表示。
+           クリックイベントの直接ハンドラでないと Chrome が許可ダイアログを出さない。 #}
+        <button
+            type="button"
+            class="notify-opt-in-btn"
+            id="notify-opt-in-btn"
+            onclick="(function(btn){
+                if (!('Notification' in window)) return;
+                Notification.requestPermission().then(function(p){
+                    btn.style.display = 'none';
+                    if (p === 'granted') window.showToast('完了時に通知します');
+                });
+            })(this)"
+        >🔔 完了時に通知</button>
         {# ソートドロップダウン: 履歴が 2 件以上ある時のみ表示 #}
         {% if transcripts and transcripts|length > 1 %}
         <label class="history-sort">
@@ -334,10 +348,6 @@ function uploadForm() {
             this.progress = 0;
             this.progressDetail = '';
             this.showCleanupAction = false;
-            // アップロード開始 = ユーザージェスチャー内なので、ここで通知許可を求める
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
         },
 
         // v1.0.3: HTMX の htmx:xhr:progress イベントハンドラ。
@@ -608,5 +618,15 @@ document.body.addEventListener('htmx:beforeSwap', function (e) {
 document.body.addEventListener('htmx:afterSwap', function () {
     syncHistoryCount();
 });
+
+// 通知許可ボタンの表示制御
+// granted/denied なら不要なので非表示、default (未決定) のときだけ表示
+(function () {
+    const btn = document.getElementById('notify-opt-in-btn');
+    if (!btn) return;
+    if (!('Notification' in window) || Notification.permission !== 'default') {
+        btn.style.display = 'none';
+    }
+})();
 </script>
 {% endblock %}
