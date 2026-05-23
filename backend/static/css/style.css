@@ -2705,3 +2705,203 @@ a.history-item-filename:hover {
         font-size: 13px;
     }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   Toast 通知
+   - 画面右上に積み上がる (モバイルは下中央)
+   - type: success (緑) / error (赤)
+   ─────────────────────────────────────────────────────────────── */
+
+#toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.15);
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 340px;
+    pointer-events: auto;
+    animation: toast-in 0.2s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.toast-success {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.toast-error {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}
+
+.toast-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+}
+
+.toast-message {
+    flex: 1;
+}
+
+.toast-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0;
+    line-height: 1;
+    font-size: 16px;
+    margin-top: -1px;
+    font-family: inherit;
+}
+
+.toast-close:hover {
+    opacity: 1;
+}
+
+.toast-out {
+    animation: toast-out 0.2s ease forwards;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+    from { opacity: 1; transform: translateX(0); max-height: 80px; margin-bottom: 0; }
+    to   { opacity: 0; transform: translateX(16px); max-height: 0; margin-bottom: -8px; }
+}
+
+@media (max-width: 640px) {
+    #toast-container {
+        top: auto;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        right: 12px;
+        left: 12px;
+        align-items: center;
+    }
+    .toast {
+        max-width: 100%;
+        width: 100%;
+    }
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toast-out {
+        from { opacity: 1; transform: translateY(0); max-height: 80px; }
+        to   { opacity: 0; transform: translateY(12px); max-height: 0; }
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   確認モーダル (confirm() の代替)
+   ─────────────────────────────────────────────────────────────── */
+
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9100;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: overlay-in 0.15s ease;
+}
+
+.confirm-dialog {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.2);
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    animation: dialog-in 0.15s ease;
+}
+
+.confirm-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--color-text);
+}
+
+.confirm-message {
+    font-size: 14px;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.confirm-btn-cancel {
+    padding: 8px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.confirm-btn-cancel:hover {
+    background: var(--color-bg);
+}
+
+.confirm-btn-ok {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius);
+    background: #ef4444;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.confirm-btn-ok:hover {
+    background: #dc2626;
+}
+
+@keyframes overlay-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes dialog-in {
+    from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}

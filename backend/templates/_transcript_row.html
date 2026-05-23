@@ -152,6 +152,7 @@
             hx-confirm="「{{ display_name(transcript) }}」を削除しますか？"
             hx-target="#transcript-{{ transcript.id }}"
             hx-swap="delete"
+            hx-on::after-request="if(event.detail.successful) window.showToast('削除しました')"
             aria-label="削除"
             title="削除"
         >

@@ -196,5 +196,95 @@
             <span class="version">v{{ app_version }}{% if env != 'production' %} ({{ env }}){% endif %}</span>
         </div>
     </footer>
+
+    <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+    <script>
+    // ── Toast 通知 ────────────────────────────────────────────────
+    // window.showToast(message, type='success'|'error', duration=4000)
+    window.showToast = (function () {
+        const SUCCESS_ICON = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        const ERROR_ICON   = `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+
+        function remove(el) {
+            el.classList.add('toast-out');
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+        }
+
+        return function showToast(message, type, duration) {
+            type = type || 'success';
+            duration = duration !== undefined ? duration : (type === 'error' ? 6000 : 4000);
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = (type === 'error' ? ERROR_ICON : SUCCESS_ICON) +
+                `<span class="toast-message">${message}</span>` +
+                `<button class="toast-close" aria-label="閉じる">×</button>`;
+
+            toast.querySelector('.toast-close').addEventListener('click', () => remove(toast));
+            container.appendChild(toast);
+
+            if (duration > 0) {
+                setTimeout(() => {
+                    if (toast.parentNode) remove(toast);
+                }, duration);
+            }
+        };
+    })();
+
+    // ── 確認モーダル ──────────────────────────────────────────────
+    // window.showConfirm(message, options?) → Promise<boolean>
+    // options: { title, okLabel, cancelLabel }
+    window.showConfirm = function (message, options) {
+        options = options || {};
+        const title      = options.title      || '確認';
+        const okLabel    = options.okLabel    || '削除する';
+        const cancelLabel = options.cancelLabel || 'キャンセル';
+
+        return new Promise(function (resolve) {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+            overlay.innerHTML = `
+                <div class="confirm-dialog">
+                    <p class="confirm-title">${title}</p>
+                    <p class="confirm-message">${message}</p>
+                    <div class="confirm-actions">
+                        <button class="confirm-btn-cancel">${cancelLabel}</button>
+                        <button class="confirm-btn-ok">${okLabel}</button>
+                    </div>
+                </div>`;
+
+            function close(result) {
+                overlay.remove();
+                resolve(result);
+            }
+
+            overlay.querySelector('.confirm-btn-ok').addEventListener('click', () => close(true));
+            overlay.querySelector('.confirm-btn-cancel').addEventListener('click', () => close(false));
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+            document.addEventListener('keydown', function onKey(e) {
+                if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(false); }
+            });
+
+            document.body.appendChild(overlay);
+            overlay.querySelector('.confirm-btn-cancel').focus();
+        });
+    };
+
+    // ── HTMX の hx-confirm をカスタムモーダルで上書き ────────────
+    document.body.addEventListener('htmx:confirm', function (e) {
+        const msg = e.detail.question;
+        if (!msg) return;
+        e.preventDefault();
+        window.showConfirm(msg, { title: '削除の確認', okLabel: '削除する' }).then(function (ok) {
+            if (ok) e.detail.issueRequest(true);
+        });
+    });
+    </script>
 </body>
 </html>

@@ -423,21 +423,26 @@ function audioPlayer(transcriptId) {
         },
 
         async confirmDelete() {
-            if (!confirm('音声ファイルを削除します。文字起こしテキストは残りますが、音声を再生できなくなります。\n\n本当に削除しますか？')) return;
+            const ok = await window.showConfirm(
+                '音声ファイルを削除します。文字起こしテキストは残りますが、音声を再生できなくなります。',
+                { title: '音声ファイルの削除', okLabel: '削除する' }
+            );
+            if (!ok) return;
             try {
                 const res = await fetch(`/api/transcripts/${transcriptId}/audio`, {
                     method: 'DELETE',
                 });
                 if (!res.ok) {
-                    alert('音声の削除に失敗しました');
+                    window.showToast('音声の削除に失敗しました', 'error');
                     return;
                 }
                 // 再生中なら停止し、セクションごと非表示にする
                 const audio = this.$refs.audioEl;
                 if (audio) audio.pause();
                 this.$root.style.display = 'none';
+                window.showToast('音声ファイルを削除しました');
             } catch (_) {
-                alert('音声の削除に失敗しました');
+                window.showToast('音声の削除に失敗しました', 'error');
             }
         },
     };
@@ -485,7 +490,7 @@ function titleEditor() {
                         const body = await res.json();
                         if (body && body.detail && body.detail.message) msg = body.detail.message;
                     } catch (_) {}
-                    alert(msg);
+                    window.showToast(msg, 'error');
                     return;
                 }
                 const body = await res.json();
@@ -501,7 +506,7 @@ function titleEditor() {
                 // ブラウザタブのタイトルも更新
                 document.title = `${nameToShow} - 音声文字起こし`;
             } catch (err) {
-                alert('保存に失敗しました');
+                window.showToast('保存に失敗しました', 'error');
             } finally {
                 this.saving = false;
             }
@@ -1144,7 +1149,7 @@ function segmentsApp(transcriptId, historyNames) {
                     }
                 });
             } catch (e) {
-                alert('分割に失敗しました: ' + e.message);
+                window.showToast('分割に失敗しました: ' + e.message, 'error');
             }
         },
 
@@ -1362,7 +1367,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.history.indexOf(name) < 0) this.history.unshift(name);
                 this.closeEditor();
             } catch (e) {
-                alert(e.message);
+                window.showToast(e.message, 'error');
             }
         },
 
@@ -1398,7 +1403,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
                 this.closeEditor();
             } catch (e) {
-                alert(e.message);
+                window.showToast(e.message, 'error');
             }
         },
     };

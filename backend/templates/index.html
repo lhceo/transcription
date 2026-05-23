@@ -468,7 +468,7 @@ function rowEditor(transcriptId) {
                         const body = await res.json();
                         if (body && body.detail && body.detail.message) msg = body.detail.message;
                     } catch (_) { /* fallthrough */ }
-                    alert(msg);
+                    window.showToast(msg, 'error');
                     return;
                 }
                 const body = await res.json();
@@ -485,7 +485,7 @@ function rowEditor(transcriptId) {
                     this.$root.dataset.sortName = nameToShow;
                 }
             } catch (e) {
-                alert('保存に失敗しました');
+                window.showToast('保存に失敗しました', 'error');
             } finally {
                 this.saving = false;
             }
