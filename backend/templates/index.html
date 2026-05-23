@@ -531,6 +531,18 @@ function historyList() {
     };
 }
 
+// 文字起こし削除の成功をグローバルに検知してトーストを表示する。
+// hx-on::after-request はカスタム confirm (非同期 issueRequest) 後に
+// 発火しないケースがあるため、body レベルのリスナーで代替する。
+document.body.addEventListener('htmx:afterRequest', function (e) {
+    if (e.detail.successful &&
+        e.detail.requestConfig &&
+        e.detail.requestConfig.verb === 'delete' &&
+        /\/api\/transcripts\/\d+$/.test(e.detail.requestConfig.path || '')) {
+        window.showToast('削除しました');
+    }
+});
+
 // HTMX の削除・追加スワップ後に「X 件」カウントを DOM と同期する。
 // サーバーレンダー時の件数は静的なので、HTMX 操作後に手動で更新する。
 document.body.addEventListener('htmx:afterSwap', function () {
