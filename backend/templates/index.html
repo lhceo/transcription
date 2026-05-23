@@ -531,26 +531,12 @@ function historyList() {
     };
 }
 
-// 文字起こし削除の成功をグローバルに検知してトーストを表示する。
-// hx-on::after-request はカスタム confirm (非同期 issueRequest) 後に
-// 発火しないケースがあるため、body レベルのリスナーで代替する。
-document.body.addEventListener('htmx:afterRequest', function (e) {
-    if (e.detail.successful &&
-        e.detail.requestConfig &&
-        e.detail.requestConfig.verb === 'delete' &&
-        /\/api\/transcripts\/\d+$/.test(e.detail.requestConfig.path || '')) {
-        window.showToast('削除しました');
-    }
-});
-
-// HTMX の削除・追加スワップ後に「X 件」カウントを DOM と同期する。
-// サーバーレンダー時の件数は静的なので、HTMX 操作後に手動で更新する。
-document.body.addEventListener('htmx:afterSwap', function () {
+// 件数同期ヘルパー。削除・追加後に「X 件」カウントと空メッセージを更新する。
+function syncHistoryCount() {
     const countEl = document.querySelector('.history-count');
     if (!countEl) return;
     const n = document.querySelectorAll('#history-list .history-item').length;
     countEl.textContent = n + ' 件';
-    // 全件削除後に空メッセージを表示
     if (n === 0) {
         const list = document.getElementById('history-list');
         if (list && !list.querySelector('.history-empty')) {
@@ -560,6 +546,25 @@ document.body.addEventListener('htmx:afterSwap', function () {
             list.appendChild(li);
         }
     }
+}
+
+// 削除の検知: hx-swap="delete" では削除後にボタンも DOM から切り離されるため
+// afterSwap / afterRequest のイベントが body までバブルしない。
+// beforeSwap (削除前 = まだ DOM に繋がっている) で検知し、
+// setTimeout(0) で削除完了後にカウントを再集計する。
+document.body.addEventListener('htmx:beforeSwap', function (e) {
+    const target = e.detail.target;
+    const status = e.detail.xhr ? e.detail.xhr.status : 0;
+    if (target && target.classList.contains('history-item') && status >= 200 && status < 300) {
+        window.showToast('削除しました');
+        setTimeout(syncHistoryCount, 0);
+    }
+});
+
+// 追加など削除以外のスワップ後にカウントを同期
+// (afterbegin でアップロード行が挿入されたとき等)
+document.body.addEventListener('htmx:afterSwap', function () {
+    syncHistoryCount();
 });
 </script>
 {% endblock %}
