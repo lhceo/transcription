@@ -61,60 +61,45 @@
             </div>
         </div>
         <div class="history-item-meta">
+            {# 完了以外のステータスだけバッジ表示。完了はリンクが青いので自明。 #}
+            {% if transcript.status != 'completed' %}
             <span class="history-item-status status-{{ transcript.status }}">
                 {% if transcript.status == 'uploaded' %}
                     アップロード完了
                 {% elif transcript.status == 'processing' %}
                     <span class="processing-dot"></span>文字起こし中…
-                {% elif transcript.status == 'completed' %}
-                    完了
                 {% elif transcript.status == 'failed' %}
                     失敗
                 {% else %}
                     {{ transcript.status }}
                 {% endif %}
             </span>
+            {% endif %}
             {% set eta = eta_text(transcript) %}
             {% if eta %}
                 <span class="history-item-eta">{{ eta }}</span>
             {% endif %}
-            <span class="history-item-size">
-                {% set mb = transcript.file_size_bytes / (1024 * 1024) %}
-                {% if mb >= 1024 %}
-                    {{ "%.2f"|format(mb / 1024) }} GB
-                {% else %}
-                    {{ "%.1f"|format(mb) }} MB
-                {% endif %}
-            </span>
             {% if transcript.audio_duration_seconds %}
                 <span class="history-item-duration">
-                    {% set dur = transcript.audio_duration_seconds %}
-                    {% set hours = (dur // 3600)|int %}
-                    {% set minutes = ((dur % 3600) // 60)|int %}
-                    {% set seconds = (dur % 60)|int %}
-                    {% if hours > 0 %}{{ hours }}時間{% endif %}{% if minutes > 0 or hours > 0 %}{{ minutes }}分{% endif %}{{ seconds }}秒
+                    {%- set dur = transcript.audio_duration_seconds %}
+                    {%- set hours = (dur // 3600)|int %}
+                    {%- set minutes = ((dur % 3600) // 60)|int %}
+                    {%- set seconds = (dur % 60)|int %}
+                    {%- if hours > 0 %}{{ hours }}時間{% endif %}{% if minutes > 0 or hours > 0 %}{{ minutes }}分{% endif %}{{ seconds }}秒
                 </span>
+                <span class="history-item-meta-sep" aria-hidden="true">·</span>
             {% endif %}
-            <span class="history-item-tier">
-                {% if transcript.model_tier == 'best' %}高精度{% else %}コスト重視{% endif %}
-            </span>
+            <span class="history-item-date">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
             {% if transcript.cost_yen is not none and transcript.cost_yen > 0 %}
+                <span class="history-item-meta-sep" aria-hidden="true">·</span>
                 <span class="history-item-cost">約 {{ transcript.cost_yen }} 円</span>
             {% endif %}
-            <span class="history-item-date">
-                {{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}
-            </span>
-            {# v1.0.2: 自動削除カウントダウン。30 日超 (safe) は非表示、
-               7〜30 日 (warning) 黄、1〜7 日 (danger) 赤、当日 (critical) 赤。 #}
             {% set _es = expiry_status(transcript) %}
             {% if _es.show_on_dashboard %}
                 <span class="history-item-expiry expiry-{{ _es.level }}">
-                    {% if _es.level == 'critical' %}
-                        まもなく削除
-                    {% elif _es.level == 'expired' %}
-                        削除予定
-                    {% else %}
-                        あと {{ _es.days_left }} 日で削除
+                    {% if _es.level == 'critical' %}まもなく削除
+                    {% elif _es.level == 'expired' %}削除予定
+                    {% else %}あと {{ _es.days_left }} 日で削除
                     {% endif %}
                 </span>
             {% endif %}

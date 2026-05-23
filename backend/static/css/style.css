@@ -968,6 +968,7 @@ html, body {
 }
 
 .history-item-filename {
+    font-size: 15px;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1038,10 +1039,16 @@ html, body {
 
 .history-item-meta {
     display: flex;
-    gap: 12px;
+    align-items: center;
+    gap: 6px;
     font-size: 12px;
     color: var(--color-text-muted);
     flex-wrap: wrap;
+}
+
+.history-item-meta-sep {
+    opacity: 0.35;
+    user-select: none;
 }
 
 .history-item-status {
@@ -1102,8 +1109,7 @@ html, body {
 }
 
 .history-item-cost {
-    color: #047857;
-    font-weight: 600;
+    color: var(--color-text-muted);
 }
 
 a.history-item-filename {
