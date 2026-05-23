@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}ホーム - 音声文字起こし{% endblock %}
+{% block title %}ホーム | 音声文字起こし{% endblock %}
 
 {% block content %}
 {# v1.0.2: 月次コスト表示はヘッダーの cost インジケーター (base.html) に移行。
@@ -221,7 +221,7 @@ function uploadForm() {
             } else {
                 sizeStr = Math.floor(mb) + ' MB';
             }
-            return `対応形式: mp3 / mp4 / m4a / wav / mov ／ 最大 ${sizeStr}`;
+            return `対応形式: mp3 / mp4 / m4a / wav / mov — 最大 ${sizeStr}`;
         },
 
         get prettySize() {

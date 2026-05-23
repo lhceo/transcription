@@ -2,7 +2,7 @@
 
 {% set initial_display_name = display_name(transcript) %}
 {% set initial_no_ext = initial_display_name.rsplit('.', 1)[0] if '.' in initial_display_name else initial_display_name %}
-{% block title %}{{ initial_no_ext }} - 音声文字起こし{% endblock %}
+{% block title %}{{ initial_no_ext }} | 音声文字起こし{% endblock %}
 
 {% block content %}
 <script>
@@ -514,7 +514,7 @@ function titleEditor() {
                 this.editing = false;
                 this.draft = '';
                 // ブラウザタブのタイトルも更新
-                document.title = `${nameToShow} - 音声文字起こし`;
+                document.title = `${nameToShow} | 音声文字起こし`;
             } catch (err) {
                 window.showToast('保存に失敗しました', 'error');
             } finally {
