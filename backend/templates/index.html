@@ -530,5 +530,24 @@ function historyList() {
         },
     };
 }
+
+// HTMX の削除・追加スワップ後に「X 件」カウントを DOM と同期する。
+// サーバーレンダー時の件数は静的なので、HTMX 操作後に手動で更新する。
+document.body.addEventListener('htmx:afterSwap', function () {
+    const countEl = document.querySelector('.history-count');
+    if (!countEl) return;
+    const n = document.querySelectorAll('#history-list .history-item').length;
+    countEl.textContent = n + ' 件';
+    // 全件削除後に空メッセージを表示
+    if (n === 0) {
+        const list = document.getElementById('history-list');
+        if (list && !list.querySelector('.history-empty')) {
+            const li = document.createElement('li');
+            li.className = 'history-empty';
+            li.textContent = 'まだ文字起こしはありません。上のフォームから音声ファイルを追加してみてください。';
+            list.appendChild(li);
+        }
+    }
+});
 </script>
 {% endblock %}
