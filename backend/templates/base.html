@@ -160,7 +160,15 @@
                             <div class="admin-menu-dropdown" x-show="open" x-transition x-cloak>
                                 <div class="admin-menu-header">
                                     <span class="admin-menu-title">ユーザー利用状況</span>
-                                    <a href="/admin" class="admin-menu-link-small">ディスク管理 →</a>
+                                    <div class="admin-menu-header-actions">
+                                        <button type="button" class="admin-refresh-btn-small" @click.stop="load()" :disabled="loading" title="更新">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" :class="{ 'spinning': loading }" aria-hidden="true">
+                                                <polyline points="23 4 23 10 17 10"></polyline>
+                                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                            </svg>
+                                        </button>
+                                        <a href="/admin" class="admin-menu-link-small">管理ページ →</a>
+                                    </div>
                                 </div>
                                 <template x-if="loading">
                                     <p class="admin-menu-loading">読み込み中...</p>
@@ -170,13 +178,14 @@
                                 </template>
                                 <template x-if="!loading && users.length > 0">
                                     <div>
+                                        {# テーブル (PC) #}
                                         <table class="admin-users-table">
                                             <thead>
                                                 <tr>
                                                     <th>ユーザー</th>
                                                     <th class="admin-col-num">件数</th>
                                                     <th class="admin-col-num">音声</th>
-                                                    <th class="admin-col-date">最終ログイン</th>
+                                                    <th class="admin-col-num">今月コスト</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -190,11 +199,31 @@
                                                         </td>
                                                         <td class="admin-col-num" x-text="u.transcript_count + '件'"></td>
                                                         <td class="admin-col-num" x-text="u.audio_pretty"></td>
-                                                        <td class="admin-col-date" x-text="formatDate(u.last_login_at)"></td>
+                                                        <td class="admin-col-num" x-text="u.cost_this_month_pretty"></td>
                                                     </tr>
                                                 </template>
                                             </tbody>
                                         </table>
+                                        {# カード (スマホ) #}
+                                        <div class="admin-user-cards">
+                                            <template x-for="u in users" :key="u.id">
+                                                <div class="admin-user-card">
+                                                    <div class="admin-user-card-head">
+                                                        <template x-if="u.picture">
+                                                            <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
+                                                        </template>
+                                                        <span class="admin-user-card-name" x-text="u.name"></span>
+                                                    </div>
+                                                    <div class="admin-user-card-stats">
+                                                        <span x-text="u.transcript_count + '件'"></span>
+                                                        <span class="admin-card-sep">·</span>
+                                                        <span x-text="u.audio_pretty"></span>
+                                                        <span class="admin-card-sep">·</span>
+                                                        <span x-text="u.cost_this_month_pretty"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
                                     </div>
                                 </template>
                             </div>
@@ -355,7 +384,7 @@
             users: [],
             toggle() {
                 this.open = !this.open;
-                if (this.open && this.users.length === 0) this.load();
+                if (this.open) this.load();
             },
             close() { this.open = false; },
             async load() {

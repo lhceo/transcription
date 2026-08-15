@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}管理 | 音声文字起こし{% endblock %}
+
+{% block content %}
+<div class="admin-page" x-data="adminMenu()" x-init="load()">
+    <div class="admin-page-head">
+        <h1 class="admin-page-title">管理パネル</h1>
+    </div>
+
+    {# ── ディスク使用量 ── #}
+    <section class="admin-section">
+        <h2 class="admin-section-title">ディスク使用量</h2>
+        {% if disk_info.ok %}
+        {% set pct = disk_info.percent %}
+        <div class="admin-disk-bar-wrap">
+            <div class="admin-disk-bar-track">
+                <div class="admin-disk-bar-fill {% if pct >= 90 %}admin-disk-danger{% elif pct >= 70 %}admin-disk-warning{% endif %}"
+                     style="width: {{ [pct, 100] | min }}%;"></div>
+            </div>
+            <span class="admin-disk-pct">{{ pct }}%</span>
+        </div>
+        <p class="admin-disk-text">
+            使用 <strong>{{ disk_info.used_gb }} GB</strong>
+            / 合計 <strong>{{ disk_info.total_gb }} GB</strong>
+            &nbsp;—&nbsp; 空き <strong>{{ disk_info.free_gb }} GB</strong>
+        </p>
+        {% else %}
+        <p class="admin-menu-loading">取得失敗: {{ disk_info.error }}</p>
+        {% endif %}
+    </section>
+
+    {# ── ユーザー利用状況 ── #}
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <h2 class="admin-section-title">ユーザー利用状況</h2>
+            <button type="button" class="admin-refresh-btn" @click="load()" :disabled="loading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     :class="{ 'spinning': loading }" aria-hidden="true">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                更新
+            </button>
+        </div>
+
+        <template x-if="loading">
+            <p class="admin-menu-loading">読み込み中...</p>
+        </template>
+        <template x-if="!loading && users.length === 0">
+            <p class="admin-menu-loading">データなし</p>
+        </template>
+        <template x-if="!loading && users.length > 0">
+            <div>
+                {# テーブル (PC) — スマホはカード表示に切り替わる #}
+                <div class="admin-page-table-wrap">
+                <table class="admin-users-table admin-page-table">
+                    <thead>
+                        <tr>
+                            <th>ユーザー</th>
+                            <th>メールアドレス</th>
+                            <th class="admin-col-num">件数</th>
+                            <th class="admin-col-num">音声容量</th>
+                            <th class="admin-col-num">今月コスト</th>
+                            <th class="admin-col-date">最終ログイン</th>
+                            <th class="admin-col-date">最終アップロード</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="u in users" :key="u.id">
+                            <tr>
+                                <td class="admin-user-cell">
+                                    <template x-if="u.picture">
+                                        <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
+                                    </template>
+                                    <span class="admin-user-name" x-text="u.name"></span>
+                                </td>
+                                <td class="admin-email-cell" x-text="u.email"></td>
+                                <td class="admin-col-num" x-text="u.transcript_count + '件'"></td>
+                                <td class="admin-col-num" x-text="u.audio_pretty"></td>
+                                <td class="admin-col-num" x-text="u.cost_this_month_pretty"></td>
+                                <td class="admin-col-date" x-text="formatDate(u.last_login_at)"></td>
+                                <td class="admin-col-date" x-text="formatDate(u.last_upload_at)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                </div>
+
+                {# カード (スマホ) #}
+                <div class="admin-user-cards">
+                    <template x-for="u in users" :key="u.id">
+                        <div class="admin-user-card">
+                            <div class="admin-user-card-head">
+                                <template x-if="u.picture">
+                                    <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
+                                </template>
+                                <div>
+                                    <div class="admin-user-card-name" x-text="u.name"></div>
+                                    <div class="admin-user-card-email" x-text="u.email"></div>
+                                </div>
+                            </div>
+                            <div class="admin-user-card-stats">
+                                <span x-text="u.transcript_count + '件'"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span x-text="u.audio_pretty"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span x-text="u.cost_this_month_pretty"></span>
+                            </div>
+                            <div class="admin-user-card-dates">
+                                <span>最終ログイン: <span x-text="formatDate(u.last_login_at)"></span></span>
+                                <span class="admin-card-sep">·</span>
+                                <span>最終アップロード: <span x-text="formatDate(u.last_upload_at)"></span></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </section>
+
+    {# ── 危険操作 ── #}
+    <section class="admin-section">
+        <h2 class="admin-section-title admin-danger-title">危険操作</h2>
+        <div class="admin-danger-card">
+            <p class="admin-danger-desc">
+                ディスクがフルで新規アップロードができない緊急時のみ使用してください。<br>
+                全ての音声ファイルを削除します。文字起こしテキストは残りますが、音声の再生はできなくなります。
+            </p>
+            <form method="post" action="/api/admin/free-audio-space-redirect"
+                  onsubmit="return confirm('本当に全ての音声ファイルを削除しますか？')">
+                <button type="submit" class="btn-danger">全音声ファイルを削除して空きを確保する</button>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}

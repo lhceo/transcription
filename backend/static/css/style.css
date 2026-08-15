@@ -357,6 +357,225 @@ html, body {
     max-width: 130px;
 }
 
+/* ── 管理者メニュー: ヘッダーアクション ─────────────────────── */
+.admin-menu-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-refresh-btn-small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+.admin-refresh-btn-small:hover { color: var(--color-primary); background: #eff6ff; }
+.admin-refresh-btn-small:disabled { opacity: 0.4; cursor: default; }
+.admin-refresh-btn-small svg { width: 14px; height: 14px; }
+
+/* ── カード (スマホ用) ─────────────────────────────────────── */
+.admin-user-cards { display: none; }
+
+.admin-user-card {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.admin-user-card:last-child { border-bottom: none; }
+
+.admin-user-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.admin-user-card-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.admin-user-card-email {
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.admin-user-card-stats {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.admin-user-card-dates {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-top: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.admin-card-sep { color: var(--color-border); }
+
+/* スピンアニメーション（更新ボタン中）*/
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin 0.8s linear infinite; }
+
+/* ── 管理ページ専用スタイル ──────────────────────────────────── */
+.admin-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.admin-page-head {
+    margin-bottom: 28px;
+}
+
+.admin-page-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+}
+
+.admin-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+}
+
+.admin-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.admin-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 16px;
+}
+.admin-section-head .admin-section-title { margin-bottom: 0; }
+
+/* ディスク使用量バー */
+.admin-disk-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.admin-disk-bar-track {
+    flex: 1;
+    height: 10px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.admin-disk-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-primary);
+    transition: width 0.4s ease;
+}
+.admin-disk-bar-fill.admin-disk-warning { background: #f59e0b; }
+.admin-disk-bar-fill.admin-disk-danger  { background: #ef4444; }
+
+.admin-disk-pct {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    min-width: 36px;
+    text-align: right;
+}
+
+.admin-disk-text {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+/* 管理ページのユーザーテーブル（列が多い版）*/
+.admin-page-table { min-width: 620px; }
+.admin-page-table th, .admin-page-table td { font-size: 13px; }
+.admin-email-cell {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 更新ボタン（管理ページ内）*/
+.admin-refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-primary);
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.admin-refresh-btn:hover { background: #dbeafe; }
+.admin-refresh-btn:disabled { opacity: 0.5; cursor: default; }
+.admin-refresh-btn svg { width: 14px; height: 14px; }
+
+/* 危険操作セクション */
+.admin-danger-title {
+    color: #991b1b;
+}
+
+.admin-danger-card {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+
+.admin-danger-desc {
+    font-size: 13px;
+    color: #7f1d1d;
+    margin: 0 0 14px;
+    line-height: 1.6;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-danger:hover { background: #dc2626; }
+
 /* ── ログイン画面 ─────────────────────────────────────── */
 
 .login-card {
@@ -2250,6 +2469,12 @@ a.history-item-filename:hover {
         padding: 8px 16px 12px;
         border-top: 1px solid var(--color-border);
     }
+    /* スマホではテーブルを隠してカード表示に切り替え */
+    .admin-users-table { display: none !important; }
+    .admin-user-cards { display: block; }
+    /* 管理ページ */
+    .admin-section { padding: 16px; }
+    .admin-page-table-wrap { overflow-x: auto; }
 
     /* ストレージ/コストインジケーターのポップオーバーは
        PC と同じドロップダウン挙動 (タップ位置の直下に展開) を維持する。

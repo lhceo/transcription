@@ -151,11 +151,11 @@ async def admin_users_stats(
 ) -> JSONResponse:
     """管理者向け: 全ユーザーの利用状況サマリー。"""
     from backend.transcribe.storage_usage import _AUDIO_DIR
-    import os
+    from backend.transcribe.cost import month_start_utc, estimate_cost_yen
+    from backend.transcribe.retention import _ensure_utc_aware
 
     users = list(db.scalars(select(User).order_by(User.last_login_at.desc())))
 
-    # 音声ファイルのサイズを transcript_id → bytes でマッピング
     audio_sizes: dict[int, int] = {}
     if _AUDIO_DIR.exists():
         for f in _AUDIO_DIR.iterdir():
@@ -166,18 +166,24 @@ async def admin_users_stats(
                 except ValueError:
                     pass
 
+    month_start = month_start_utc()
     result = []
     for u in users:
-        active_transcripts = [
-            t for t in u.transcripts if t.deleted_at is None
-        ]
-        audio_bytes = sum(
-            audio_sizes.get(t.id, 0) for t in active_transcripts
-        )
-        last_upload = max(
-            (t.created_at for t in active_transcripts),
-            default=None,
-        )
+        active_transcripts = [t for t in u.transcripts if t.deleted_at is None]
+        audio_bytes = sum(audio_sizes.get(t.id, 0) for t in active_transcripts)
+        last_upload = max((t.created_at for t in active_transcripts), default=None)
+
+        cost_this_month = 0
+        for t in active_transcripts:
+            if t.created_at is None:
+                continue
+            if _ensure_utc_aware(t.created_at) < month_start:
+                continue
+            if t.status == "completed":
+                cost_this_month += int(t.cost_yen or 0)
+            elif t.status in ("uploaded", "processing"):
+                cost_this_month += estimate_cost_yen(t.audio_duration_seconds, t.model_tier or "best")
+
         result.append({
             "id": u.id,
             "name": u.name,
@@ -186,6 +192,8 @@ async def admin_users_stats(
             "transcript_count": len(active_transcripts),
             "audio_bytes": audio_bytes,
             "audio_pretty": f"{audio_bytes / 1_000_000:.1f} MB" if audio_bytes > 0 else "0 MB",
+            "cost_this_month_yen": cost_this_month,
+            "cost_this_month_pretty": f"¥{cost_this_month:,}" if cost_this_month > 0 else "¥0",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "last_upload_at": last_upload.isoformat() if last_upload else None,
         })
@@ -287,47 +295,34 @@ async def free_audio_space(user: AdminUser) -> JSONResponse:
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, user: AdminUser) -> HTMLResponse:
-    """緊急管理ページ。ログイン必須。"""
+    """管理ページ。管理者のみ。"""
     import shutil
-    from backend.transcribe.storage_usage import _AUDIO_DIR
-
-    audio_files = []
-    if _AUDIO_DIR.exists():
-        for f in sorted(_AUDIO_DIR.iterdir()):
-            if f.is_file():
-                audio_files.append(f"{f.name} ({f.stat().st_size / 1_000_000:.1f} MB)")
+    from backend.transcribe.storage_usage import get_summary
 
     try:
         du = shutil.disk_usage("/data")
-        disk_info = f"合計 {du.total/1e9:.2f} GB / 使用 {du.used/1e9:.2f} GB / 空き {du.free/1e9:.2f} GB ({du.used*100//du.total}%)"
+        disk_info = {
+            "ok": True,
+            "total_gb": f"{du.total / 1e9:.2f}",
+            "used_gb": f"{du.used / 1e9:.2f}",
+            "free_gb": f"{du.free / 1e9:.2f}",
+            "percent": int(du.used * 100 / du.total),
+        }
     except Exception as e:
-        disk_info = f"取得失敗: {e}"
+        disk_info = {"ok": False, "error": str(e)}
 
-    files_html = "".join(f"<li>{f}</li>" for f in audio_files) if audio_files else "<li>ファイルなし</li>"
-
-    html = f"""<!DOCTYPE html>
-<html lang="ja"><head><meta charset="utf-8"><title>緊急管理</title>
-<style>body{{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 20px}}
-.danger{{background:#fee;border:1px solid #f99;padding:16px;border-radius:8px;margin:16px 0}}
-button{{background:#e53e3e;color:#fff;border:none;padding:12px 24px;font-size:16px;border-radius:6px;cursor:pointer}}
-button:hover{{background:#c53030}}</style></head>
-<body>
-<h1>緊急ディスク管理</h1>
-<p><strong>/data ディスク使用量:</strong> {disk_info}</p>
-<h2>音声ファイル一覧</h2>
-<ul>{files_html}</ul>
-<div class="danger">
-<h2>⚠️ 全音声ファイルを削除</h2>
-<p>ディスクがフルで新規アップロードができない状態のため、音声ファイルのみ削除して空き領域を確保します。<br>
-文字起こしテキストは残ります。音声の再生はできなくなります。</p>
-<form method="post" action="/api/admin/free-audio-space-redirect"
-      onsubmit="return confirm('本当に全ての音声ファイルを削除しますか？')">
-  <button type="submit">全音声ファイルを削除して空きを確保する</button>
-</form>
-</div>
-<p><a href="/">← ホームに戻る</a></p>
-</body></html>"""
-    return HTMLResponse(html)
+    return templates.TemplateResponse(
+        request,
+        "admin.html",
+        {
+            "app_version": app.version,
+            "env": settings.env,
+            "user": user,
+            "is_admin": True,
+            "disk_info": disk_info,
+            "storage": get_summary(),
+        },
+    )
 
 
 @app.post("/api/admin/free-audio-space-redirect", response_class=HTMLResponse)
