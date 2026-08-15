@@ -98,6 +98,7 @@ class AssemblyAIClient:
         *,
         model_tier: str = "best",
         language_code: str = "ja",
+        speakers_expected: int | None = None,
     ) -> str:
         """文字起こしジョブを投入。AssemblyAI 側の transcript_id を返す。"""
         # B-1 の「best/nano」を AssemblyAI の現行モデル名にマップ:
@@ -106,12 +107,14 @@ class AssemblyAIClient:
         # 2026年に speech_model（単数・廃止）→ speech_models（複数・配列）に
         # 仕様変更されたので、配列で送信する。
         speech_model = "universal" if model_tier == "best" else "nano"
-        body = {
+        body: dict = {
             "audio_url": audio_url,
             "speaker_labels": True,
             "language_code": language_code,
             "speech_models": [speech_model],
         }
+        if speakers_expected is not None:
+            body["speakers_expected"] = speakers_expected
         response = await self._client.post("/v2/transcript", json=body)
         if response.status_code not in (200, 201):
             raise AssemblyAIError(

@@ -76,6 +76,21 @@
 
         <div class="upload-controls" x-show="fileName" x-cloak>
             <div class="form-row">
+                <label for="speakers_expected" class="form-label">参加人数</label>
+                <select id="speakers_expected" name="speakers_expected" class="form-select">
+                    <option value="">わからない（自動検出）</option>
+                    <option value="2">2人</option>
+                    <option value="3">3人</option>
+                    <option value="4">4人</option>
+                    <option value="5">5人</option>
+                    <option value="6">6人</option>
+                    <option value="7">7人</option>
+                    <option value="8">8人</option>
+                    <option value="9">9人</option>
+                    <option value="10">10人</option>
+                </select>
+            </div>
+            <div class="form-row">
                 <label for="model_tier" class="form-label">品質モード</label>
                 <select id="model_tier" name="model_tier" class="form-select">
                     <option value="best">高精度（推奨）— 約 55円 / 時間</option>
