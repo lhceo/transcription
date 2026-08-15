@@ -1091,6 +1091,30 @@ html, body {
     font-family: inherit;
 }
 
+.form-label-hint {
+    font-weight: 400;
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+.form-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    line-height: 1.6;
+    box-sizing: border-box;
+}
+.form-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+
 /* v1.0.3: アップロード進捗バー (#6)
    - htmx:xhr:progress イベントで loaded/total が更新される
    - モバイル回線で数分かかるケースでもユーザーに進行状況を可視化する */

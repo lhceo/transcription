@@ -91,6 +91,18 @@
                 </select>
             </div>
             <div class="form-row">
+                <label for="word_boost" class="form-label">よく出る単語
+                    <span class="form-label-hint">（1行1語・任意）</span>
+                </label>
+                <textarea
+                    id="word_boost"
+                    name="word_boost"
+                    class="form-textarea"
+                    rows="3"
+                    placeholder="ライオンハート&#10;市川&#10;AssemblyAI"
+                ></textarea>
+            </div>
+            <div class="form-row">
                 <label for="model_tier" class="form-label">品質モード</label>
                 <select id="model_tier" name="model_tier" class="form-select">
                     <option value="best">高精度（推奨）— 約 55円 / 時間</option>

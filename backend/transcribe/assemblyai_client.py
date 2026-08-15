@@ -99,6 +99,7 @@ class AssemblyAIClient:
         model_tier: str = "best",
         language_code: str = "ja",
         speakers_expected: int | None = None,
+        word_boost: list[str] | None = None,
     ) -> str:
         """文字起こしジョブを投入。AssemblyAI 側の transcript_id を返す。"""
         # B-1 の「best/nano」を AssemblyAI の現行モデル名にマップ:
@@ -115,6 +116,8 @@ class AssemblyAIClient:
         }
         if speakers_expected is not None:
             body["speakers_expected"] = speakers_expected
+        if word_boost:
+            body["word_boost"] = word_boost
         response = await self._client.post("/v2/transcript", json=body)
         if response.status_code not in (200, 201):
             raise AssemblyAIError(

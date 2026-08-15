@@ -67,6 +67,7 @@ async def create_transcript(
     model_tier: str = Form("best"),
     audio_duration_seconds: str | None = Form(None),
     speakers_expected: str | None = Form(None),
+    word_boost: str | None = Form(None),
 ) -> HTMLResponse:
     """音声ファイルをアップロードし、ジョブを作成する。
 
@@ -121,6 +122,12 @@ async def create_transcript(
                 parsed_speakers = n
         except (TypeError, ValueError):
             pass
+
+    parsed_word_boost: list[str] | None = None
+    if word_boost and word_boost.strip():
+        words = [w.strip() for w in word_boost.splitlines() if w.strip()]
+        if words:
+            parsed_word_boost = words[:50]  # AssemblyAI の推奨上限
 
     # ──── 月次コスト上限チェック ────────────────────────────────────────────
     settings = load_settings()
@@ -262,7 +269,7 @@ async def create_transcript(
     if settings.has_assemblyai:
         # asyncio.create_task で fire-and-forget。
         # レスポンスが返った後も event loop 上で動き続ける。
-        asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers))
+        asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers, word_boost=parsed_word_boost))
     else:
         logger.warning(
             "ASSEMBLYAI_API_KEY 未設定のため、ジョブ %s は uploaded 状態のままです",

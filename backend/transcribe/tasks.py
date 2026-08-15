@@ -122,7 +122,7 @@ async def _mark_failed(transcript_id: int, error_message: str) -> None:
             db.commit()
 
 
-async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_expected: int | None = None) -> None:
+async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_expected: int | None = None, word_boost: list[str] | None = None) -> None:
     """1ジョブのライフサイクル全体を処理する。
 
     成功・失敗・例外いずれの場合も:
@@ -161,6 +161,7 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
             model_tier=model_tier,
             language_code=language,
             speakers_expected=speakers_expected,
+            word_boost=word_boost,
         )
 
         # 3. processing 状態に更新
