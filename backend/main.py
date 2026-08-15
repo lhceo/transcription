@@ -22,10 +22,10 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from backend.auth import router as auth_router
-from backend.auth.dependencies import CurrentUser, _RedirectToLogin
+from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Transcript
+from backend.db.models import Transcript, User
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -144,8 +144,57 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "version": app.version})
 
 
+@app.get("/api/admin/users-stats")
+async def admin_users_stats(
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """管理者向け: 全ユーザーの利用状況サマリー。"""
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+    import os
+
+    users = list(db.scalars(select(User).order_by(User.last_login_at.desc())))
+
+    # 音声ファイルのサイズを transcript_id → bytes でマッピング
+    audio_sizes: dict[int, int] = {}
+    if _AUDIO_DIR.exists():
+        for f in _AUDIO_DIR.iterdir():
+            if f.is_file():
+                try:
+                    tid = int(f.stem)
+                    audio_sizes[tid] = f.stat().st_size
+                except ValueError:
+                    pass
+
+    result = []
+    for u in users:
+        active_transcripts = [
+            t for t in u.transcripts if t.deleted_at is None
+        ]
+        audio_bytes = sum(
+            audio_sizes.get(t.id, 0) for t in active_transcripts
+        )
+        last_upload = max(
+            (t.created_at for t in active_transcripts),
+            default=None,
+        )
+        result.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "picture": u.picture_url,
+            "transcript_count": len(active_transcripts),
+            "audio_bytes": audio_bytes,
+            "audio_pretty": f"{audio_bytes / 1_000_000:.1f} MB" if audio_bytes > 0 else "0 MB",
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            "last_upload_at": last_upload.isoformat() if last_upload else None,
+        })
+
+    return JSONResponse({"users": result})
+
+
 @app.get("/api/admin/disk-status")
-async def disk_status(user: CurrentUser) -> JSONResponse:
+async def disk_status(user: AdminUser) -> JSONResponse:
     """ディスク使用量の診断。管理者確認用。"""
     import shutil
     from backend.db.session import _DB_PATH, DATABASE_URL
@@ -211,7 +260,7 @@ async def disk_status(user: CurrentUser) -> JSONResponse:
 
 
 @app.post("/api/admin/free-audio-space")
-async def free_audio_space(user: CurrentUser) -> JSONResponse:
+async def free_audio_space(user: AdminUser) -> JSONResponse:
     """緊急: ディスクフル時に音声ファイルをDBへの書き込みなしで削除する。"""
     from backend.transcribe.storage_usage import _AUDIO_DIR
     deleted = []
@@ -237,7 +286,7 @@ async def free_audio_space(user: CurrentUser) -> JSONResponse:
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request, user: CurrentUser) -> HTMLResponse:
+async def admin_page(request: Request, user: AdminUser) -> HTMLResponse:
     """緊急管理ページ。ログイン必須。"""
     import shutil
     from backend.transcribe.storage_usage import _AUDIO_DIR
@@ -282,7 +331,7 @@ button:hover{{background:#c53030}}</style></head>
 
 
 @app.post("/api/admin/free-audio-space-redirect", response_class=HTMLResponse)
-async def free_audio_space_redirect(request: Request, user: CurrentUser) -> HTMLResponse:
+async def free_audio_space_redirect(request: Request, user: AdminUser) -> HTMLResponse:
     """フォーム POST から呼ばれる版（ブラウザリダイレクト付き）。"""
     from backend.transcribe.storage_usage import _AUDIO_DIR
     import shutil
@@ -349,6 +398,7 @@ async def home(
             "app_version": app.version,
             "env": settings.env,
             "user": user,
+            "is_admin": user["email"].lower() == settings.admin_email,
             "transcripts": transcripts,
             "max_upload_bytes": get_effective_max_upload_bytes(),
         },
@@ -368,5 +418,6 @@ async def help_page(
             "app_version": app.version,
             "env": settings.env,
             "user": user,
+            "is_admin": user["email"].lower() == settings.admin_email,
         },
     )

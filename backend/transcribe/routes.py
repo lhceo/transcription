@@ -499,6 +499,7 @@ async def transcript_detail(
             "app_version": APP_VERSION,
             "env": settings.env,
             "user": user,
+            "is_admin": user["email"].lower() == settings.admin_email,
             "transcript": transcript,
             "segments": segments,
             "speakers": speakers,

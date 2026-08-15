@@ -72,6 +72,9 @@ class Settings:
     # 音声・テキスト・DB レコードごと物理削除する。0 で自動削除無効。
     data_retention_days: int
 
+    # 管理者メールアドレス。このメールアドレスのユーザーのみ /admin にアクセスできる。
+    admin_email: str
+
     # ストレージ上限 (バイト)。Railway Hobby Plan の 5 GB を default に。
     # GB は SI 表記 (10^9) で扱う。プラン変更や Pro 移行時にここを上げる。
     storage_limit_bytes: int
@@ -135,6 +138,7 @@ def load_settings() -> Settings:
             "http://127.0.0.1:8000/auth/google/callback",
         ),
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
+        admin_email=_env("ADMIN_EMAIL", "a.ichikawa@lionheart.co.jp").lower(),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
         # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
         # Railway Hobby Plan (5 GB) と DECISIONS 2026-05-13 で確定した

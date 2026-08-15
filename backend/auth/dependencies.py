@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, TypedDict
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 
@@ -64,3 +64,19 @@ class _RedirectToLogin(Exception):
 
 CurrentUser = Annotated[SessionUser, Depends(require_user)]
 OptionalUser = Annotated[SessionUser | None, Depends(get_optional_user)]
+
+
+def require_admin(user: SessionUser = Depends(require_user)) -> SessionUser:
+    """管理者（ADMIN_EMAIL）のみアクセスを許可する依存。
+
+    それ以外のログイン済みユーザーには 403 を返す。
+    未ログインは require_user が先に _RedirectToLogin を投げるので
+    ここでは考慮しない。
+    """
+    from backend.config import load_settings
+    if user["email"].lower() != load_settings().admin_email:
+        raise HTTPException(status_code=403, detail="管理者のみアクセスできます")
+    return user
+
+
+AdminUser = Annotated[SessionUser, Depends(require_admin)]
