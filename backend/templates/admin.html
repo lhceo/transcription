@@ -8,6 +8,22 @@
         <h1 class="admin-page-title">管理パネル</h1>
     </div>
 
+    {# ── サマリーカード ── #}
+    <div class="admin-summary-grid">
+        <div class="admin-summary-card">
+            <span class="admin-summary-label">ユーザー数</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : users.length + ' 人'">—</span>
+        </div>
+        <div class="admin-summary-card">
+            <span class="admin-summary-label">今月総コスト</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : '¥' + users.reduce((s,u) => s + u.cost_this_month_yen, 0).toLocaleString('ja-JP')">—</span>
+        </div>
+        <div class="admin-summary-card">
+            <span class="admin-summary-label">総件数</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : users.reduce((s,u) => s + u.transcript_count, 0) + ' 件'">—</span>
+        </div>
+    </div>
+
     {# ── ディスク使用量 ── #}
     <section class="admin-section">
         <h2 class="admin-section-title">ディスク使用量</h2>
@@ -63,8 +79,7 @@
                             <th class="admin-col-num">件数</th>
                             <th class="admin-col-num">音声容量</th>
                             <th class="admin-col-num">今月コスト</th>
-                            <th class="admin-col-date">最終ログイン</th>
-                            <th class="admin-col-date">最終アップロード</th>
+                            <th class="admin-col-date">最終利用</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -80,8 +95,7 @@
                                 <td class="admin-col-num" x-text="u.transcript_count + '件'"></td>
                                 <td class="admin-col-num" x-text="u.audio_pretty"></td>
                                 <td class="admin-col-num" x-text="u.cost_this_month_pretty"></td>
-                                <td class="admin-col-date" x-text="formatDate(u.last_login_at)"></td>
-                                <td class="admin-col-date" x-text="formatDate(u.last_upload_at)"></td>
+                                <td class="admin-col-date" x-text="formatDate(lastActivity(u))"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -109,9 +123,7 @@
                                 <span x-text="u.cost_this_month_pretty"></span>
                             </div>
                             <div class="admin-user-card-dates">
-                                <span>最終ログイン: <span x-text="formatDate(u.last_login_at)"></span></span>
-                                <span class="admin-card-sep">·</span>
-                                <span>最終アップロード: <span x-text="formatDate(u.last_upload_at)"></span></span>
+                                <span>最終利用: <strong x-text="formatDate(lastActivity(u))"></strong></span>
                             </div>
                         </div>
                     </template>
@@ -129,7 +141,7 @@
                 全ての音声ファイルを削除します。文字起こしテキストは残りますが、音声の再生はできなくなります。
             </p>
             <form method="post" action="/api/admin/free-audio-space-redirect"
-                  onsubmit="return confirm('本当に全ての音声ファイルを削除しますか？')">
+                  @submit.prevent="window.showConfirm('全ての音声ファイルを削除します。文字起こしテキストは残りますが、音声の再生はできなくなります。', { title: '音声ファイルの一括削除', okLabel: '削除する' }).then(ok => { if (ok) $el.submit() })">
                 <button type="submit" class="btn-danger">全音声ファイルを削除して空きを確保する</button>
             </form>
         </div>
