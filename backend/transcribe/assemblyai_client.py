@@ -118,6 +118,7 @@ class AssemblyAIClient:
             body["speakers_expected"] = speakers_expected
         if word_boost:
             body["word_boost"] = word_boost
+            body["boost_param"] = "high"
         response = await self._client.post("/v2/transcript", json=body)
         if response.status_code not in (200, 201):
             raise AssemblyAIError(
