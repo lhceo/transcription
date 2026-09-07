@@ -503,6 +503,61 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/export-recovered")
+async def export_recovered(user: AdminUser):
+    """【一時】復旧済みセグメントを transcript_id ごとにまとめてZIPダウンロード。"""
+    import sqlite3 as _sq
+    import zipfile as _zf
+    import io as _io
+    from fastapi.responses import StreamingResponse
+
+    DB = "/data/app.db"
+    conn = _sq.connect(DB)
+    try:
+        # transcript_id 一覧
+        tids = [r[0] for r in conn.execute(
+            "SELECT DISTINCT transcript_id FROM segments ORDER BY transcript_id"
+        ).fetchall()]
+
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as zf:
+            for tid in tids:
+                rows = conn.execute(
+                    "SELECT order_index, start_seconds, end_seconds, "
+                    "speaker_label, display_name, text_content "
+                    "FROM segments WHERE transcript_id=? "
+                    "ORDER BY order_index",
+                    (tid,)
+                ).fetchall()
+
+                lines = [f"=== transcript_id={tid} ({len(rows)}セグメント) ===\n"]
+                for oi, ss, es, sl, dn, text in rows:
+                    def fmt(sec):
+                        h = int(sec) // 3600
+                        m = (int(sec) % 3600) // 60
+                        s = int(sec) % 60
+                        return f"{h:02d}:{m:02d}:{s:02d}"
+                    name = dn if dn else sl
+                    lines.append(
+                        f"[{fmt(ss or 0)} - {fmt(es or 0)}] {name}\n"
+                        f"{text or ''}\n"
+                    )
+
+                content = "\n".join(lines)
+                zf.writestr(f"transcript_{tid:04d}.txt", content)
+
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=recovered_segments.zip"
+            },
+        )
+    finally:
+        conn.close()
+
+
 @app.get("/api/admin/recover-diag5")
 async def recover_diag5(user: AdminUser) -> JSONResponse:
     """【一時診断5】frame_wp=45352 のページを手動ステップ実行で確認。"""
