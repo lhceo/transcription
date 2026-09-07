@@ -477,6 +477,89 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/recover-diag2")
+async def recover_diag2(user: AdminUser) -> JSONResponse:
+    """【一時診断2】ページ20のセル解析を詳細デバッグ。"""
+    import struct as _s
+    BAK = "/data/app.db.bak"
+
+    with open(BAK, "rb") as f:
+        f.seek(19 * 4096)  # page 20 (0-indexed: page 20 = offset 19*4096)
+        d = f.read(4096)
+
+    ps = 4096
+    results = []
+
+    # B-tree leaf page header
+    pg_type = d[0]
+    nc2 = _s.unpack_from(">H", d, 3)[0]
+    cca = _s.unpack_from(">H", d, 5)[0]  # cell content area start
+
+    header_info = {
+        "page_type": hex(pg_type),
+        "ncells": nc2,
+        "cell_content_area_start": cca,
+        "has_SPEAKER": b"SPEAKER" in d,
+    }
+
+    # varint reader
+    def vi(data, p):
+        r = 0
+        for i in range(9):
+            if p >= len(data): return r, p
+            b = data[p]; p += 1
+            if i < 8:
+                r = (r << 7) | (b & 0x7F)
+                if not (b & 0x80): break
+            else:
+                r = (r << 8) | b
+        return r, p
+
+    # Try first 5 cells
+    for i in range(min(5, nc2)):
+        ptr = _s.unpack_from(">H", d, 8 + i * 2)[0]
+        cell_info: dict = {"cell_index": i, "ptr": ptr}
+        if ptr < 8 or ptr >= ps:
+            cell_info["skip"] = "ptr out of range"
+            results.append(cell_info)
+            continue
+        try:
+            p = ptr
+            psz, p = vi(d, p)
+            rid, p = vi(d, p)
+            payload_start = p
+            payload_end = min(p + psz, ps)
+            pl = d[payload_start:payload_end]
+
+            cell_info["psz"] = psz
+            cell_info["rid"] = rid
+            cell_info["payload_len_on_page"] = len(pl)
+            cell_info["first20_payload_hex"] = pl[:20].hex()
+            cell_info["has_SPEAKER_in_payload"] = b"SPEAKER" in pl
+
+            # Parse header
+            if pl:
+                hs, hp = vi(pl, 0)
+                cell_info["header_size"] = hs
+                cell_info["header_size_valid"] = (1 <= hs <= len(pl))
+                if 1 <= hs <= len(pl):
+                    ts = []
+                    q = hp
+                    while q < hs:
+                        t, q = vi(pl, q)
+                        ts.append(t)
+                    cell_info["serial_types"] = ts[:12]
+                    cell_info["num_cols"] = len(ts)
+        except Exception as e:
+            cell_info["exception"] = str(e)
+        results.append(cell_info)
+
+    return JSONResponse({
+        "page20_header": header_info,
+        "cells": results,
+    })
+
+
 @app.get("/api/admin/recover-diag")
 async def recover_diag(user: AdminUser) -> JSONResponse:
     """【一時診断】バックアップDBのページ構造を調べる。"""
