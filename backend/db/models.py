@@ -113,6 +113,19 @@ class Transcript(Base):
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
 
+    # OKF (OpenKnowledgeFormat) メタ情報 — Claude 整文のコンテキストとして使用
+    meeting_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    meeting_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    meeting_purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meeting_agenda: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # 最後に整文を実行した日時（コンテキスト更新後の再整文促進に使用）
+    last_polished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     user: Mapped["User"] = relationship(back_populates="transcripts")
     segments: Mapped[list["Segment"]] = relationship(
         back_populates="transcript",
@@ -120,6 +133,14 @@ class Transcript(Base):
         order_by="Segment.order_index",
     )
     speakers: Mapped[list["Speaker"]] = relationship(
+        back_populates="transcript",
+        cascade="all, delete-orphan",
+    )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="transcript",
+        cascade="all, delete-orphan",
+    )
+    polish_logs: Mapped[list["PolishLog"]] = relationship(
         back_populates="transcript",
         cascade="all, delete-orphan",
     )
@@ -282,6 +303,9 @@ class Project(Base):
     vocabulary: Mapped[list["ProjectVocabulary"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 # ── project_members ─────────────────────────────────────────────────────────
@@ -317,8 +341,70 @@ class ProjectVocabulary(Base):
         Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
     word: Mapped[str] = mapped_column(String(200), nullable=False)
+    meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
     project: Mapped["Project"] = relationship(back_populates="vocabulary")
+
+
+# ── attachments ─────────────────────────────────────────────────────────────
+class Attachment(Base):
+    """PJTまたは個別MTGに添付する資料。Claude の整文コンテキストとして使用する。"""
+
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # PJT添付: project_id 設定、transcript_id は NULL
+    # MTG添付: transcript_id 設定、project_id は NULL
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    transcript_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    # 'url' | 'text' | 'markdown'
+    attachment_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 登録時に一度だけ Claude で処理したサマリー。整文時はこれを使う。
+    processed_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    project: Mapped["Project | None"] = relationship(back_populates="attachments")
+    transcript: Mapped["Transcript | None"] = relationship(back_populates="attachments")
+
+
+# ── polish_logs ──────────────────────────────────────────────────────────────
+class PolishLog(Base):
+    """整文実行のコストログ。管理者ダッシュボードの今月コストに反映する。"""
+
+    __tablename__ = "polish_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    # 'haiku' | 'sonnet'
+    model: Mapped[str] = mapped_column(String(20), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_yen: Mapped[float] = mapped_column(Float, nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    transcript: Mapped["Transcript"] = relationship(back_populates="polish_logs")
