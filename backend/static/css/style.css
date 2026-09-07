@@ -1753,6 +1753,37 @@ a.history-item-filename:hover {
     color: var(--color-text-muted);
 }
 
+/* 自動保存ステータス */
+.autosave-status {
+    flex: 1;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.autosave-saved  { color: #1a7a3a; }
+.autosave-pending { color: #7a5300; }
+.autosave-saving  { color: #1a4fc0; }
+.autosave-error   { color: #c0392b; }
+
+.autosave-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+}
+@keyframes autosave-spin {
+    to { transform: rotate(360deg); }
+}
+.autosave-spinner {
+    width: 11px; height: 11px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    display: inline-block;
+    animation: autosave-spin .7s linear infinite;
+}
+
 .export-menu {
     position: relative;
 }

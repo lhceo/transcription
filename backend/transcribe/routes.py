@@ -721,6 +721,32 @@ async def update_segment(
     )
 
 
+# ── セグメント保存確認（自動保存の自己検証用） ─────────────────────
+
+
+@router.get("/api/transcripts/{transcript_id}/segments/count")
+async def get_segments_count(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """保存済みセグメント件数を返す。フロントエンドの自動保存検証用。"""
+    transcript = db.get(Transcript, transcript_id)
+    if (
+        transcript is None
+        or transcript.user_id != user["id"]
+        or transcript.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    from sqlalchemy import func
+    from backend.db.models import Segment
+    count = db.scalar(
+        select(func.count()).where(Segment.transcript_id == transcript_id)
+    )
+    return JSONResponse({"count": count, "transcript_id": transcript_id})
+
+
 # ── セグメント分割（Shift+Return で1つを2つに分ける） ──────────────
 
 

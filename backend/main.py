@@ -65,16 +65,37 @@ async def lifespan(app: FastAPI):
     retention_task = asyncio.create_task(retention_loop())
     logger.info("自動削除バックグラウンドタスク起動")
 
+    # 3. WAL チェックポイント (10分ごと)
+    # SQLite WAL を main DB に書き込み済みにすることで、
+    # 万一のプロセスクラッシュ時のデータ損失ゼロを目指す。
+    async def _wal_checkpoint_loop():
+        from backend.db.session import _DB_PATH
+        import sqlite3
+        await asyncio.sleep(60)
+        while True:
+            try:
+                conn = sqlite3.connect(str(_DB_PATH))
+                conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                conn.close()
+                logger.debug("WAL チェックポイント完了")
+            except Exception as e:
+                logger.warning("WAL チェックポイント失敗: %s", e)
+            await asyncio.sleep(600)
+
+    wal_task = asyncio.create_task(_wal_checkpoint_loop())
+    logger.info("WAL チェックポイントタスク起動")
+
     try:
         yield
     finally:
-        # シャットダウン時にタスクをキャンセル
         retention_task.cancel()
-        try:
-            await retention_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("自動削除バックグラウンドタスク停止")
+        wal_task.cancel()
+        for task in (retention_task, wal_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        logger.info("バックグラウンドタスク停止")
 
 
 app = FastAPI(

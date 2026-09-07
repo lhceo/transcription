@@ -207,8 +207,20 @@
                 編集を終了
             </span>
         </button>
-        <span class="edit-hint" x-show="editMode" x-cloak>
-            ダブルクリックで編集 / Shift + Return で分割 / 自動保存
+        <span class="edit-hint" x-show="editMode && saveStatus !== 'pending' && saveStatus !== 'saving' && saveStatus !== 'error'" x-cloak>
+            ダブルクリックで編集 / Shift + Return で分割
+        </span>
+        <span class="autosave-status autosave-pending" x-show="saveStatus === 'pending'" x-cloak>
+            <span class="autosave-dot"></span>未保存の変更あり
+        </span>
+        <span class="autosave-status autosave-saving" x-show="saveStatus === 'saving'" x-cloak>
+            <span class="autosave-spinner"></span>保存中…
+        </span>
+        <span class="autosave-status autosave-saved" x-show="saveStatus === 'saved' && editMode" x-cloak>
+            ✓ 保存済み
+        </span>
+        <span class="autosave-status autosave-error" x-show="saveStatus === 'error'" x-cloak>
+            ⚠ 保存に失敗しました — 再度編集すると再試行します
         </span>
 
         <details class="export-menu">
@@ -530,6 +542,11 @@ function segmentsApp(transcriptId, historyNames) {
         history: historyNames || [],
         editMode: false,
 
+        // ── 自動保存 ──────────────────────────────────────────────────
+        saveStatus: 'saved',   // 'saved' | 'pending' | 'saving' | 'error'
+        pendingSegments: new Map(),  // segmentId → text
+        _saveTimer: null,
+
         editor: {
             open: false,
             x: 0,
@@ -597,6 +614,13 @@ function segmentsApp(transcriptId, historyNames) {
             this.setupKeyboardShortcuts();
             // v1.1: 手動スクロール検知 (auto-scroll の中断条件)
             this.setupManualScrollDetection();
+            // 未保存変更がある状態でページ離脱しようとした時に警告
+            window.addEventListener('beforeunload', (e) => {
+                if (this.pendingSegments.size > 0 || this.saveStatus === 'saving') {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
         },
 
         // v1.1: 編集を終了する前に、編集中の textarea があれば blur (save 経由) する
@@ -1017,31 +1041,48 @@ function segmentsApp(transcriptId, historyNames) {
         // ── テキストエリアイベント ─────────────────────────────────
         onSegmentInput(event) {
             this.autoResize(event.currentTarget);
+            // 変更を pending に登録してデバウンス自動保存を起動
+            const ta = event.currentTarget;
+            const segId = parseInt(ta.dataset.segmentId, 10);
+            this.pendingSegments.set(segId, ta.value.trim());
+            this.saveStatus = 'pending';
+            clearTimeout(this._saveTimer);
+            this._saveTimer = setTimeout(() => this._flushPending(), 2000);
         },
 
         async onSegmentBlur(event) {
             const t = event.currentTarget;
             const segmentId = parseInt(t.dataset.segmentId, 10);
-            const newText = t.value.trim();
-            const original = t.dataset.originalText !== undefined
-                ? t.dataset.originalText
-                : t.defaultValue.trim();
 
-            // v1.1 Option C: blur 後にこの segment の編集状態を解除するか判定。
-            // 別の segment-text-edit にフォーカスが移った場合 (= ユーザーが
-            // 他のカードをクリックして編集対象を変えた場合) は解除しない。
-            // setTimeout(0) で click handler の focusedEditingSegmentId 更新を
-            // 先に走らせる。
+            // blur 時はデバウンスをキャンセルして即時保存
+            clearTimeout(this._saveTimer);
+            this._saveTimer = null;
+
             setTimeout(() => {
                 if (this.focusedEditingSegmentId === segmentId) {
-                    // 編集対象が変わっていない = 真の blur (どこにもフォーカス移動なし、
-                    // または非 textarea 要素にフォーカス) → 編集状態を解除
                     this.focusedEditingSegmentId = null;
                 }
             }, 0);
 
-            if (newText === original) return;
+            await this._saveSegment(segmentId, t);
+        },
 
+        // 1セグメントを保存する共通処理
+        async _saveSegment(segmentId, ta) {
+            if (!ta) ta = document.querySelector(`.segment-text-edit[data-segment-id="${segmentId}"]`);
+            if (!ta) return;
+            const newText = ta.value.trim();
+            const original = ta.dataset.originalText !== undefined
+                ? ta.dataset.originalText
+                : ta.defaultValue.trim();
+            if (newText === original) {
+                this.pendingSegments.delete(segmentId);
+                if (this.pendingSegments.size === 0 && this.saveStatus !== 'saving') {
+                    this.saveStatus = 'saved';
+                }
+                return;
+            }
+            this.saveStatus = 'saving';
             try {
                 const res = await fetch(`/api/segments/${segmentId}`, {
                     method: 'PATCH',
@@ -1049,12 +1090,12 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({text: newText}),
                 });
                 if (!res.ok) throw new Error(await res.text());
-                t.dataset.originalText = newText;
-                // 同じカード内の表示用 div も同期しておく
-                const card = t.closest('.segment-card');
+                ta.dataset.originalText = newText;
+                this.pendingSegments.delete(segmentId);
+                // 表示用 div も同期
+                const card = ta.closest('.segment-card');
                 if (card) {
                     const viewDiv = card.querySelector('.segment-text');
-                    // v1.1: span 構造を保つヘルパー経由で更新
                     if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
                     if (!card.querySelector('[data-edited]')) {
                         const time = card.querySelector('.segment-time');
@@ -1065,11 +1106,39 @@ function segmentsApp(transcriptId, historyNames) {
                         if (time) time.after(badge);
                     }
                 }
+                if (this.pendingSegments.size === 0) {
+                    this.saveStatus = 'saved';
+                    this._verifyWithServer();
+                }
             } catch (e) {
                 console.error('save failed:', e);
-                // ロールバック
-                t.value = original;
+                ta.value = original;
+                this.pendingSegments.delete(segmentId);
+                this.saveStatus = 'error';
             }
+        },
+
+        // pending をまとめて保存（デバウンスタイマー発火時）
+        async _flushPending() {
+            if (this.pendingSegments.size === 0) return;
+            this.saveStatus = 'saving';
+            const toSave = new Map(this.pendingSegments);
+            for (const [segId] of toSave) {
+                await this._saveSegment(segId, null);
+            }
+        },
+
+        // サーバー側で保存件数を確認（バックグラウンド）
+        async _verifyWithServer() {
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/count`);
+                if (!res.ok) return;
+                const {count} = await res.json();
+                const localCount = document.querySelectorAll('.segment-card').length;
+                if (count !== localCount) {
+                    console.warn(`自動保存の検証: サーバー ${count} 件 / 画面 ${localCount} 件`);
+                }
+            } catch (_) { /* サイレント */ }
         },
 
         onSegmentKeydown(event) {
