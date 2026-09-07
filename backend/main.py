@@ -345,39 +345,64 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
 
         def _parse_seg(pl: bytes):
             """
-            セグメントレコードとして pl を解析。
-            成功すれば [tid, oi, ss, es, sl, text, dn, ie] を返す。
-            col[2]=7(float), col[3]=7(float) の確認とSPEAKERチェック付き。
+            セグメントレコードとして pl を解析して返す。
+            ペイロード列構造（11列）:
+              col[0]=id(NULL), col[1]=transcript_id, col[2]=order_index,
+              col[3]=start_seconds(float), col[4]=end_seconds(float),
+              col[5]=speaker_label, col[6]=text_content,
+              col[7]=display_name, col[8]=is_edited
+            id は INTEGER PRIMARY KEY のため payload では NULL(type=0)。
             """
             if len(pl) < 12: return None
             p = 0
             hs, p = _vi(pl, p)
-            # 10列ヘッダは最低11バイト (1 size byte + 10 type bytes)
-            if hs < 4 or hs > len(pl) or hs > 100: return None
+            if hs < 4 or hs > len(pl) or hs > 120: return None
             he = hs
             ts: list = []; q = p
             while q < he:
                 t, q = _vi(pl, q)
                 ts.append(t)
                 if len(ts) > 15: return None
-            if len(ts) < 10: return None
-            # start_seconds / end_seconds は必ずfloat(type=7)
-            if ts[2] != 7 or ts[3] != 7: return None
+            # id(NULL)+tid+oi+ss+es+sl+text+dn+ie = 最低9列
+            if len(ts) < 9: return None
+            # ts[0]=NULL(id), ts[3]=7(ss), ts[4]=7(es)
+            if ts[0] != 0: return None
+            if ts[3] != 7 or ts[4] != 7: return None
             vs: list = []; dp = he
-            for t in ts[:8]:
+            for t in ts[:9]:
                 try:
                     v, dp = _gs(t, pl, dp)
                 except Exception:
                     return None
                 vs.append(v)
-            if len(vs) < 8: return None
-            tid, oi, ss, es, sl = vs[0], vs[1], vs[2], vs[3], vs[4]
+            if len(vs) < 9: return None
+            tid, oi, ss, es, sl = vs[1], vs[2], vs[3], vs[4], vs[5]
             if not isinstance(tid, int) or tid < 1: return None
             if not isinstance(oi, int) or oi < 0: return None
             if not isinstance(ss, float) or not isinstance(es, float): return None
             if ss < 0 or es < ss or es > 86400 * 7: return None
             if not isinstance(sl, str) or "SPEAKER" not in sl: return None
             return vs
+
+        def _scan_bytes(data: bytes, seen: set, dedup: list) -> None:
+            """data 内の \x07\x07 をアンカーにセグメントを探し seen/dedup を更新。"""
+            pos = 0
+            while True:
+                k = data.find(b"\x07\x07", pos)
+                if k == -1: break
+                # \x07\x07 は payload[4:6] なので correct off=4
+                # ずれに備えて 3〜6 も試す
+                for off in range(3, 8):
+                    ps_start = k - off
+                    if ps_start < 0: continue
+                    row = _parse_seg(data[ps_start:])
+                    if row is not None:
+                        key = (row[1], row[2])  # (tid, oi)
+                        if key not in seen:
+                            seen.add(key)
+                            dedup.append(row)
+                        break
+                pos = k + 1
 
         with open(BAK, "rb") as _f:
             _hdr = _f.read(100)
@@ -386,35 +411,31 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         file_size = Path(BAK).stat().st_size
         total_pages = file_size // ps
 
-        # \x07\x07（start/end_secondsのfloat型シリアル番号）をアンカーにスキャン。
-        # B-treeヘッダが壊れたページ(ncells=0)でも機能する。
         seen: set = set()
         dedup: list = []
 
+        # ① DB バックアップをスキャン
         with open(BAK, "rb") as _f:
             for pgno in range(1, total_pages + 1):
                 _f.seek((pgno - 1) * ps)
                 d = _f.read(ps)
-                if b"SPEAKER" not in d:
-                    continue
-                pos = 0
-                while True:
-                    k = d.find(b"\x07\x07", pos)
-                    if k == -1: break
-                    # ヘッダ内の \x07\x07 は payload 先頭から通常 3〜5 バイト目
-                    # (header_size_varint=1byte, type0_varint=1byte, type1_varint=1byte)
-                    # offset を 2〜9 で総当たり
-                    for off in range(2, 10):
-                        ps_start = k - off
-                        if ps_start < 0: continue
-                        row = _parse_seg(d[ps_start:])
-                        if row is not None:
-                            key = (row[0], row[1])
-                            if key not in seen:
-                                seen.add(key)
-                                dedup.append(row)
-                            break
-                    pos = k + 1
+                _scan_bytes(d, seen, dedup)
+
+        # ② WAL バックアップをスキャン（フレームのページデータのみ）
+        WAL = "/data/app.db-wal.bak"
+        if Path(WAL).exists():
+            with open(WAL, "rb") as _f:
+                wal_data = _f.read()
+            if len(wal_data) >= 32:
+                _mag = _struct.unpack(">I", wal_data[:4])[0]
+                _e = ">" if _mag == 0x377f0682 else "<"
+                _wps = _struct.unpack(f"{_e}I", wal_data[8:12])[0]
+                _fsz = 24 + _wps
+                _wp = 32
+                while _wp + _fsz <= len(wal_data):
+                    _pd = wal_data[_wp + 24: _wp + _fsz]
+                    _scan_bytes(_pd, seen, dedup)
+                    _wp += _fsz
 
         if not dedup:
             return JSONResponse({
@@ -435,11 +456,12 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
                 "VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
                 [
                     (
-                        int(r[0]), int(r[1]),
-                        float(r[2]), float(r[3]),
-                        str(r[4]), str(r[5]),
-                        str(r[6]) if r[6] else None,
-                        int(r[7]) if r[7] else 0,
+                        # vs[0]=id(NULL) はスキップ; vs[1..8] を使用
+                        int(r[1]), int(r[2]),
+                        float(r[3]), float(r[4]),
+                        str(r[5]), str(r[6]),
+                        str(r[7]) if r[7] else None,
+                        int(r[8]) if r[8] else 0,
                     )
                     for r in dedup
                 ],
