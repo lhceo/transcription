@@ -102,14 +102,7 @@
             </template>
             <div class="form-row">
                 <label class="form-label">PJTでの役割 <span class="form-label-hint">任意</span></label>
-                <select class="form-select" x-model="newMember.project_role">
-                    <option value="">選択しない</option>
-                    <option value="PM">PM</option>
-                    <option value="担当">担当</option>
-                    <option value="発注者">発注者</option>
-                    <option value="受注者">受注者</option>
-                    <option value="オブザーバー">オブザーバー</option>
-                </select>
+                <input type="text" class="form-input" x-model="newMember.project_role" placeholder="例: PM・進行管理、意思決定者、技術担当">
             </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" @click="addMember()">追加</button>
@@ -145,14 +138,7 @@
                                 <td x-text="m.company || '—'"></td>
                                 <td x-text="m.job_title || '—'"></td>
                                 <td>
-                                    <select class="form-select form-select-sm" x-model="m.project_role" @change="updateMemberRole(m)">
-                                        <option value="">—</option>
-                                        <option value="PM">PM</option>
-                                        <option value="担当">担当</option>
-                                        <option value="発注者">発注者</option>
-                                        <option value="受注者">受注者</option>
-                                        <option value="オブザーバー">オブザーバー</option>
-                                    </select>
+                                    <input type="text" class="form-input form-input-sm" x-model="m.project_role" placeholder="—" @blur="updateMemberRole(m)">
                                 </td>
                                 <td>
                                     <button class="btn-icon btn-icon-danger" @click="deleteMember(m)" title="削除">
@@ -175,22 +161,42 @@
         <div class="detail-section-header">
             <h2 class="detail-section-title">固有名詞リスト</h2>
         </div>
-        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として設定されます。</p>
+        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として設定されます。意味を登録すると整文の精度が上がります。</p>
         <div class="vocab-add-row">
-            <input type="text" class="form-input" x-model="newWord" placeholder="単語を入力" @keydown.enter="addWord()" style="flex:1">
+            <input type="text" class="form-input" x-model="newWord" placeholder="単語（例: あっくん）" @keydown.enter="addWord()" style="flex:1">
+            <input type="text" class="form-input" x-model="newMeaning" placeholder="意味・説明（任意、例: 市川のニックネーム）" style="flex:2">
             <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
         </div>
         <template x-if="vocabulary.length === 0">
             <p class="empty-state-inline">まだ単語が登録されていません</p>
         </template>
         <template x-if="vocabulary.length > 0">
-            <div class="vocab-chips">
-                <template x-for="v in vocabulary" :key="v.id">
-                    <span class="vocab-chip">
-                        <span x-text="v.word"></span>
-                        <button class="vocab-chip-remove" @click="deleteWord(v)" aria-label="削除">×</button>
-                    </span>
-                </template>
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>単語</th>
+                            <th>意味・説明</th>
+                            <th class="col-action"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="v in vocabulary" :key="v.id">
+                            <tr>
+                                <td x-text="v.word"></td>
+                                <td x-text="v.meaning || '—'" :class="{ 'text-muted': !v.meaning }"></td>
+                                <td>
+                                    <button class="btn-icon btn-icon-danger" @click="deleteWord(v)" aria-label="削除" title="削除">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
             </div>
         </template>
     </section>
@@ -234,7 +240,7 @@
 
     var initialVocabulary = [];
     {% for v in project.vocabulary %}
-    initialVocabulary.push({ id: {{ v.id }}, word: {{ v.word | tojson }} });
+    initialVocabulary.push({ id: {{ v.id }}, word: {{ v.word | tojson }}, meaning: {{ (v.meaning or '') | tojson }} });
     {% endfor %}
 
     window._projectInit = {
@@ -264,6 +270,7 @@ function projectDetail() {
         newMember: { user_id: '', name: '', company: '', job_title: '', project_role: '' },
 
         newWord: '',
+        newMeaning: '',
 
         startEditInfo() {
             this.draftName = this.projectName;
@@ -356,16 +363,18 @@ function projectDetail() {
         async addWord() {
             const word = this.newWord.trim();
             if (!word) return;
+            const meaning = this.newMeaning.trim() || null;
             try {
                 const res = await fetch('/api/projects/' + this.projectId + '/vocabulary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ word }),
+                    body: JSON.stringify({ word, meaning }),
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || res.status);
                 const data = await res.json();
                 this.vocabulary.push(data);
                 this.newWord = '';
+                this.newMeaning = '';
                 window.showToast('単語を追加しました');
             } catch (e) {
                 window.showToast('追加に失敗しました: ' + e.message, 'error');

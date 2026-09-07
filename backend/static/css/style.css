@@ -252,6 +252,7 @@ html, body {
     border: none;
     cursor: pointer;
     font: inherit;
+    font-size: 13px;
 }
 
 .admin-menu-dropdown {
@@ -3832,6 +3833,60 @@ a.history-item-filename:hover {
     color: var(--color-text-muted);
     margin-bottom: 12px;
     line-height: 1.5;
+}
+
+/* セクション折りたたみ矢印 */
+.section-chevron {
+    width: 16px;
+    height: 16px;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+.section-chevron-open {
+    transform: rotate(180deg);
+}
+.section-hint-inline {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-weight: 400;
+    margin-left: 6px;
+}
+
+/* MTG 情報セクション */
+.mtg-info-section .detail-section-header {
+    margin-bottom: 0;
+}
+.okf-form {
+    margin-top: 16px;
+}
+.form-row-inline {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    align-items: start;
+    gap: 8px 12px;
+    margin-bottom: 10px;
+}
+.form-row-inline .form-label {
+    padding-top: 8px;
+    margin-bottom: 0;
+}
+
+/* インラインテーブル編集用小型input */
+.form-input-sm {
+    font-size: 13px;
+    padding: 4px 8px;
+    height: 30px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    width: 100%;
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+.form-input-sm:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 /* 固有名詞追加行 */

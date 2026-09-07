@@ -17,6 +17,10 @@
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
         originalFilename: {{ transcript.original_filename|tojson }},
+        meetingDate: {{ (transcript.meeting_date.strftime('%Y-%m-%dT%H:%M') if transcript.meeting_date else '') | tojson }},
+        meetingLocation: {{ (transcript.meeting_location or '') | tojson }},
+        meetingPurpose: {{ (transcript.meeting_purpose or '') | tojson }},
+        meetingAgenda: {{ (transcript.meeting_agenda or '') | tojson }},
     };
 </script>
 
@@ -181,6 +185,53 @@
     <p>音声ファイルは削除されています。文字起こしの閲覧・編集は引き続きご利用いただけます。</p>
 </section>
 {% endif %}
+
+{# ── MTG 情報（OKF メタ情報）── #}
+<section class="detail-section mtg-info-section" x-data="mtgInfo()" x-cloak>
+    <div class="detail-section-header" @click="open = !open" style="cursor:pointer">
+        <h3 class="detail-section-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:16px;height:16px;vertical-align:-2px;margin-right:6px">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            MTG情報
+            <span class="section-hint-inline" x-show="!open">（クリックで展開）</span>
+        </h3>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="section-chevron" :class="open ? 'section-chevron-open' : ''">
+            <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+    </div>
+    <div x-show="open" x-transition>
+        <p class="section-hint">整文の精度向上のため、MTGの情報を入力してください。すべて任意です。</p>
+        <div class="okf-form">
+            <div class="form-row form-row-inline">
+                <label class="form-label">日時</label>
+                <input type="datetime-local" class="form-input" x-model="form.meeting_date">
+            </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">場所</label>
+                <input type="text" class="form-input" x-model="form.meeting_location" placeholder="例: 弊社会議室A、オンライン（Zoom）">
+            </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">目的</label>
+                <input type="text" class="form-input" x-model="form.meeting_purpose" placeholder="例: 要件確認・スケジュール調整">
+            </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">アジェンダ</label>
+                <textarea class="form-input form-textarea" x-model="form.meeting_agenda" placeholder="例: &#10;1. 前回議事録の確認&#10;2. 要件定義の確認&#10;3. 次回スケジュール" rows="3"></textarea>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving">
+                    <span x-show="!saving">保存</span>
+                    <span x-show="saving" x-cloak>保存中…</span>
+                </button>
+                <span class="autosave-status autosave-saved" x-show="saved" x-cloak>✓ 保存しました</span>
+            </div>
+        </div>
+    </div>
+</section>
 
 <section class="segments-section"
          x-data="segmentsApp(window.__SEGMENTS_INIT.transcriptId, window.__SEGMENTS_INIT.historyNames)">
@@ -1483,6 +1534,44 @@ function segmentsApp(transcriptId, historyNames) {
                 this.closeEditor();
             } catch (e) {
                 window.showToast(e.message, 'error');
+            }
+        },
+    };
+}
+
+function mtgInfo() {
+    const init = window.__TRANSCRIPT_INIT || {};
+    return {
+        open: false,
+        saving: false,
+        saved: false,
+        form: {
+            meeting_date: init.meetingDate || '',
+            meeting_location: init.meetingLocation || '',
+            meeting_purpose: init.meetingPurpose || '',
+            meeting_agenda: init.meetingAgenda || '',
+        },
+        async save() {
+            this.saving = true;
+            this.saved = false;
+            try {
+                const res = await fetch('/api/transcripts/' + init.id + '/metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        meeting_date: this.form.meeting_date || null,
+                        meeting_location: this.form.meeting_location || null,
+                        meeting_purpose: this.form.meeting_purpose || null,
+                        meeting_agenda: this.form.meeting_agenda || null,
+                    }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                this.saved = true;
+                setTimeout(() => { this.saved = false; }, 3000);
+            } catch (e) {
+                window.showToast('保存に失敗しました', 'error');
+            } finally {
+                this.saving = false;
             }
         },
     };

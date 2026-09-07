@@ -17,6 +17,7 @@ from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Project, ProjectMember, ProjectVocabulary, Theme, Transcript, User
+from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
 from backend.transcribe.retention import expiry_status
@@ -76,6 +77,14 @@ class MemberUpdate(BaseModel):
 
 class VocabularyAdd(BaseModel):
     word: str
+    meaning: str | None = None
+
+
+class TranscriptMetadataUpdate(BaseModel):
+    meeting_date: str | None = None       # ISO 8601 文字列、フロントから渡す
+    meeting_location: str | None = None
+    meeting_purpose: str | None = None
+    meeting_agenda: str | None = None
 
 
 class ProfileUpdate(BaseModel):
@@ -416,11 +425,12 @@ async def add_vocabulary(
     word = body.word.strip()
     if not word:
         raise HTTPException(status_code=400, detail="単語は必須です")
-    vocab = ProjectVocabulary(project_id=project_id, word=word)
+    meaning = body.meaning.strip() if body.meaning else None
+    vocab = ProjectVocabulary(project_id=project_id, word=word, meaning=meaning)
     db.add(vocab)
     db.commit()
     db.refresh(vocab)
-    return JSONResponse({"id": vocab.id, "word": vocab.word}, status_code=201)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning}, status_code=201)
 
 
 @router.delete("/api/projects/{project_id}/vocabulary/{vocab_id}")
@@ -516,7 +526,7 @@ async def project_context(
     # 固有名詞: プロジェクト分 + テーマ配下の全プロジェクトからではなく、
     # 「テーマ自体の vocabulary」は Theme モデルには無いので
     # プロジェクトの語彙のみを使う（仕様上テーマレベルの語彙は ProjectVocabulary で管理）
-    vocab_words = [v.word for v in proj.vocabulary]
+    vocab_words = [{"word": v.word, "meaning": v.meaning} for v in proj.vocabulary]
 
     members_out = []
     for m in proj.members:
@@ -530,6 +540,44 @@ async def project_context(
         "vocabulary": vocab_words,
         "member_count": len(members_out),
     })
+
+
+# ── 文字起こし OKF メタ情報 ──────────────────────────────────────────────────
+
+@router.post("/api/transcripts/{transcript_id}/metadata")
+async def update_transcript_metadata(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: TranscriptMetadataUpdate,
+) -> JSONResponse:
+    """MTG の OKF メタ情報（日時・場所・目的・アジェンダ）を更新する。"""
+    transcript = db.get(Transcript, transcript_id)
+    if not transcript or transcript.user_id != user["id"]:
+        raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+
+    if body.meeting_date is not None:
+        if body.meeting_date == "":
+            transcript.meeting_date = None
+        else:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(body.meeting_date)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_tz.utc)
+                transcript.meeting_date = dt
+            except ValueError:
+                raise HTTPException(status_code=400, detail="meeting_date の形式が不正です")
+
+    if body.meeting_location is not None:
+        transcript.meeting_location = body.meeting_location.strip() or None
+    if body.meeting_purpose is not None:
+        transcript.meeting_purpose = body.meeting_purpose.strip() or None
+    if body.meeting_agenda is not None:
+        transcript.meeting_agenda = body.meeting_agenda.strip() or None
+
+    db.commit()
+    return JSONResponse({"ok": True})
 
 
 # ── プロフィール ─────────────────────────────────────────────────────────────
