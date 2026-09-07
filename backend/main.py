@@ -299,7 +299,7 @@ async def free_audio_space(user: AdminUser) -> JSONResponse:
 
 @app.get("/api/admin/recover-segments")
 async def recover_segments(user: AdminUser) -> JSONResponse:
-    """【一時】WAL/DB解放済みページからsegmentsを復旧する。使用後は削除すること。"""
+    """【一時】\x07\x07アンカースキャンでsegmentsを復旧する。使用後は削除すること。"""
     import struct as _struct
     import sqlite3 as _sq
     import traceback as _tb
@@ -311,20 +311,15 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         if not Path(BAK).exists():
             return JSONResponse({"error": f"{BAK} が存在しません"}, status_code=400)
 
-        NC = 8
-
         def _vi(d: bytes, p: int):
             r = 0
             for i in range(9):
-                if p >= len(d):
-                    return r, p
+                if p >= len(d): return r, p
                 b = d[p]; p += 1
                 if i < 8:
                     r = (r << 7) | (b & 0x7F)
-                    if not (b & 0x80):
-                        break
-                else:
-                    r = (r << 8) | b
+                    if not (b & 0x80): break
+                else: r = (r << 8) | b
             return r, p
 
         def _gs(t: int, pl: bytes, dp: int):
@@ -348,93 +343,86 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
                 return bytes(pl[dp:dp+n]).decode("utf-8", errors="replace"), dp + n
             return None, dp
 
-        def _pr(pl: bytes, nc: int):
-            if not pl or len(pl) < 2:
-                return None
+        def _parse_seg(pl: bytes):
+            """
+            セグメントレコードとして pl を解析。
+            成功すれば [tid, oi, ss, es, sl, text, dn, ie] を返す。
+            col[2]=7(float), col[3]=7(float) の確認とSPEAKERチェック付き。
+            """
+            if len(pl) < 12: return None
             p = 0
             hs, p = _vi(pl, p)
-            if hs < 1 or hs > len(pl):
-                return None
-            he = hs; ts: list = []; q = p
+            # 10列ヘッダは最低11バイト (1 size byte + 10 type bytes)
+            if hs < 4 or hs > len(pl) or hs > 100: return None
+            he = hs
+            ts: list = []; q = p
             while q < he:
-                t, q = _vi(pl, q); ts.append(t)
+                t, q = _vi(pl, q)
+                ts.append(t)
+                if len(ts) > 15: return None
+            if len(ts) < 10: return None
+            # start_seconds / end_seconds は必ずfloat(type=7)
+            if ts[2] != 7 or ts[3] != 7: return None
             vs: list = []; dp = he
-            for t in ts[:nc]:
+            for t in ts[:8]:
                 try:
                     v, dp = _gs(t, pl, dp)
                 except Exception:
                     return None
                 vs.append(v)
-            if len(vs) < nc:
-                return None
+            if len(vs) < 8: return None
+            tid, oi, ss, es, sl = vs[0], vs[1], vs[2], vs[3], vs[4]
+            if not isinstance(tid, int) or tid < 1: return None
+            if not isinstance(oi, int) or oi < 0: return None
+            if not isinstance(ss, float) or not isinstance(es, float): return None
+            if ss < 0 or es < ss or es > 86400 * 7: return None
+            if not isinstance(sl, str) or "SPEAKER" not in sl: return None
             return vs
 
-        def _pp(data: bytes, ps: int):
-            if len(data) < 8 or data[0] != 0x0D:
-                return []
-            nc2 = _struct.unpack_from(">H", data, 3)[0]
-            if nc2 == 0 or nc2 > 500:
-                return []
-            rows = []
-            for i in range(nc2):
-                ptr = _struct.unpack_from(">H", data, 8 + i * 2)[0]
-                if ptr < 8 or ptr >= ps:
-                    continue
-                try:
-                    p = ptr
-                    psz, p = _vi(data, p)
-                    if psz < 1 or psz > ps * 4:
-                        continue
-                    rid, p = _vi(data, p)
-                    pl2 = bytes(data[p:min(p + psz, len(data))])
-                    row = _pr(pl2, NC)
-                    if row is None:
-                        continue
-                    tid, oi, sl = row[0], row[1], row[4]
-                    if not isinstance(tid, int): continue
-                    if not isinstance(oi, int): continue
-                    if not isinstance(sl, str): continue
-                    if "SPEAKER" not in sl: continue
-                    rows.append((rid, row))
-                except Exception:
-                    pass
-            return rows
-
-        # バックアップDBを直接バイナリ読み込み（sqlite_dbpage不要）
         with open(BAK, "rb") as _f:
             _hdr = _f.read(100)
         ps = _struct.unpack_from(">H", _hdr, 16)[0]
-        if ps == 1:
-            ps = 65536
+        if ps == 1: ps = 65536
         file_size = Path(BAK).stat().st_size
         total_pages = file_size // ps
 
-        res: list = []
+        # \x07\x07（start/end_secondsのfloat型シリアル番号）をアンカーにスキャン。
+        # B-treeヘッダが壊れたページ(ncells=0)でも機能する。
+        seen: set = set()
+        dedup: list = []
+
         with open(BAK, "rb") as _f:
             for pgno in range(1, total_pages + 1):
                 _f.seek((pgno - 1) * ps)
                 d = _f.read(ps)
                 if b"SPEAKER" not in d:
                     continue
-                res.extend(_pp(d, ps))
-
-        # 重複排除（transcript_id, order_index の組）
-        seen: set = set()
-        dedup: list = []
-        for rid, row in sorted(res):
-            k = (row[0], row[1])
-            if k not in seen:
-                seen.add(k)
-                dedup.append(row)
+                pos = 0
+                while True:
+                    k = d.find(b"\x07\x07", pos)
+                    if k == -1: break
+                    # ヘッダ内の \x07\x07 は payload 先頭から通常 3〜5 バイト目
+                    # (header_size_varint=1byte, type0_varint=1byte, type1_varint=1byte)
+                    # offset を 2〜9 で総当たり
+                    for off in range(2, 10):
+                        ps_start = k - off
+                        if ps_start < 0: continue
+                        row = _parse_seg(d[ps_start:])
+                        if row is not None:
+                            key = (row[0], row[1])
+                            if key not in seen:
+                                seen.add(key)
+                                dedup.append(row)
+                            break
+                    pos = k + 1
 
         if not dedup:
             return JSONResponse({
                 "recovered": 0,
                 "inserted": 0,
-                "message": "解放済みページにセグメントデータが見つかりませんでした",
+                "message": "セグメントデータが見つかりませんでした",
             })
 
-        # 本番DBへ挿入
         dest = _sq.connect(DB)
         try:
             dest.execute("PRAGMA foreign_keys=OFF")
