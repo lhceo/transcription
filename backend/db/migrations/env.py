@@ -42,16 +42,28 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """オンラインモード（実際の DB に接続して適用）。"""
-    # backend.db.session の engine をそのまま使う
+    from sqlalchemy import text as _text
+
     with engine.connect() as connection:
+        # SQLite の batch_alter_table は内部で DROP TABLE → RENAME を行う。
+        # PRAGMA foreign_keys=ON のままだと CASCADE DELETE が発火してデータが
+        # 消える事故が起きる（2026-09-07 本番事故の教訓）。
+        # マイグレーション中は FK を無効化し、終了後に戻す。
+        _is_sqlite = DATABASE_URL.startswith("sqlite")
+        if _is_sqlite:
+            connection.execute(_text("PRAGMA foreign_keys=OFF"))
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=DATABASE_URL.startswith("sqlite"),
+            render_as_batch=_is_sqlite,
         )
 
         with context.begin_transaction():
             context.run_migrations()
+
+        if _is_sqlite:
+            connection.execute(_text("PRAGMA foreign_keys=ON"))
 
 
 if context.is_offline_mode():

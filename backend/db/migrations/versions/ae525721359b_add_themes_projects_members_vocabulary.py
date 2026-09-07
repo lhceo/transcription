@@ -20,8 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import inspect as sa_inspect, text as _text
     conn = op.get_bind()
+    # batch_alter_table は DROP TABLE → RENAME の手順を踏むため、
+    # foreign_keys=ON のままだと CASCADE DELETE でデータが消える。
+    # 念のためここでも OFF にする（env.py でも設定済みだが二重対策）。
+    conn.execute(_text("PRAGMA foreign_keys=OFF"))
     existing_tables = sa_inspect(conn).get_table_names()
 
     if 'themes' not in existing_tables:
@@ -83,6 +87,8 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('company', sa.String(length=200), nullable=True))
         if 'job_title' not in users_cols:
             batch_op.add_column(sa.Column('job_title', sa.String(length=200), nullable=True))
+
+    conn.execute(_text("PRAGMA foreign_keys=ON"))
 
 
 def downgrade() -> None:
