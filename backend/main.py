@@ -300,189 +300,190 @@ async def free_audio_space(user: AdminUser) -> JSONResponse:
 @app.get("/api/admin/recover-segments")
 async def recover_segments(user: AdminUser) -> JSONResponse:
     """【一時】WAL/DB解放済みページからsegmentsを復旧する。使用後は削除すること。"""
-    import struct
-    import sqlite3 as sq
+    import struct as _struct
+    import sqlite3 as _sq
+    import traceback as _tb
 
     BAK = "/data/app.db.bak"
     DB  = "/data/app.db"
 
-    if not Path(BAK).exists():
-        return JSONResponse({"error": f"{BAK} が存在しません"}, status_code=400)
-
-    NC = 8  # segments テーブルのカラム数
-
-    def vi(d: bytes, p: int):
-        r = 0
-        for i in range(9):
-            if p >= len(d):
-                return r, p
-            b = d[p]; p += 1
-            if i < 8:
-                r = (r << 7) | (b & 0x7F)
-                if not (b & 0x80):
-                    break
-            else:
-                r = (r << 8) | b
-        return r, p
-
-    def gs(t: int, pl: bytes, dp: int):
-        if t == 0: return None, dp
-        if t == 8: return 0, dp
-        if t == 9: return 1, dp
-        if t == 1: return struct.unpack_from(">b", pl, dp)[0], dp + 1
-        if t == 2: return struct.unpack_from(">h", pl, dp)[0], dp + 2
-        if t == 3:
-            return struct.unpack(">I", b"\x00" + pl[dp:dp+3])[0], dp + 3
-        if t == 4: return struct.unpack_from(">i", pl, dp)[0], dp + 4
-        if t == 5:
-            return struct.unpack(">Q", b"\x00\x00" + pl[dp:dp+6])[0], dp + 6
-        if t == 6: return struct.unpack_from(">q", pl, dp)[0], dp + 8
-        if t == 7: return struct.unpack_from(">d", pl, dp)[0], dp + 8
-        if t >= 12 and t % 2 == 0:
-            n = (t - 12) // 2
-            return bytes(pl[dp:dp+n]), dp + n
-        if t >= 13 and t % 2 == 1:
-            n = (t - 13) // 2
-            return bytes(pl[dp:dp+n]).decode("utf-8", errors="replace"), dp + n
-        return None, dp
-
-    def pr(pl: bytes, nc: int):
-        if not pl or len(pl) < 2:
-            return None
-        p = 0
-        hs, p = vi(pl, p)
-        if hs < 1 or hs > len(pl):
-            return None
-        he = hs; ts: list = []; q = p
-        while q < he:
-            t, q = vi(pl, q); ts.append(t)
-        vs: list = []; dp = he
-        for t in ts[:nc]:
-            try:
-                v, dp = gs(t, pl, dp)
-            except Exception:
-                return None
-            vs.append(v)
-        if len(vs) < nc:
-            return None
-        return vs
-
-    def pp(data: bytes, ps: int):
-        if len(data) < 8 or data[0] != 0x0D:
-            return []
-        nc2 = struct.unpack_from(">H", data, 3)[0]
-        if nc2 == 0 or nc2 > 500:
-            return []
-        rows = []
-        for i in range(nc2):
-            ptr = struct.unpack_from(">H", data, 8 + i * 2)[0]
-            if ptr < 8 or ptr >= ps:
-                continue
-            try:
-                p = ptr
-                psz, p = vi(data, p)
-                if psz < 1 or psz > ps * 4:
-                    continue
-                rid, p = vi(data, p)
-                pl = bytes(data[p:min(p + psz, len(data))])
-                row = pr(pl, NC)
-                if row is None:
-                    continue
-                tid, oi, sl = row[0], row[1], row[4]
-                if not isinstance(tid, int):
-                    continue
-                if not isinstance(oi, int):
-                    continue
-                if not isinstance(sl, str):
-                    continue
-                if "SPEAKER" not in sl:
-                    continue
-                rows.append((rid, row))
-            except Exception:
-                pass
-        return rows
-
-    # バックアップDBを解放済みページも含めてフルスキャン
-    cn = sq.connect(BAK)
     try:
-        total_pages = cn.execute(
-            "SELECT max(pgno) FROM sqlite_dbpage"
-        ).fetchone()[0]
-        r1 = bytes(cn.execute(
-            "SELECT data FROM sqlite_dbpage WHERE pgno=1"
-        ).fetchone()[0])
-        ps = struct.unpack_from(">H", r1, 16)[0]
-        if ps == 1:
-            ps = 65536
+        if not Path(BAK).exists():
+            return JSONResponse({"error": f"{BAK} が存在しません"}, status_code=400)
 
-        res: list = []
-        for pgno in range(1, total_pages + 1):
-            row = cn.execute(
-                "SELECT data FROM sqlite_dbpage WHERE pgno=?", (pgno,)
-            ).fetchone()
-            if not row:
-                continue
-            d = bytes(row[0])
-            if b"SPEAKER" not in d:
-                continue
-            res.extend(pp(d, ps))
-    finally:
-        cn.close()
+        NC = 8
 
-    # 重複排除（transcript_id, order_index の組）
-    seen: set = set()
-    dedup: list = []
-    for rid, row in sorted(res):
-        k = (row[0], row[1])
-        if k not in seen:
-            seen.add(k)
-            dedup.append(row)
+        def _vi(d: bytes, p: int):
+            r = 0
+            for i in range(9):
+                if p >= len(d):
+                    return r, p
+                b = d[p]; p += 1
+                if i < 8:
+                    r = (r << 7) | (b & 0x7F)
+                    if not (b & 0x80):
+                        break
+                else:
+                    r = (r << 8) | b
+            return r, p
 
-    if not dedup:
+        def _gs(t: int, pl: bytes, dp: int):
+            if t == 0: return None, dp
+            if t == 8: return 0, dp
+            if t == 9: return 1, dp
+            if t == 1: return _struct.unpack_from(">b", pl, dp)[0], dp + 1
+            if t == 2: return _struct.unpack_from(">h", pl, dp)[0], dp + 2
+            if t == 3:
+                return _struct.unpack(">I", b"\x00" + pl[dp:dp+3])[0], dp + 3
+            if t == 4: return _struct.unpack_from(">i", pl, dp)[0], dp + 4
+            if t == 5:
+                return _struct.unpack(">Q", b"\x00\x00" + pl[dp:dp+6])[0], dp + 6
+            if t == 6: return _struct.unpack_from(">q", pl, dp)[0], dp + 8
+            if t == 7: return _struct.unpack_from(">d", pl, dp)[0], dp + 8
+            if t >= 12 and t % 2 == 0:
+                n = (t - 12) // 2
+                return bytes(pl[dp:dp+n]), dp + n
+            if t >= 13 and t % 2 == 1:
+                n = (t - 13) // 2
+                return bytes(pl[dp:dp+n]).decode("utf-8", errors="replace"), dp + n
+            return None, dp
+
+        def _pr(pl: bytes, nc: int):
+            if not pl or len(pl) < 2:
+                return None
+            p = 0
+            hs, p = _vi(pl, p)
+            if hs < 1 or hs > len(pl):
+                return None
+            he = hs; ts: list = []; q = p
+            while q < he:
+                t, q = _vi(pl, q); ts.append(t)
+            vs: list = []; dp = he
+            for t in ts[:nc]:
+                try:
+                    v, dp = _gs(t, pl, dp)
+                except Exception:
+                    return None
+                vs.append(v)
+            if len(vs) < nc:
+                return None
+            return vs
+
+        def _pp(data: bytes, ps: int):
+            if len(data) < 8 or data[0] != 0x0D:
+                return []
+            nc2 = _struct.unpack_from(">H", data, 3)[0]
+            if nc2 == 0 or nc2 > 500:
+                return []
+            rows = []
+            for i in range(nc2):
+                ptr = _struct.unpack_from(">H", data, 8 + i * 2)[0]
+                if ptr < 8 or ptr >= ps:
+                    continue
+                try:
+                    p = ptr
+                    psz, p = _vi(data, p)
+                    if psz < 1 or psz > ps * 4:
+                        continue
+                    rid, p = _vi(data, p)
+                    pl2 = bytes(data[p:min(p + psz, len(data))])
+                    row = _pr(pl2, NC)
+                    if row is None:
+                        continue
+                    tid, oi, sl = row[0], row[1], row[4]
+                    if not isinstance(tid, int): continue
+                    if not isinstance(oi, int): continue
+                    if not isinstance(sl, str): continue
+                    if "SPEAKER" not in sl: continue
+                    rows.append((rid, row))
+                except Exception:
+                    pass
+            return rows
+
+        # バックアップDBを解放済みページも含めてフルスキャン
+        cn = _sq.connect(BAK)
+        try:
+            total_pages = cn.execute(
+                "SELECT max(pgno) FROM sqlite_dbpage"
+            ).fetchone()[0]
+            r1 = bytes(cn.execute(
+                "SELECT data FROM sqlite_dbpage WHERE pgno=1"
+            ).fetchone()[0])
+            ps = _struct.unpack_from(">H", r1, 16)[0]
+            if ps == 1:
+                ps = 65536
+
+            res: list = []
+            for pgno in range(1, total_pages + 1):
+                row = cn.execute(
+                    "SELECT data FROM sqlite_dbpage WHERE pgno=?", (pgno,)
+                ).fetchone()
+                if not row:
+                    continue
+                d = bytes(row[0])
+                if b"SPEAKER" not in d:
+                    continue
+                res.extend(_pp(d, ps))
+        finally:
+            cn.close()
+
+        # 重複排除（transcript_id, order_index の組）
+        seen: set = set()
+        dedup: list = []
+        for rid, row in sorted(res):
+            k = (row[0], row[1])
+            if k not in seen:
+                seen.add(k)
+                dedup.append(row)
+
+        if not dedup:
+            return JSONResponse({
+                "recovered": 0,
+                "inserted": 0,
+                "message": "解放済みページにセグメントデータが見つかりませんでした",
+            })
+
+        # 本番DBへ挿入
+        dest = _sq.connect(DB)
+        try:
+            dest.execute("PRAGMA foreign_keys=OFF")
+            before = dest.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
+            dest.executemany(
+                "INSERT INTO segments"
+                "(transcript_id,order_index,start_seconds,end_seconds,"
+                "speaker_label,text_content,display_name,is_edited,"
+                "created_at,updated_at)"
+                "VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                [
+                    (
+                        int(r[0]), int(r[1]),
+                        float(r[2]), float(r[3]),
+                        str(r[4]), str(r[5]),
+                        str(r[6]) if r[6] else None,
+                        int(r[7]) if r[7] else 0,
+                    )
+                    for r in dedup
+                ],
+            )
+            dest.commit()
+            after = dest.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
+            distinct_tids = dest.execute(
+                "SELECT COUNT(DISTINCT transcript_id) FROM segments"
+            ).fetchone()[0]
+        finally:
+            dest.close()
+
         return JSONResponse({
-            "recovered": 0,
-            "inserted": 0,
-            "message": "解放済みページにセグメントデータが見つかりませんでした",
+            "recovered": len(dedup),
+            "inserted": after - before,
+            "segments_total": after,
+            "transcripts_with_segments": distinct_tids,
+            "page_size": ps,
+            "pages_scanned": total_pages,
         })
 
-    # 本番DBへ挿入
-    dest = sq.connect(DB)
-    try:
-        dest.execute("PRAGMA foreign_keys=OFF")
-        before = dest.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
-        dest.executemany(
-            "INSERT INTO segments"
-            "(transcript_id,order_index,start_seconds,end_seconds,"
-            "speaker_label,text_content,display_name,is_edited,"
-            "created_at,updated_at)"
-            "VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-            [
-                (
-                    int(r[0]), int(r[1]),
-                    float(r[2]), float(r[3]),
-                    str(r[4]), str(r[5]),
-                    str(r[6]) if r[6] else None,
-                    int(r[7]) if r[7] else 0,
-                )
-                for r in dedup
-            ],
-        )
-        dest.commit()
-        after = dest.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
-        distinct_tids = dest.execute(
-            "SELECT COUNT(DISTINCT transcript_id) FROM segments"
-        ).fetchone()[0]
-    finally:
-        dest.close()
-
-    return JSONResponse({
-        "recovered": len(dedup),
-        "inserted": after - before,
-        "segments_total": after,
-        "transcripts_with_segments": distinct_tids,
-        "page_size": ps,
-        "pages_scanned": total_pages,
-    })
+    except Exception:
+        return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
 @app.get("/admin", response_class=HTMLResponse)
