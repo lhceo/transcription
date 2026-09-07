@@ -400,32 +400,23 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
                     pass
             return rows
 
-        # バックアップDBを解放済みページも含めてフルスキャン
-        cn = _sq.connect(BAK)
-        try:
-            total_pages = cn.execute(
-                "SELECT max(pgno) FROM sqlite_dbpage"
-            ).fetchone()[0]
-            r1 = bytes(cn.execute(
-                "SELECT data FROM sqlite_dbpage WHERE pgno=1"
-            ).fetchone()[0])
-            ps = _struct.unpack_from(">H", r1, 16)[0]
-            if ps == 1:
-                ps = 65536
+        # バックアップDBを直接バイナリ読み込み（sqlite_dbpage不要）
+        with open(BAK, "rb") as _f:
+            _hdr = _f.read(100)
+        ps = _struct.unpack_from(">H", _hdr, 16)[0]
+        if ps == 1:
+            ps = 65536
+        file_size = Path(BAK).stat().st_size
+        total_pages = file_size // ps
 
-            res: list = []
+        res: list = []
+        with open(BAK, "rb") as _f:
             for pgno in range(1, total_pages + 1):
-                row = cn.execute(
-                    "SELECT data FROM sqlite_dbpage WHERE pgno=?", (pgno,)
-                ).fetchone()
-                if not row:
-                    continue
-                d = bytes(row[0])
+                _f.seek((pgno - 1) * ps)
+                d = _f.read(ps)
                 if b"SPEAKER" not in d:
                     continue
                 res.extend(_pp(d, ps))
-        finally:
-            cn.close()
 
         # 重複排除（transcript_id, order_index の組）
         seen: set = set()
