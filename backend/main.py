@@ -384,24 +384,35 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
             if not isinstance(sl, str) or "SPEAKER" not in sl: return None
             return vs
 
+        # デバッグカウンタ（問題特定後に削除）
+        _dbg: dict = {
+            "x0707_in_wal": 0,
+            "wal_frames": 0,
+            "parse_ok": 0,
+            "parse_fail_hs": 0,
+            "parse_fail_ts": 0,
+            "parse_fail_val": 0,
+        }
+
         def _scan_bytes(data: bytes, seen: set, dedup: list) -> None:
-            """data 内の \x07\x07 をアンカーにセグメントを探し seen/dedup を更新。"""
             pos = 0
             while True:
                 k = data.find(b"\x07\x07", pos)
                 if k == -1: break
-                # \x07\x07 は payload[4:6] なので correct off=4
-                # ずれに備えて 3〜6 も試す
+                _dbg["x0707_in_wal"] += 1
                 for off in range(3, 8):
                     ps_start = k - off
                     if ps_start < 0: continue
                     row = _parse_seg(data[ps_start:])
                     if row is not None:
-                        key = (row[1], row[2])  # (tid, oi)
+                        _dbg["parse_ok"] += 1
+                        key = (row[1], row[2])
                         if key not in seen:
                             seen.add(key)
                             dedup.append(row)
                         break
+                else:
+                    _dbg["parse_fail_val"] += 1
                 pos = k + 1
 
         with open(BAK, "rb") as _f:
@@ -425,23 +436,28 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         WAL = "/data/app.db-wal.bak"
         if Path(WAL).exists():
             with open(WAL, "rb") as _f:
-                wal_data = _f.read()
-            if len(wal_data) >= 32:
-                _mag = _struct.unpack(">I", wal_data[:4])[0]
-                _e = ">" if _mag == 0x377f0682 else "<"
-                _wps = _struct.unpack(f"{_e}I", wal_data[8:12])[0]
+                wal_raw = _f.read()
+            _dbg["wal_size"] = len(wal_raw)
+            if len(wal_raw) >= 32:
+                _mag = _struct.unpack(">I", wal_raw[:4])[0]
+                _e2 = ">" if _mag == 0x377f0682 else "<"
+                _wps = _struct.unpack(f"{_e2}I", wal_raw[8:12])[0]
                 _fsz = 24 + _wps
+                _dbg["wal_ps"] = _wps
+                _dbg["wal_fsz"] = _fsz
                 _wp = 32
-                while _wp + _fsz <= len(wal_data):
-                    _pd = wal_data[_wp + 24: _wp + _fsz]
+                while _wp + _fsz <= len(wal_raw):
+                    _pd = wal_raw[_wp + 24: _wp + _fsz]
                     _scan_bytes(_pd, seen, dedup)
                     _wp += _fsz
+                    _dbg["wal_frames"] += 1
 
         if not dedup:
             return JSONResponse({
                 "recovered": 0,
                 "inserted": 0,
                 "message": "セグメントデータが見つかりませんでした",
+                "debug": _dbg,
             })
 
         dest = _sq.connect(DB)
