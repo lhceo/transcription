@@ -465,6 +465,63 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/recover-diag4")
+async def recover_diag4(user: AdminUser) -> JSONResponse:
+    """【一時診断4】WAL内SPEAKER_0前後の生バイトを表示。"""
+    import struct as _s
+    WAL = "/data/app.db-wal.bak"
+    if not Path(WAL).exists():
+        return JSONResponse({"error": "WALなし"}, status_code=400)
+    with open(WAL, "rb") as f:
+        wal_data = f.read()
+    magic = _s.unpack(">I", wal_data[:4])[0]
+    e = ">" if magic == 0x377f0682 else "<"
+    wal_ps = _s.unpack(f"{e}I", wal_data[8:12])[0]
+    frame_sz = 24 + wal_ps
+
+    results = []
+    wp = 32
+    while wp + frame_sz <= len(wal_data) and len(results) < 3:
+        fh = wal_data[wp:wp+24]
+        pg_no = _s.unpack(f"{e}I", fh[:4])[0]
+        pd = wal_data[wp+24:wp+frame_sz]
+        # SPEAKER_0 が含まれるフレームだけ
+        idx = pd.find(b"SPEAKER_0")
+        if idx != -1:
+            # SPEAKER_0 の前後60バイトをhexで
+            lo = max(0, idx - 60)
+            hi = min(len(pd), idx + 30)
+            ctx = pd[lo:hi]
+            # 最も近い \x07\x07 の位置（前方）
+            x77_before = -1
+            for back in range(1, 80):
+                if idx - back >= 1 and pd[idx-back] == 0x07 and pd[idx-back-1] == 0x07:
+                    x77_before = idx - back - 1
+                    break
+            results.append({
+                "frame_wp": wp,
+                "page_no": pg_no,
+                "speaker0_at": idx,
+                "x0707_before_at": x77_before,
+                "dist_x0707_to_speaker0": idx - x77_before if x77_before >= 0 else None,
+                "context_lo": lo,
+                "hex": ctx.hex(),
+                "ascii": "".join(
+                    chr(b) if 0x20 <= b < 0x7f else "." for b in ctx
+                ),
+            })
+        wp += frame_sz
+
+    # 追加: WAL全体の最初のSPEAKER_0位置を特定
+    first_global = wal_data.find(b"SPEAKER_0")
+    return JSONResponse({
+        "wal_ps": wal_ps,
+        "frame_sz": frame_sz,
+        "first_speaker0_global_offset": first_global,
+        "samples": results,
+    })
+
+
 @app.get("/api/admin/recover-diag3")
 async def recover_diag3(user: AdminUser) -> JSONResponse:
     """【一時診断3】SPEAKERフィルタなしで全ページ+WALをスキャン。"""
