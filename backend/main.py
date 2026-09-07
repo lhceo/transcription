@@ -477,6 +477,53 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/recover-diag")
+async def recover_diag(user: AdminUser) -> JSONResponse:
+    """【一時診断】バックアップDBのページ構造を調べる。"""
+    import struct as _s
+    BAK = "/data/app.db.bak"
+    if not Path(BAK).exists():
+        return JSONResponse({"error": f"{BAK} なし"}, status_code=400)
+
+    with open(BAK, "rb") as f:
+        hdr = f.read(100)
+    ps = _s.unpack_from(">H", hdr, 16)[0]
+    if ps == 1:
+        ps = 65536
+    file_size = Path(BAK).stat().st_size
+    total_pages = file_size // ps
+
+    type_counts: dict = {}
+    spk_type_counts: dict = {}
+    spk_samples: list = []
+
+    with open(BAK, "rb") as f:
+        for pgno in range(1, total_pages + 1):
+            f.seek((pgno - 1) * ps)
+            d = f.read(ps)
+            pt = d[0]
+            type_counts[pt] = type_counts.get(pt, 0) + 1
+            if b"SPEAKER" in d:
+                spk_type_counts[pt] = spk_type_counts.get(pt, 0) + 1
+                if len(spk_samples) < 8:
+                    nc2 = _s.unpack_from(">H", d, 3)[0] if len(d) >= 5 else -1
+                    spk_samples.append({
+                        "pgno": pgno,
+                        "type": hex(pt),
+                        "ncells": nc2,
+                        "spk0_count": d.count(b"SPEAKER_0"),
+                        "first16": d[:16].hex(),
+                    })
+
+    return JSONResponse({
+        "ps": ps,
+        "total_pages": total_pages,
+        "page_types": {hex(k): v for k, v in sorted(type_counts.items())},
+        "speaker_page_types": {hex(k): v for k, v in sorted(spk_type_counts.items())},
+        "speaker_page_samples": spk_samples,
+    })
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, user: AdminUser) -> HTMLResponse:
     """管理ページ。管理者のみ。"""
