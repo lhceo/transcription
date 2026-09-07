@@ -26,6 +26,7 @@ from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
 from backend.db.models import Transcript, User
+from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -136,6 +137,9 @@ app.include_router(auth_router)
 
 # 文字起こしルート（POST /api/transcripts, GET /api/transcripts）
 app.include_router(transcribe_router)
+
+# プロジェクト管理ルート（/themes, /projects, /profile）
+app.include_router(projects_router)
 
 
 @app.get("/health")

@@ -68,6 +68,7 @@ async def create_transcript(
     audio_duration_seconds: str | None = Form(None),
     speakers_expected: str | None = Form(None),
     word_boost: str | None = Form(None),
+    project_id: str | None = Form(None),
 ) -> HTMLResponse:
     """音声ファイルをアップロードし、ジョブを作成する。
 
@@ -128,6 +129,13 @@ async def create_transcript(
         words = [w.strip() for w in word_boost.splitlines() if w.strip()]
         if words:
             parsed_word_boost = words[:50]  # AssemblyAI の推奨上限
+
+    parsed_project_id: int | None = None
+    if project_id:
+        try:
+            parsed_project_id = int(project_id)
+        except (TypeError, ValueError):
+            pass
 
     # ──── 月次コスト上限チェック ────────────────────────────────────────────
     settings = load_settings()
@@ -241,6 +249,7 @@ async def create_transcript(
             model_tier=model_tier,
             language="ja",
             created_at=datetime.now(timezone.utc),
+            project_id=parsed_project_id,
         )
         db.add(transcript)
         db.commit()

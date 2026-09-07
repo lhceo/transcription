@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} | プロジェクト | 音声文字起こし{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-breadcrumb">
+        <a href="/themes" class="breadcrumb-link">プロジェクト管理</a>
+        {% if project.theme %}
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-text">{{ project.theme.name }}</span>
+        {% endif %}
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-text breadcrumb-current">{{ project.name }}</span>
+    </div>
+</div>
+
+<div id="project-root" x-data="projectDetail()">
+
+    {# ── プロジェクト情報 ── #}
+    <section class="detail-section">
+        <div class="detail-section-header">
+            <h2 class="detail-section-title">プロジェクト情報</h2>
+            <button class="btn btn-outline btn-sm" @click="editingInfo = !editingInfo" x-text="editingInfo ? 'キャンセル' : '編集'"></button>
+        </div>
+        <div x-show="!editingInfo">
+            <dl class="info-dl">
+                <dt>プロジェクト名</dt>
+                <dd x-text="projectName"></dd>
+                {% if project.theme %}
+                <dt>大テーマ</dt>
+                <dd>{{ project.theme.name }}</dd>
+                {% endif %}
+                <dt>説明</dt>
+                <dd x-text="projectDescription || '（なし）'" :class="{ 'text-muted': !projectDescription }"></dd>
+            </dl>
+        </div>
+        <div x-show="editingInfo" x-cloak>
+            <div class="form-row">
+                <label class="form-label">プロジェクト名 <span class="required">*</span></label>
+                <input type="text" class="form-input" x-model="draftName">
+            </div>
+            <div class="form-row">
+                <label class="form-label">説明 <span class="form-label-hint">任意</span></label>
+                <input type="text" class="form-input" x-model="draftDescription">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" @click="saveInfo()">保存</button>
+                <button class="btn btn-ghost btn-sm" @click="cancelEditInfo()">キャンセル</button>
+            </div>
+        </div>
+    </section>
+
+    {# ── メンバー ── #}
+    <section class="detail-section">
+        <div class="detail-section-header">
+            <h2 class="detail-section-title">メンバー</h2>
+            <button class="btn btn-outline btn-sm" @click="showMemberForm = !showMemberForm">
+                <span x-text="showMemberForm ? 'キャンセル' : '追加'"></span>
+            </button>
+        </div>
+
+        {# メンバー追加フォーム #}
+        <div x-show="showMemberForm" x-cloak class="inline-form inline-form-nested">
+            <div class="form-row">
+                <label class="form-label">種別</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" x-model="memberType" value="internal"> 社内ユーザー
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" x-model="memberType" value="external"> 社外メンバー
+                    </label>
+                </div>
+            </div>
+            <template x-if="memberType === 'internal'">
+                <div class="form-row">
+                    <label class="form-label">ユーザー</label>
+                    <select class="form-select" x-model="newMember.user_id">
+                        <option value="">選択してください</option>
+                        {% for u in all_users %}
+                        <option value="{{ u.id }}">{{ u.name }}（{{ u.email }}）</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </template>
+            <template x-if="memberType === 'external'">
+                <div>
+                    <div class="form-row">
+                        <label class="form-label">名前 <span class="required">*</span></label>
+                        <input type="text" class="form-input" x-model="newMember.name" placeholder="山田 太郎">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">会社 <span class="form-label-hint">任意</span></label>
+                        <input type="text" class="form-input" x-model="newMember.company" placeholder="株式会社〇〇">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">役職 <span class="form-label-hint">任意</span></label>
+                        <input type="text" class="form-input" x-model="newMember.job_title" placeholder="営業部長">
+                    </div>
+                </div>
+            </template>
+            <div class="form-row">
+                <label class="form-label">PJTでの役割 <span class="form-label-hint">任意</span></label>
+                <select class="form-select" x-model="newMember.project_role">
+                    <option value="">選択しない</option>
+                    <option value="PM">PM</option>
+                    <option value="担当">担当</option>
+                    <option value="発注者">発注者</option>
+                    <option value="受注者">受注者</option>
+                    <option value="オブザーバー">オブザーバー</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" @click="addMember()">追加</button>
+                <button class="btn btn-ghost btn-sm" @click="cancelMemberForm()">キャンセル</button>
+            </div>
+        </div>
+
+        {# メンバーテーブル #}
+        <template x-if="members.length === 0">
+            <p class="empty-state-inline">まだメンバーがいません</p>
+        </template>
+        <template x-if="members.length > 0">
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>名前</th>
+                            <th class="col-med">会社</th>
+                            <th class="col-med">役職</th>
+                            <th class="col-sm">PJTでの役割</th>
+                            <th class="col-action"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="m in members" :key="m.id">
+                            <tr>
+                                <td>
+                                    <span x-text="m.display_name"></span>
+                                    <template x-if="m.is_internal">
+                                        <span class="badge-internal">社内</span>
+                                    </template>
+                                </td>
+                                <td x-text="m.company || '—'"></td>
+                                <td x-text="m.job_title || '—'"></td>
+                                <td>
+                                    <select class="form-select form-select-sm" x-model="m.project_role" @change="updateMemberRole(m)">
+                                        <option value="">—</option>
+                                        <option value="PM">PM</option>
+                                        <option value="担当">担当</option>
+                                        <option value="発注者">発注者</option>
+                                        <option value="受注者">受注者</option>
+                                        <option value="オブザーバー">オブザーバー</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn-icon btn-icon-danger" @click="deleteMember(m)" title="削除">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+    </section>
+
+    {# ── 固有名詞 ── #}
+    <section class="detail-section">
+        <div class="detail-section-header">
+            <h2 class="detail-section-title">固有名詞リスト</h2>
+        </div>
+        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として設定されます。</p>
+        <div class="vocab-add-row">
+            <input type="text" class="form-input" x-model="newWord" placeholder="単語を入力" @keydown.enter="addWord()" style="flex:1">
+            <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
+        </div>
+        <template x-if="vocabulary.length === 0">
+            <p class="empty-state-inline">まだ単語が登録されていません</p>
+        </template>
+        <template x-if="vocabulary.length > 0">
+            <div class="vocab-chips">
+                <template x-for="v in vocabulary" :key="v.id">
+                    <span class="vocab-chip">
+                        <span x-text="v.word"></span>
+                        <button class="vocab-chip-remove" @click="deleteWord(v)" aria-label="削除">×</button>
+                    </span>
+                </template>
+            </div>
+        </template>
+    </section>
+
+    {# ── 関連文字起こし ── #}
+    <section class="detail-section">
+        <div class="detail-section-header">
+            <h2 class="detail-section-title">関連する文字起こし</h2>
+        </div>
+        {% if related_transcripts %}
+        <ul class="related-transcripts">
+            {% for t in related_transcripts %}
+            <li class="related-transcript-row">
+                <a href="/transcripts/{{ t.id }}" class="related-transcript-link">{{ display_name(t) }}</a>
+                <span class="related-transcript-date text-muted">{{ t.created_at.strftime('%Y/%m/%d') if t.created_at else '' }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty-state-inline">このプロジェクトに紐付いた文字起こしはまだありません。<br>アップロード時にプロジェクトを選択すると、ここに表示されます。</p>
+        {% endif %}
+    </section>
+
+</div>
+
+<script>
+(function () {
+    var PROJECT_ID = {{ project.id }};
+
+    var initialMembers = [];
+    {% for m in project.members %}
+    initialMembers.push({
+        id: {{ m.id }},
+        display_name: {{ member_display_name(m) | tojson }},
+        company: {{ (m.company or '') | tojson }},
+        job_title: {{ (m.job_title or '') | tojson }},
+        project_role: {{ (m.project_role or '') | tojson }},
+        is_internal: {{ 'true' if m.user_id else 'false' }},
+    });
+    {% endfor %}
+
+    var initialVocabulary = [];
+    {% for v in project.vocabulary %}
+    initialVocabulary.push({ id: {{ v.id }}, word: {{ v.word | tojson }} });
+    {% endfor %}
+
+    window._projectInit = {
+        id: PROJECT_ID,
+        members: initialMembers,
+        vocabulary: initialVocabulary,
+        name: {{ project.name | tojson }},
+        description: {{ (project.description or '') | tojson }},
+    };
+})();
+
+function projectDetail() {
+    var init = window._projectInit || {};
+    return {
+        projectId: init.id,
+        projectName: init.name || '',
+        projectDescription: init.description || '',
+        members: init.members || [],
+        vocabulary: init.vocabulary || [],
+
+        editingInfo: false,
+        draftName: '',
+        draftDescription: '',
+
+        showMemberForm: false,
+        memberType: 'internal',
+        newMember: { user_id: '', name: '', company: '', job_title: '', project_role: '' },
+
+        newWord: '',
+
+        startEditInfo() {
+            this.draftName = this.projectName;
+            this.draftDescription = this.projectDescription;
+            this.editingInfo = true;
+        },
+
+        cancelEditInfo() {
+            this.editingInfo = false;
+        },
+
+        async saveInfo() {
+            const name = this.draftName.trim();
+            if (!name) { window.showToast('プロジェクト名は必須です', 'error'); return; }
+            try {
+                const res = await fetch('/api/projects/' + this.projectId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description: this.draftDescription || null }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                this.projectName = name;
+                this.projectDescription = this.draftDescription;
+                this.editingInfo = false;
+                window.showToast('保存しました');
+            } catch (e) {
+                window.showToast('保存に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        cancelMemberForm() {
+            this.showMemberForm = false;
+            this.newMember = { user_id: '', name: '', company: '', job_title: '', project_role: '' };
+            this.memberType = 'internal';
+        },
+
+        async addMember() {
+            const body = {};
+            if (this.memberType === 'internal') {
+                if (!this.newMember.user_id) { window.showToast('ユーザーを選択してください', 'error'); return; }
+                body.user_id = parseInt(this.newMember.user_id, 10);
+            } else {
+                if (!this.newMember.name.trim()) { window.showToast('名前は必須です', 'error'); return; }
+                body.name = this.newMember.name.trim();
+                body.company = this.newMember.company.trim() || null;
+                body.job_title = this.newMember.job_title.trim() || null;
+            }
+            body.project_role = this.newMember.project_role || null;
+            try {
+                const res = await fetch('/api/projects/' + this.projectId + '/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const data = await res.json();
+                this.members.push(data);
+                this.cancelMemberForm();
+                window.showToast('メンバーを追加しました');
+            } catch (e) {
+                window.showToast('追加に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        async updateMemberRole(m) {
+            try {
+                await fetch('/api/projects/' + this.projectId + '/members/' + m.id, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_role: m.project_role || null }),
+                });
+            } catch (e) {
+                window.showToast('更新に失敗しました', 'error');
+            }
+        },
+
+        async deleteMember(m) {
+            const ok = await window.showConfirm('「' + m.display_name + '」をメンバーから削除しますか？', { okLabel: '削除する' });
+            if (!ok) return;
+            try {
+                const res = await fetch('/api/projects/' + this.projectId + '/members/' + m.id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.members = this.members.filter(x => x.id !== m.id);
+                window.showToast('削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
+
+        async addWord() {
+            const word = this.newWord.trim();
+            if (!word) return;
+            try {
+                const res = await fetch('/api/projects/' + this.projectId + '/vocabulary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const data = await res.json();
+                this.vocabulary.push(data);
+                this.newWord = '';
+                window.showToast('単語を追加しました');
+            } catch (e) {
+                window.showToast('追加に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        async deleteWord(v) {
+            try {
+                const res = await fetch('/api/projects/' + this.projectId + '/vocabulary/' + v.id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.vocabulary = this.vocabulary.filter(x => x.id !== v.id);
+                window.showToast('削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

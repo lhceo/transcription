@@ -52,6 +52,9 @@ class User(Base):
         default=_utcnow,
     )
 
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     transcripts: Mapped[list["Transcript"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -104,6 +107,10 @@ class Transcript(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
 
     user: Mapped["User"] = relationship(back_populates="transcripts")
@@ -230,3 +237,88 @@ class SpeakerHistory(Base):
         UniqueConstraint("user_id", "name", name="uq_speaker_history_user_name"),
         Index("ix_speaker_history_user_recent", "user_id", "last_used_at"),
     )
+
+
+# ── themes ─────────────────────────────────────────────────────────────────
+class Theme(Base):
+    __tablename__ = "themes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    projects: Mapped[list["Project"]] = relationship(
+        back_populates="theme", cascade="all, delete-orphan"
+    )
+
+
+# ── projects ────────────────────────────────────────────────────────────────
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    theme_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("themes.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    theme: Mapped["Theme | None"] = relationship(back_populates="projects")
+    members: Mapped[list["ProjectMember"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    vocabulary: Mapped[list["ProjectVocabulary"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+# ── project_members ─────────────────────────────────────────────────────────
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    # 社外メンバーの場合は手入力（user_id=None の場合に使用）
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    project_role: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="members")
+    user: Mapped["User | None"] = relationship()
+
+
+# ── project_vocabulary ──────────────────────────────────────────────────────
+class ProjectVocabulary(Base):
+    __tablename__ = "project_vocabulary"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    word: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="vocabulary")

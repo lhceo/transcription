@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}プロフィール | 音声文字起こし{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-title">プロフィール</h2>
+    <p class="page-subtitle">会社名・役職はメンバー追加時に自動補完されます。</p>
+</div>
+
+<div class="detail-section" style="max-width:480px" x-data="profilePage()">
+    <div class="profile-avatar-row">
+        {% if user.picture %}
+        <img src="{{ user.picture }}" alt="" class="profile-avatar" referrerpolicy="no-referrer">
+        {% endif %}
+        <div>
+            <p class="profile-name">{{ user.name }}</p>
+            <p class="profile-email text-muted">{{ user.email }}</p>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label class="form-label">会社名</label>
+        <input type="text" class="form-input" x-model="company" placeholder="株式会社ライオンハート">
+    </div>
+    <div class="form-row">
+        <label class="form-label">役職</label>
+        <input type="text" class="form-input" x-model="jobTitle" placeholder="プロジェクトマネージャー">
+    </div>
+    <div class="form-actions">
+        <button class="btn btn-primary" @click="save()" :disabled="saving">
+            <span x-show="!saving">保存</span>
+            <span x-show="saving" x-cloak>保存中…</span>
+        </button>
+    </div>
+</div>
+
+<script>
+(function () {
+    window._profileInit = {
+        company: {{ (db_user.company or '') | tojson }},
+        jobTitle: {{ (db_user.job_title or '') | tojson }},
+    };
+})();
+
+function profilePage() {
+    var init = window._profileInit || {};
+    return {
+        company: init.company || '',
+        jobTitle: init.jobTitle || '',
+        saving: false,
+
+        async save() {
+            this.saving = true;
+            try {
+                const res = await fetch('/api/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ company: this.company || null, job_title: this.jobTitle || null }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                window.showToast('プロフィールを保存しました');
+            } catch (e) {
+                window.showToast('保存に失敗しました: ' + e.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}
