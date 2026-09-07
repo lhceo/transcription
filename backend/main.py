@@ -297,6 +297,119 @@ async def free_audio_space(user: AdminUser) -> JSONResponse:
     })
 
 
+@app.get("/admin/users/{target_user_id}", response_class=HTMLResponse)
+async def admin_user_detail(
+    request: Request,
+    target_user_id: int,
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> HTMLResponse:
+    """管理者専用: 指定ユーザーの文字起こし一覧ページ。"""
+    target = db.get(User, target_user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    return templates.TemplateResponse(
+        request,
+        "admin_user.html",
+        {
+            "app_version": app.version,
+            "env": settings.env,
+            "user": user,
+            "is_admin": True,
+            "target_user": {
+                "id": target.id,
+                "name": target.name,
+                "email": target.email,
+                "picture": target.picture_url,
+            },
+        },
+    )
+
+
+@app.get("/api/admin/users/{target_user_id}/transcripts")
+async def admin_user_transcripts(
+    target_user_id: int,
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """管理者専用: 指定ユーザーの文字起こし一覧 (削除済み含む)。"""
+    from backend.transcribe.storage_usage import _AUDIO_DIR
+    from backend.transcribe.display import transcript_display_name
+
+    target = db.get(User, target_user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+
+    rows = list(
+        db.scalars(
+            select(Transcript)
+            .where(Transcript.user_id == target_user_id)
+            .order_by(Transcript.created_at.desc())
+        )
+    )
+
+    def audio_exists(tid: int) -> bool:
+        if _AUDIO_DIR.exists():
+            for f in _AUDIO_DIR.iterdir():
+                if f.stem == str(tid):
+                    return True
+        return False
+
+    result = []
+    for t in rows:
+        result.append({
+            "id": t.id,
+            "title": transcript_display_name(t),
+            "status": t.status,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
+            "duration_sec": t.audio_duration_seconds,
+            "file_size_bytes": t.file_size_bytes,
+            "has_audio": audio_exists(t.id),
+        })
+
+    return JSONResponse({"transcripts": result, "user": {"name": target.name, "email": target.email}})
+
+
+@app.delete("/api/admin/transcripts/{transcript_id}/audio")
+async def admin_delete_audio(
+    transcript_id: int,
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """管理者専用: 音声ファイルのみ削除（テキスト・セグメントは残す）。"""
+    from backend.transcribe.storage import delete_stored_audio
+
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None:
+        raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+
+    deleted = delete_stored_audio(transcript_id)
+    logger.info("管理者 %s が transcript %d の音声を削除", user["email"], transcript_id)
+    return JSONResponse({"deleted": deleted})
+
+
+@app.delete("/api/admin/transcripts/{transcript_id}")
+async def admin_delete_transcript(
+    transcript_id: int,
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """管理者専用: 文字起こし全削除（音声＋ソフト削除）。"""
+    from backend.transcribe.storage import delete_stored_audio
+    from datetime import datetime, timezone
+
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None:
+        raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+
+    transcript.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    delete_stored_audio(transcript_id)
+    logger.info("管理者 %s が transcript %d を全削除", user["email"], transcript_id)
+    return JSONResponse({"deleted": True})
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request, user: AdminUser) -> HTMLResponse:
     """管理ページ。管理者のみ。"""

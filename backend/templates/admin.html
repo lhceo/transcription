@@ -84,7 +84,7 @@
                     </thead>
                     <tbody>
                         <template x-for="u in users" :key="u.id">
-                            <tr>
+                            <tr class="admin-user-row" @click="window.location='/admin/users/'+u.id" style="cursor:pointer">
                                 <td class="admin-user-cell">
                                     <template x-if="u.picture">
                                         <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">

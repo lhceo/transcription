@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}{{ target_user.name }} — 管理 | 音声文字起こし{% endblock %}
+
+{% block content %}
+<div class="admin-page" x-data="adminUserDetail({{ target_user.id }})" x-init="load()">
+
+    <div class="admin-page-head">
+        <a href="/admin" class="admin-back-link">← 管理パネルへ</a>
+        <h1 class="admin-page-title">
+            {% if target_user.picture %}
+            <img src="{{ target_user.picture }}" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
+            {% endif %}
+            {{ target_user.name }}
+        </h1>
+        <p class="admin-user-email-sub">{{ target_user.email }}</p>
+    </div>
+
+    <section class="admin-section">
+        <template x-if="loading">
+            <p class="admin-loading">読み込み中…</p>
+        </template>
+
+        <template x-if="!loading && transcripts.length === 0">
+            <p class="admin-empty">文字起こしデータがありません。</p>
+        </template>
+
+        <template x-if="!loading && transcripts.length > 0">
+            <div>
+                <p class="admin-section-note" x-text="transcripts.length + ' 件（削除済み含む）'"></p>
+
+                {# テーブル（PC） #}
+                <div class="admin-table-wrap">
+                <table class="admin-users-table admin-page-table">
+                    <thead>
+                        <tr>
+                            <th>タイトル</th>
+                            <th class="admin-col-num">長さ</th>
+                            <th class="admin-col-num">サイズ</th>
+                            <th class="admin-col-date">作成日</th>
+                            <th class="admin-col-status">状態</th>
+                            <th class="admin-col-actions">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="t in transcripts" :key="t.id">
+                            <tr :class="t.deleted_at ? 'admin-row-deleted' : ''">
+                                <td>
+                                    <template x-if="!t.deleted_at">
+                                        <a :href="'/transcript/' + t.id" class="admin-transcript-link" x-text="t.title" target="_blank"></a>
+                                    </template>
+                                    <template x-if="t.deleted_at">
+                                        <span class="admin-transcript-deleted" x-text="t.title"></span>
+                                    </template>
+                                </td>
+                                <td class="admin-col-num" x-text="formatDuration(t.duration_sec)"></td>
+                                <td class="admin-col-num" x-text="formatBytes(t.file_size_bytes)"></td>
+                                <td class="admin-col-date" x-text="formatDate(t.created_at)"></td>
+                                <td class="admin-col-status">
+                                    <span class="admin-status-badge" :class="'status-' + (t.deleted_at ? 'deleted' : t.status)" x-text="t.deleted_at ? '削除済' : statusLabel(t.status)"></span>
+                                </td>
+                                <td class="admin-col-actions">
+                                    <template x-if="!t.deleted_at">
+                                        <div class="admin-action-btns">
+                                            <template x-if="t.has_audio">
+                                                <button class="btn-admin-del-audio"
+                                                    @click="deleteAudio(t)"
+                                                    title="音声ファイルのみ削除">音声削除</button>
+                                            </template>
+                                            <button class="btn-admin-del-all"
+                                                @click="deleteAll(t)"
+                                                title="音声＋テキストすべて削除">全削除</button>
+                                        </div>
+                                    </template>
+                                    <template x-if="t.deleted_at">
+                                        <span class="admin-deleted-label">—</span>
+                                    </template>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                </div>
+
+                {# カード（スマホ） #}
+                <div class="admin-user-cards">
+                    <template x-for="t in transcripts" :key="'c' + t.id">
+                        <div class="admin-user-card" :class="t.deleted_at ? 'admin-card-deleted' : ''">
+                            <div class="admin-user-card-head">
+                                <div>
+                                    <div class="admin-user-card-name" x-text="t.title"></div>
+                                    <div class="admin-user-card-email" x-text="formatDate(t.created_at)"></div>
+                                </div>
+                            </div>
+                            <div class="admin-user-card-stats">
+                                <span x-text="formatDuration(t.duration_sec)"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span x-text="formatBytes(t.file_size_bytes)"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span :class="'status-' + (t.deleted_at ? 'deleted' : t.status)" x-text="t.deleted_at ? '削除済' : statusLabel(t.status)"></span>
+                            </div>
+                            <template x-if="!t.deleted_at">
+                                <div class="admin-action-btns" style="margin-top:8px">
+                                    <template x-if="t.has_audio">
+                                        <button class="btn-admin-del-audio" @click="deleteAudio(t)">音声削除</button>
+                                    </template>
+                                    <button class="btn-admin-del-all" @click="deleteAll(t)">全削除</button>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </section>
+</div>
+
+<style>
+.admin-back-link { color: var(--color-primary); text-decoration: none; font-size: .875rem; display:inline-block; margin-bottom:.5rem; }
+.admin-back-link:hover { text-decoration: underline; }
+.admin-user-email-sub { color: var(--color-text-secondary); font-size:.875rem; margin:0 0 1.5rem; }
+.admin-section-note { font-size:.875rem; color:var(--color-text-secondary); margin-bottom:.75rem; }
+.admin-loading, .admin-empty { color:var(--color-text-secondary); }
+.admin-transcript-link { color: var(--color-primary); text-decoration:none; }
+.admin-transcript-link:hover { text-decoration: underline; }
+.admin-transcript-deleted { color: var(--color-text-secondary); }
+.admin-row-deleted td { opacity:.5; }
+.admin-card-deleted { opacity:.5; }
+.admin-col-status { width:80px; }
+.admin-col-actions { width:140px; }
+.admin-action-btns { display:flex; gap:.4rem; flex-wrap:wrap; }
+.btn-admin-del-audio {
+    font-size:.75rem; padding:.25rem .6rem; border-radius:4px;
+    border:1px solid #e2a800; background:#fff8e6; color:#7a5300; cursor:pointer;
+}
+.btn-admin-del-audio:hover { background:#ffefc2; }
+.btn-admin-del-all {
+    font-size:.75rem; padding:.25rem .6rem; border-radius:4px;
+    border:1px solid #e05; background:#fff0f3; color:#c00040; cursor:pointer;
+}
+.btn-admin-del-all:hover { background:#ffe0ea; }
+.admin-deleted-label { color:var(--color-text-secondary); font-size:.8rem; }
+.admin-status-badge { font-size:.75rem; padding:.15rem .4rem; border-radius:999px; background:#eee; }
+.status-completed { background:#e6f4ea; color:#1a7a3a; }
+.status-processing { background:#e8f0fe; color:#1a4fc0; }
+.status-failed { background:#fce8e6; color:#c0392b; }
+.status-deleted { background:#f0f0f0; color:#777; }
+</style>
+
+<script>
+function adminUserDetail(userId) {
+    return {
+        userId,
+        loading: true,
+        transcripts: [],
+
+        async load() {
+            const res = await fetch(`/api/admin/users/${userId}/transcripts`);
+            const data = await res.json();
+            this.transcripts = data.transcripts || [];
+            this.loading = false;
+        },
+
+        async deleteAudio(t) {
+            if (!confirm(`「${t.title}」の音声ファイルを削除しますか？\nテキスト・セグメントは残ります。`)) return;
+            const res = await fetch(`/api/admin/transcripts/${t.id}/audio`, { method: 'DELETE' });
+            if (res.ok) {
+                t.has_audio = false;
+                this.showToast('音声ファイルを削除しました');
+            } else {
+                this.showToast('削除に失敗しました', true);
+            }
+        },
+
+        async deleteAll(t) {
+            if (!confirm(`「${t.title}」を完全に削除しますか？\n音声ファイルとテキストデータが削除されます。この操作は取り消せません。`)) return;
+            const res = await fetch(`/api/admin/transcripts/${t.id}`, { method: 'DELETE' });
+            if (res.ok) {
+                t.deleted_at = new Date().toISOString();
+                t.has_audio = false;
+                this.showToast('削除しました');
+            } else {
+                this.showToast('削除に失敗しました', true);
+            }
+        },
+
+        showToast(msg, isError = false) {
+            const el = document.createElement('div');
+            el.textContent = msg;
+            el.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+                background:${isError ? '#c0392b' : '#1a7a3a'};color:#fff;padding:.6rem 1.2rem;
+                border-radius:8px;font-size:.875rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.2)`;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        },
+
+        formatDuration(sec) {
+            if (!sec) return '—';
+            const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+            return `${m}:${String(s).padStart(2,'0')}`;
+        },
+
+        formatBytes(b) {
+            if (!b) return '—';
+            if (b >= 1e9) return (b/1e9).toFixed(1) + ' GB';
+            if (b >= 1e6) return (b/1e6).toFixed(1) + ' MB';
+            return (b/1e3).toFixed(0) + ' KB';
+        },
+
+        formatDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+        },
+
+        statusLabel(s) {
+            return {completed:'完了', processing:'処理中', failed:'失敗', uploading:'アップロード中'}[s] || s;
+        },
+    };
+}
+</script>
+{% endblock %}
