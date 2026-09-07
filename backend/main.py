@@ -558,6 +558,72 @@ async def export_recovered(user: AdminUser):
         conn.close()
 
 
+@app.get("/api/admin/restore-transcript-45")
+async def restore_transcript_45(user: AdminUser) -> JSONResponse:
+    """【一時】transcript_id=45 (r.seo の文字起こし) の親レコードを復元する。"""
+    import sqlite3 as _sq
+    import traceback as _tb
+
+    DB = "/data/app.db"
+    try:
+        conn = _sq.connect(DB)
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+
+            # r.seo のユーザーIDを取得
+            row = conn.execute(
+                "SELECT id FROM users WHERE email=?",
+                ("r.seo@lionheart.co.jp",)
+            ).fetchone()
+            if row is None:
+                return JSONResponse({"error": "r.seo@lionheart.co.jp がusersテーブルに見つかりません"}, status_code=404)
+            rseo_user_id = row[0]
+
+            # すでに id=45 が存在するか確認
+            existing = conn.execute(
+                "SELECT id, status FROM transcripts WHERE id=45"
+            ).fetchone()
+            if existing:
+                return JSONResponse({
+                    "message": "transcript id=45 はすでに存在します",
+                    "id": existing[0],
+                    "status": existing[1],
+                    "rseo_user_id": rseo_user_id,
+                })
+
+            # セグメント件数確認
+            seg_count = conn.execute(
+                "SELECT COUNT(*) FROM segments WHERE transcript_id=45"
+            ).fetchone()[0]
+
+            # transcript レコードを挿入（id=45 を明示的に指定）
+            conn.execute(
+                "INSERT INTO transcripts "
+                "(id, user_id, original_filename, title, file_size_bytes, "
+                "status, model_tier, language, created_at) "
+                "VALUES (45, ?, '(復旧済み音声)', '2024年 桂川様インタビュー', 0, "
+                "'completed', 'best', 'ja', CURRENT_TIMESTAMP)",
+                (rseo_user_id,)
+            )
+
+            # autoincrement シーケンスが 45 以下なら 45 に更新
+            conn.execute(
+                "UPDATE sqlite_sequence SET seq=MAX(seq, 45) WHERE name='transcripts'"
+            )
+
+            conn.commit()
+
+            return JSONResponse({
+                "success": True,
+                "message": f"transcript id=45 を r.seo (user_id={rseo_user_id}) に紐付けて復元しました",
+                "segments_linked": seg_count,
+            })
+        finally:
+            conn.close()
+    except Exception:
+        return JSONResponse({"error": _tb.format_exc()}, status_code=500)
+
+
 @app.get("/api/admin/recover-diag5")
 async def recover_diag5(user: AdminUser) -> JSONResponse:
     """【一時診断5】frame_wp=45352 のページを手動ステップ実行で確認。"""
