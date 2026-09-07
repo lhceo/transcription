@@ -465,6 +465,167 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/recover-diag3")
+async def recover_diag3(user: AdminUser) -> JSONResponse:
+    """【一時診断3】SPEAKERフィルタなしで全ページ+WALをスキャン。"""
+    import struct as _s
+    import traceback as _tb
+    BAK = "/data/app.db.bak"
+    WAL = "/data/app.db-wal.bak"
+
+    try:
+        def _vi(d: bytes, p: int):
+            r = 0
+            for i in range(9):
+                if p >= len(d): return r, p
+                b = d[p]; p += 1
+                if i < 8:
+                    r = (r << 7) | (b & 0x7F)
+                    if not (b & 0x80): break
+                else: r = (r << 8) | b
+            return r, p
+
+        def _gs(t, pl, dp):
+            if t == 0: return None, dp
+            if t == 8: return 0, dp
+            if t == 9: return 1, dp
+            if t == 1: return _s.unpack_from(">b", pl, dp)[0], dp+1
+            if t == 2: return _s.unpack_from(">h", pl, dp)[0], dp+2
+            if t == 3:
+                return _s.unpack(">I", b"\x00"+pl[dp:dp+3])[0], dp+3
+            if t == 4: return _s.unpack_from(">i", pl, dp)[0], dp+4
+            if t == 5:
+                return _s.unpack(">Q", b"\x00\x00"+pl[dp:dp+6])[0], dp+6
+            if t == 6: return _s.unpack_from(">q", pl, dp)[0], dp+8
+            if t == 7: return _s.unpack_from(">d", pl, dp)[0], dp+8
+            if t >= 12 and t%2==0:
+                n=(t-12)//2; return bytes(pl[dp:dp+n]), dp+n
+            if t >= 13 and t%2==1:
+                n=(t-13)//2
+                return bytes(pl[dp:dp+n]).decode("utf-8",errors="replace"), dp+n
+            return None, dp
+
+        def _try_seg(pl: bytes):
+            if len(pl) < 12: return None
+            p = 0
+            hs, p = _vi(pl, p)
+            if hs < 4 or hs > len(pl) or hs > 100: return None
+            he = hs; ts = []; q = p
+            while q < he:
+                t, q = _vi(pl, q); ts.append(t)
+                if len(ts) > 15: return None
+            if len(ts) < 10: return None
+            if ts[2] != 7 or ts[3] != 7: return None
+            vs = []; dp = he
+            for t in ts[:8]:
+                try: v, dp = _gs(t, pl, dp)
+                except: return None
+                vs.append(v)
+            if len(vs) < 8: return None
+            tid, oi, ss, es = vs[0], vs[1], vs[2], vs[3]
+            if not isinstance(tid, int) or tid < 1: return None
+            if not isinstance(oi, int) or oi < 0: return None
+            if not isinstance(ss, float) or not isinstance(es, float): return None
+            if ss < 0 or es < ss or es > 86400*7: return None
+            sl = vs[4]
+            return {"tid": tid, "oi": oi, "ss": round(ss,2),
+                    "es": round(es,2), "sl": str(sl)[:30]}
+
+        # ── DBバックアップをフルスキャン（SPEAKERフィルタなし）──
+        with open(BAK, "rb") as f:
+            hdr = f.read(100)
+        ps = _s.unpack_from(">H", hdr, 16)[0]
+        if ps == 1: ps = 65536
+        file_size = Path(BAK).stat().st_size
+        total_pages = file_size // ps
+
+        db_hits = 0
+        db_samples: list = []
+        seen: set = set()
+
+        with open(BAK, "rb") as f:
+            for pgno in range(1, total_pages+1):
+                f.seek((pgno-1)*ps)
+                d = f.read(ps)
+                pos = 0
+                while True:
+                    k = d.find(b"\x07\x07", pos)
+                    if k == -1: break
+                    for off in range(2, 10):
+                        ps2 = k - off
+                        if ps2 < 0: continue
+                        row = _try_seg(d[ps2:])
+                        if row is not None:
+                            db_hits += 1
+                            key = (row["tid"], row["oi"])
+                            if key not in seen:
+                                seen.add(key)
+                                if len(db_samples) < 5:
+                                    db_samples.append(
+                                        {"pgno": pgno, "off": off, **row}
+                                    )
+                            break
+                    pos = k + 1
+
+        # ── WALファイルのチェック ──
+        wal_info: dict = {}
+        wal_hits = 0
+        wal_samples: list = []
+
+        if Path(WAL).exists():
+            wal_size = Path(WAL).stat().st_size
+            wal_info["exists"] = True
+            wal_info["size"] = wal_size
+            with open(WAL, "rb") as f:
+                wal_data = f.read()
+            wal_info["speaker0_count"] = wal_data.count(b"SPEAKER_0")
+            wal_info["x0707_count"] = wal_data.count(b"\x07\x07")
+
+            # WALフレームをスキャン
+            if wal_size >= 32:
+                magic = _s.unpack(">I", wal_data[:4])[0]
+                e = ">" if magic == 0x377f0682 else "<"
+                wal_ps = _s.unpack(f"{e}I", wal_data[8:12])[0]
+                frame_sz = 24 + wal_ps
+                wp = 32
+                wal_seen: set = set()
+                while wp + frame_sz <= wal_size:
+                    pd = wal_data[wp+24:wp+frame_sz]
+                    pos2 = 0
+                    while True:
+                        k2 = pd.find(b"\x07\x07", pos2)
+                        if k2 == -1: break
+                        for off2 in range(2, 10):
+                            ps3 = k2 - off2
+                            if ps3 < 0: continue
+                            row2 = _try_seg(pd[ps3:])
+                            if row2 is not None:
+                                wal_hits += 1
+                                key2 = (row2["tid"], row2["oi"])
+                                if key2 not in wal_seen:
+                                    wal_seen.add(key2)
+                                    if len(wal_samples) < 5:
+                                        wal_samples.append(row2)
+                                break
+                        pos2 = k2 + 1
+                    wp += frame_sz
+        else:
+            wal_info["exists"] = False
+
+        return JSONResponse({
+            "db_pages": total_pages,
+            "db_hits_total": db_hits,
+            "db_unique_segments": len(seen),
+            "db_samples": db_samples,
+            "wal": wal_info,
+            "wal_hits_total": wal_hits,
+            "wal_unique_segments": len(wal_seen) if Path(WAL).exists() else 0,
+            "wal_samples": wal_samples,
+        })
+    except Exception:
+        return JSONResponse({"error": _tb.format_exc()}, status_code=500)
+
+
 @app.get("/api/admin/recover-diag2")
 async def recover_diag2(user: AdminUser) -> JSONResponse:
     """【一時診断2】ページ20のセル解析を詳細デバッグ。"""
