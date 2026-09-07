@@ -606,11 +606,6 @@ async def restore_transcript_45(user: AdminUser) -> JSONResponse:
                 (rseo_user_id,)
             )
 
-            # autoincrement シーケンスが 45 以下なら 45 に更新
-            conn.execute(
-                "UPDATE sqlite_sequence SET seq=MAX(seq, 45) WHERE name='transcripts'"
-            )
-
             conn.commit()
 
             return JSONResponse({
