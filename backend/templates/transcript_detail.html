@@ -274,6 +274,13 @@
             ⚠ 保存に失敗しました — 再度編集すると再試行します
         </span>
 
+        <button type="button" class="btn btn-polish" @click="openPolish()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
+                <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            整文する
+        </button>
+
         <details class="export-menu">
             <summary class="btn btn-secondary-outline">エクスポート ▾</summary>
             <div class="export-options">
@@ -448,6 +455,142 @@
         </div>
     </div>
 </section>
+
+{# ── 整文モーダル ── #}
+<div class="polish-overlay" x-data="polishModal()" x-show="show" x-cloak @keydown.escape.window="close()">
+    <div class="polish-modal" @click.outside="close()">
+
+        {# ステップ1: 確認画面 #}
+        <div x-show="step === 'confirm'">
+            <h2 class="polish-modal-title">整文の確認</h2>
+            <div class="polish-loading" x-show="loading">読み込み中…</div>
+            <template x-if="!loading && estimate">
+                <div>
+                    <div class="polish-context-bar">
+                        <span class="polish-context-label">コンテキスト充実度</span>
+                        <div class="polish-context-track">
+                            <div class="polish-context-fill" :style="'width:' + (estimate.context_score / estimate.context_total * 100) + '%'"></div>
+                        </div>
+                        <span class="polish-context-score" x-text="estimate.context_score + ' / ' + estimate.context_total"></span>
+                    </div>
+                    <ul class="polish-context-list">
+                        <template x-for="item in estimate.context_items" :key="item.label">
+                            <li class="polish-context-item" :class="item.ok ? 'ok' : 'ng'">
+                                <span x-text="item.ok ? '✓' : '✗'" class="polish-context-icon"></span>
+                                <span x-text="item.label"></span>
+                            </li>
+                        </template>
+                    </ul>
+                    <div class="polish-model-select">
+                        <div class="polish-model-label">使用モデル</div>
+                        <label class="polish-model-option" :class="modelKey === 'haiku' ? 'selected' : ''">
+                            <input type="radio" x-model="modelKey" value="haiku">
+                            <span class="polish-model-name">Haiku</span>
+                            <span class="polish-model-desc">標準・低コスト</span>
+                            <span class="polish-model-cost" x-text="'約 ¥' + estimate.costs.haiku"></span>
+                        </label>
+                        <label class="polish-model-option" :class="modelKey === 'sonnet' ? 'selected' : ''">
+                            <input type="radio" x-model="modelKey" value="sonnet">
+                            <span class="polish-model-name">Sonnet</span>
+                            <span class="polish-model-desc">高精度・高コスト</span>
+                            <span class="polish-model-cost" x-text="'約 ¥' + estimate.costs.sonnet"></span>
+                        </label>
+                    </div>
+                    <div class="polish-cost-line">
+                        予想コスト: <strong x-text="'約 ¥' + estimate.costs[modelKey]"></strong>
+                        <span class="text-muted" style="font-size:12px"> / <span x-text="estimate.segment_count"></span>セグメント</span>
+                    </div>
+                </div>
+            </template>
+            <div class="polish-modal-actions">
+                <button class="btn btn-primary" @click="startPickup()" :disabled="loading">整文を実行する</button>
+                <button class="btn btn-ghost" @click="close()">キャンセル</button>
+            </div>
+        </div>
+
+        {# ステップ2: 固有名詞ピックアップ #}
+        <div x-show="step === 'pickup'">
+            <h2 class="polish-modal-title">固有名詞の確認</h2>
+            <div class="polish-loading" x-show="loading">AIが固有名詞を分析中…</div>
+            <template x-if="!loading">
+                <div>
+                    <template x-if="pickupWords.length === 0">
+                        <p class="section-hint">未登録の固有名詞は見つかりませんでした。</p>
+                    </template>
+                    <template x-if="pickupWords.length > 0">
+                        <div>
+                            <p class="section-hint">以下の語句が見つかりました。意味を登録すると整文の精度が上がります（任意）。</p>
+                            <div class="pickup-list">
+                                <template x-for="(w, i) in pickupWords" :key="i">
+                                    <div class="pickup-row">
+                                        <span class="pickup-word" x-text="w.word"></span>
+                                        <input type="text" class="form-input" x-model="w.meaning" placeholder="意味・説明（任意）">
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <div class="polish-modal-actions">
+                <button class="btn btn-primary" @click="runPolish()" :disabled="loading">
+                    <span x-text="pickupWords.some(w => w.meaning.trim()) ? '登録してから整文する' : '整文する'"></span>
+                </button>
+                <button class="btn btn-ghost" @click="close()" :disabled="loading">キャンセル</button>
+            </div>
+        </div>
+
+        {# ステップ3: 整文実行中 #}
+        <div x-show="step === 'running'">
+            <h2 class="polish-modal-title">整文中…</h2>
+            <div class="polish-loading">
+                <div class="polish-spinner"></div>
+                <p>Claudeが文字起こしを整えています。しばらくお待ちください。</p>
+            </div>
+        </div>
+
+        {# ステップ4: diffレビュー #}
+        <div x-show="step === 'diff'" class="polish-diff-view">
+            <div class="polish-diff-header">
+                <h2 class="polish-modal-title" style="margin:0">整文の確認</h2>
+                <div class="polish-diff-summary">
+                    <span x-text="changedCount() + '件の変更'"></span>
+                    <button class="btn btn-outline btn-sm" @click="acceptAll()">すべて採用</button>
+                </div>
+            </div>
+            <p class="section-hint">変更のあるセグメントを確認してください。テキストエリアは編集できます。</p>
+            <div class="polish-diff-list">
+                <template x-for="seg in diffSegments" :key="seg.id">
+                    <div class="diff-seg" :class="seg.changed ? 'diff-seg-changed' : 'diff-seg-unchanged'">
+                        <div class="diff-seg-speaker" x-text="seg.speaker"></div>
+                        <template x-if="!seg.changed">
+                            <div class="diff-seg-text unchanged" x-text="seg.original"></div>
+                        </template>
+                        <template x-if="seg.changed">
+                            <div class="diff-seg-body">
+                                <div class="diff-original" x-text="seg.original"></div>
+                                <textarea class="diff-textarea" x-model="seg.current" rows="2"></textarea>
+                                <div class="diff-actions">
+                                    <button class="btn btn-primary btn-sm" @click="acceptSeg(seg)">採用</button>
+                                    <button class="btn btn-ghost btn-sm" @click="restorePolish(seg)">整文に戻す</button>
+                                    <button class="btn btn-ghost btn-sm" @click="restoreOriginal(seg)">原文に戻す</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+            <div class="polish-modal-actions polish-diff-footer">
+                <button class="btn btn-primary" @click="saveAccepted()" :disabled="saving">
+                    <span x-show="!saving">採用した変更を保存</span>
+                    <span x-show="saving" x-cloak>保存中…</span>
+                </button>
+                <button class="btn btn-ghost" @click="close()">閉じる</button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
 <script>
 function audioPlayer(transcriptId) {
@@ -1057,6 +1200,11 @@ function segmentsApp(transcriptId, historyNames) {
             }
         },
 
+        openPolish() {
+            const modal = document.querySelector('[x-data^="polishModal"]');
+            if (modal) Alpine.evaluate(modal, 'open()');
+        },
+
         enterEditMode() {
             if (this.editMode) return;
             // v1.0.3: スマホでは @dblclick を起点とする編集モード入りを無効化。
@@ -1534,6 +1682,138 @@ function segmentsApp(transcriptId, historyNames) {
                 this.closeEditor();
             } catch (e) {
                 window.showToast(e.message, 'error');
+            }
+        },
+    };
+}
+
+function polishModal() {
+    const transcriptId = (window.__TRANSCRIPT_INIT || {}).id;
+    return {
+        show: false,
+        step: 'confirm',   // confirm | pickup | running | diff
+        loading: false,
+        saving: false,
+        modelKey: 'haiku',
+        estimate: null,
+        pickupWords: [],   // [{word, meaning}]
+        diffSegments: [],  // [{id, speaker, original, suggestion, current, changed, accepted}]
+
+        async open() {
+            this.show = true;
+            this.step = 'confirm';
+            this.loading = true;
+            this.estimate = null;
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/estimate');
+                if (res.ok) this.estimate = await res.json();
+            } catch (e) { /* ignore */ }
+            this.loading = false;
+        },
+
+        close() {
+            this.show = false;
+        },
+
+        async startPickup() {
+            this.step = 'pickup';
+            this.loading = true;
+            this.pickupWords = [];
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/pickup', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.pickupWords = (data.words || []).map(w => ({ word: w, meaning: '' }));
+                }
+            } catch (e) { /* ignore */ }
+            this.loading = false;
+        },
+
+        async runPolish() {
+            this.step = 'running';
+            const extra = this.pickupWords
+                .filter(w => w.meaning.trim())
+                .map(w => ({ word: w.word, meaning: w.meaning.trim() }));
+
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_key: this.modelKey, extra_vocabulary: extra }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const data = await res.json();
+
+                // segmentsApp から現在のセグメントを取得してdiffを構築
+                const segsEl = document.querySelector('[x-data^="segmentsApp"]');
+                const segsData = segsEl ? Alpine.evaluate(segsEl, 'segments') : [];
+                this.diffSegments = segsData.map(s => {
+                    const suggestion = data.suggestions[s.id] ?? null;
+                    const changed = suggestion !== null && suggestion !== s.text_content;
+                    return {
+                        id: s.id,
+                        speaker: s.display_name || s.speaker_label || '',
+                        original: s.text_content,
+                        suggestion: suggestion ?? s.text_content,
+                        current: suggestion ?? s.text_content,
+                        changed,
+                        accepted: false,
+                    };
+                });
+                this.step = 'diff';
+                window.showToast('整文完了。変更を確認してください。');
+            } catch (e) {
+                window.showToast('整文に失敗しました: ' + e.message, 'error');
+                this.step = 'confirm';
+            }
+        },
+
+        changedCount() {
+            return this.diffSegments.filter(s => s.changed).length;
+        },
+
+        acceptSeg(seg) {
+            seg.accepted = true;
+            window.showToast('採用しました', 'success');
+        },
+
+        restorePolish(seg) {
+            seg.current = seg.suggestion;
+        },
+
+        restoreOriginal(seg) {
+            seg.current = seg.original;
+        },
+
+        acceptAll() {
+            this.diffSegments.filter(s => s.changed).forEach(s => {
+                s.accepted = true;
+            });
+            window.showToast('すべて採用しました');
+        },
+
+        async saveAccepted() {
+            const toSave = this.diffSegments.filter(s => s.changed && s.accepted);
+            if (toSave.length === 0) {
+                window.showToast('採用された変更がありません', 'error');
+                return;
+            }
+            this.saving = true;
+            const accepted_texts = {};
+            toSave.forEach(s => { accepted_texts[s.id] = s.current; });
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accepted_texts }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                window.showToast('保存しました。ページを更新します。');
+                setTimeout(() => location.reload(), 800);
+            } catch (e) {
+                window.showToast('保存に失敗しました', 'error');
+            } finally {
+                this.saving = false;
             }
         },
     };

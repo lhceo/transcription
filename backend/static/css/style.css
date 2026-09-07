@@ -4077,3 +4077,178 @@ a.history-item-filename:hover {
         padding: 10px 12px;
     }
 }
+
+/* ── 整文ボタン ── */
+.btn-polish {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: opacity 0.15s;
+}
+.btn-polish:hover { opacity: 0.88; }
+
+/* ── 整文モーダル ── */
+.polish-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.polish-modal {
+    background: var(--color-surface);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 28px;
+}
+.polish-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 20px;
+    color: var(--color-text);
+}
+.polish-loading {
+    text-align: center;
+    padding: 24px;
+    color: var(--color-text-muted);
+    font-size: 14px;
+}
+.polish-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--color-border);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* コンテキスト充実度バー */
+.polish-context-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.polish-context-label { font-size: 13px; color: var(--color-text-muted); white-space: nowrap; }
+.polish-context-track {
+    flex: 1;
+    height: 8px;
+    background: var(--color-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.polish-context-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    border-radius: 4px;
+    transition: width 0.4s;
+}
+.polish-context-score { font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+.polish-context-list {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.polish-context-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 4px 0;
+}
+.polish-context-item.ok { color: var(--color-text); }
+.polish-context-item.ng { color: var(--color-text-muted); }
+.polish-context-icon { width: 16px; text-align: center; font-weight: 700; }
+.polish-context-item.ok .polish-context-icon { color: #16a34a; }
+.polish-context-item.ng .polish-context-icon { color: #dc2626; }
+
+/* モデル選択 */
+.polish-model-select { margin-bottom: 16px; }
+.polish-model-label { font-size: 13px; color: var(--color-text-muted); margin-bottom: 8px; }
+.polish-model-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 6px;
+    transition: border-color 0.15s;
+}
+.polish-model-option.selected { border-color: #6366f1; background: rgba(99,102,241,0.05); }
+.polish-model-option input[type="radio"] { flex-shrink: 0; }
+.polish-model-name { font-weight: 600; font-size: 14px; }
+.polish-model-desc { font-size: 12px; color: var(--color-text-muted); flex: 1; }
+.polish-model-cost { font-size: 13px; font-weight: 600; color: #6366f1; }
+.polish-cost-line { font-size: 14px; margin-bottom: 16px; }
+
+.polish-modal-actions {
+    display: flex;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+    margin-top: 16px;
+}
+
+/* 固有名詞ピックアップ */
+.pickup-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.pickup-row { display: flex; align-items: center; gap: 10px; }
+.pickup-word { font-weight: 600; font-size: 14px; min-width: 80px; }
+
+/* diffレビュー */
+.polish-diff-view { display: flex; flex-direction: column; max-height: 80vh; }
+.polish-diff-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
+.polish-diff-summary { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-text-muted); }
+.polish-diff-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.diff-seg {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.diff-seg-changed { border-color: #6366f1; background: rgba(99,102,241,0.04); }
+.diff-seg-unchanged { opacity: 0.6; }
+.diff-seg-speaker { font-size: 11px; color: var(--color-text-muted); margin-bottom: 6px; font-weight: 600; }
+.diff-seg-text { line-height: 1.6; }
+.diff-original {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    text-decoration: line-through;
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+.diff-textarea {
+    width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-sizing: border-box;
+}
+.diff-textarea:focus { outline: none; border-color: #6366f1; }
+.diff-actions { display: flex; gap: 6px; margin-top: 8px; }
+.polish-diff-footer { margin-top: 12px; }

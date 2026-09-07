@@ -16,12 +16,20 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Project, ProjectMember, ProjectVocabulary, Theme, Transcript, User
+from backend.db.models import PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Theme, Transcript, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
 from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage_usage import get_summary as get_storage_summary
+from backend.transcribe.polish import (
+    MODELS as POLISH_MODELS,
+    build_context_text,
+    estimate_tokens,
+    estimate_cost,
+    pickup_proper_nouns,
+    run_polish,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -578,6 +586,262 @@ async def update_transcript_metadata(
 
     db.commit()
     return JSONResponse({"ok": True})
+
+
+# ── 整文（Claude API） ────────────────────────────────────────────────────────
+
+class PolishEstimateRequest(BaseModel):
+    model_key: str = "haiku"
+
+
+class PolishPickupRequest(BaseModel):
+    pass
+
+
+class PolishRunRequest(BaseModel):
+    model_key: str = "haiku"
+    extra_vocabulary: list[dict] | None = None  # ピックアップ後に追加登録した語句
+
+
+class PolishAcceptRequest(BaseModel):
+    """セグメントごとの採否を受け取る。accepted_texts は {segment_id: text}。"""
+    accepted_texts: dict[int, str]
+
+
+def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
+    t = db.get(Transcript, transcript_id)
+    if not t or t.user_id != user_id:
+        raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+    return t
+
+
+def _build_transcript_context(transcript: Transcript, db: Session) -> str:
+    """トランスクリプトに紐づくPJT/MTGのコンテキストテキストを構築する。"""
+    project = None
+    members: list[dict] = []
+    vocabulary: list[dict] = []
+
+    if transcript.project_id:
+        project = db.scalars(
+            select(Project)
+            .options(
+                selectinload(Project.members).selectinload(ProjectMember.user),
+                selectinload(Project.vocabulary),
+            )
+            .where(Project.id == transcript.project_id)
+        ).first()
+        if project:
+            for m in project.members:
+                display = m.user.name if m.user else (m.name or "")
+                members.append({
+                    "display_name": display,
+                    "company": m.company or "",
+                    "project_role": m.project_role or "",
+                })
+            for v in project.vocabulary:
+                vocabulary.append({"word": v.word, "meaning": v.meaning or ""})
+
+    meeting_date_str = None
+    if transcript.meeting_date:
+        meeting_date_str = transcript.meeting_date.strftime("%Y年%m月%d日 %H:%M")
+
+    return build_context_text(
+        project_name=project.name if project else None,
+        project_description=project.description if project else None,
+        members=members or None,
+        vocabulary=vocabulary or None,
+        meeting_date=meeting_date_str,
+        meeting_location=transcript.meeting_location,
+        meeting_purpose=transcript.meeting_purpose,
+        meeting_agenda=transcript.meeting_agenda,
+    )
+
+
+@router.get("/api/transcripts/{transcript_id}/polish/estimate")
+async def polish_estimate(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    model_key: str = "haiku",
+) -> JSONResponse:
+    """整文の予想コスト・コンテキスト充実度を返す。"""
+    transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+
+    # セグメントテキストを結合してトークン数を概算
+    segments = list(db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ))
+    full_text = "\n".join(s.text_content for s in segments)
+
+    context_text = _build_transcript_context(transcript, db)
+    input_tokens = estimate_tokens(context_text) + estimate_tokens(full_text) + 500
+    output_tokens = estimate_tokens(full_text)
+
+    costs = {k: estimate_cost(input_tokens, output_tokens, k) for k in POLISH_MODELS}
+
+    # コンテキスト充実度（5項目）
+    has_project = transcript.project_id is not None
+    has_purpose = bool(transcript.meeting_purpose)
+    has_agenda = bool(transcript.meeting_agenda)
+
+    vocab_count = 0
+    member_count = 0
+    if transcript.project_id:
+        from sqlalchemy import func
+        vocab_count = db.scalar(
+            select(func.count()).where(ProjectVocabulary.project_id == transcript.project_id)
+        ) or 0
+        member_count = db.scalar(
+            select(func.count()).where(ProjectMember.project_id == transcript.project_id)
+        ) or 0
+
+    context_items = [
+        {"label": "PJTに紐づいている", "ok": has_project},
+        {"label": f"固有名詞辞書（{vocab_count}件）", "ok": vocab_count > 0},
+        {"label": "MTGの目的が設定されている", "ok": has_purpose},
+        {"label": "アジェンダが設定されている", "ok": has_agenda},
+        {"label": f"参加者情報（{member_count}人）", "ok": member_count > 0},
+    ]
+    context_score = sum(1 for c in context_items if c["ok"])
+
+    return JSONResponse({
+        "segment_count": len(segments),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "costs": costs,
+        "context_items": context_items,
+        "context_score": context_score,
+        "context_total": len(context_items),
+        "has_anthropic": settings.has_anthropic,
+    })
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/pickup")
+async def polish_pickup(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """整文前に固有名詞候補をピックアップする。"""
+    if not settings.has_anthropic:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY が設定されていません")
+
+    transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+
+    segments = list(db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ))
+    full_text = "\n".join(s.text_content for s in segments)
+
+    # 登録済み語句
+    registered: list[str] = []
+    if transcript.project_id:
+        vocab = list(db.scalars(
+            select(ProjectVocabulary.word)
+            .where(ProjectVocabulary.project_id == transcript.project_id)
+        ))
+        registered = vocab
+
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    words = await pickup_proper_nouns(client, full_text, registered)
+
+    return JSONResponse({"words": words})
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/run")
+async def polish_run(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PolishRunRequest,
+) -> JSONResponse:
+    """整文を実行し、セグメントごとの提案テキストを返す。DBは更新しない。"""
+    if not settings.has_anthropic:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY が設定されていません")
+
+    model_key = body.model_key if body.model_key in POLISH_MODELS else "haiku"
+    transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+
+    segments = list(db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ))
+    if not segments:
+        raise HTTPException(status_code=400, detail="セグメントがありません")
+
+    context_text = _build_transcript_context(transcript, db)
+
+    # ピックアップ後に追加登録された語句をコンテキストに追加
+    if body.extra_vocabulary:
+        extra_lines = "\n".join(
+            f"  - {v.get('word', '')}: {v.get('meaning', '')}"
+            for v in body.extra_vocabulary
+        )
+        if extra_lines:
+            context_text += f"\n【追加固有名詞（今回登録）】\n{extra_lines}"
+
+    seg_dicts = [{"id": s.id, "text": s.text_content} for s in segments]
+
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    try:
+        result = await run_polish(client, seg_dicts, context_text, model_key)
+    except Exception as e:
+        logger.error("整文API呼び出しエラー: %s", e)
+        raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
+
+    # コストログを記録
+    log = PolishLog(
+        transcript_id=transcript_id,
+        model=model_key,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cost_yen=result.cost_yen,
+        created_by_user_id=user["id"],
+    )
+    db.add(log)
+
+    # last_polished_at を更新
+    from datetime import datetime
+    transcript.last_polished_at = datetime.now(_tz.utc)
+    db.commit()
+
+    return JSONResponse({
+        "suggestions": result.suggestions,
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+        "cost_yen": result.cost_yen,
+        "model_key": model_key,
+    })
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/accept")
+async def polish_accept(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PolishAcceptRequest,
+) -> JSONResponse:
+    """採用されたセグメントのテキストをDBに保存する。"""
+    transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+
+    updated = 0
+    for seg_id, text in body.accepted_texts.items():
+        seg = db.get(Segment, seg_id)
+        if seg and seg.transcript_id == transcript_id:
+            seg.text_content = text
+            seg.is_edited = True
+            updated += 1
+
+    db.commit()
+    return JSONResponse({"ok": True, "updated": updated})
 
 
 # ── プロフィール ─────────────────────────────────────────────────────────────

@@ -64,6 +64,9 @@ class Settings:
     # AssemblyAI 設定（Phase 4 で使用）
     assemblyai_api_key: str
 
+    # Anthropic API 設定（整文機能で使用）
+    anthropic_api_key: str
+
     # 月次コスト上限 (円)。0 または未設定の場合は上限なし。
     # 月初は日本時間 0:00 でリセット。Railway の Variables から変更する。
     monthly_cost_limit_yen: int
@@ -115,6 +118,11 @@ class Settings:
         """AssemblyAI が設定済みか。未設定なら文字起こし機能を無効化する。"""
         return bool(self.assemblyai_api_key)
 
+    @property
+    def has_anthropic(self) -> bool:
+        """Anthropic API が設定済みか。未設定なら整文機能を無効化する。"""
+        return bool(self.anthropic_api_key)
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -138,6 +146,7 @@ def load_settings() -> Settings:
             "http://127.0.0.1:8000/auth/google/callback",
         ),
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
+        anthropic_api_key=_env("ANTHROPIC_API_KEY", ""),
         admin_email=_env("ADMIN_EMAIL", "a.ichikawa@lionheart.co.jp").lower(),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
         # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
