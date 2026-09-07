@@ -25,7 +25,7 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # - v1.0.2 (自動削除 + ストレージ管理)
 # - v1.0.3 (スマホ対応 + ダッシュボードリネーム) ← ここでバンプ漏れ
 # - v1.1 (音声同期再生 + インラインエディタ) ← ここでもバンプ漏れ
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
