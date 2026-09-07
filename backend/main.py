@@ -487,6 +487,111 @@ async def recover_segments(user: AdminUser) -> JSONResponse:
         return JSONResponse({"error": _tb.format_exc()}, status_code=500)
 
 
+@app.get("/api/admin/recover-diag5")
+async def recover_diag5(user: AdminUser) -> JSONResponse:
+    """【一時診断5】frame_wp=45352 のページを手動ステップ実行で確認。"""
+    import struct as _s
+    import traceback as _tb
+    WAL = "/data/app.db-wal.bak"
+    try:
+        with open(WAL, "rb") as f:
+            wal_data = f.read()
+
+        # frame at wp=45352
+        wp = 45352
+        pd = wal_data[wp + 24 : wp + 4120]  # 4096 bytes
+
+        # 1. \x07\x07 を探す
+        k = pd.find(b"\x07\x07")
+        if k == -1:
+            return JSONResponse({"error": "\\x07\\x07 not found in frame"})
+
+        # 2. off=4 で payload 先頭を特定
+        ps_start = k - 4
+        pl = pd[ps_start:]
+
+        # 3. header_size を読む
+        hs_byte = pl[0]
+
+        # 4. varint で hs を読む
+        def vi(d, p):
+            r = 0
+            for i in range(9):
+                if p >= len(d): return r, p
+                b = d[p]; p += 1
+                if i < 8:
+                    r = (r << 7) | (b & 0x7F)
+                    if not (b & 0x80): break
+                else: r = (r << 8) | b
+            return r, p
+
+        hs, p1 = vi(pl, 0)
+        he = hs
+
+        # 5. serial types を読む
+        ts = []
+        q = p1
+        while q < he:
+            t, q = vi(pl, q)
+            ts.append(t)
+            if len(ts) > 15:
+                break
+
+        # 6. data area からいくつか読む
+        def gs(t, buf, dp):
+            if t == 0: return None, dp
+            if t == 8: return 0, dp
+            if t == 9: return 1, dp
+            if t == 1: return _s.unpack_from(">b", buf, dp)[0], dp+1
+            if t == 2: return _s.unpack_from(">h", buf, dp)[0], dp+2
+            if t == 3:
+                return _s.unpack(">I", b"\x00"+buf[dp:dp+3])[0], dp+3
+            if t == 4: return _s.unpack_from(">i", buf, dp)[0], dp+4
+            if t == 5:
+                return _s.unpack(">Q", b"\x00\x00"+buf[dp:dp+6])[0], dp+6
+            if t == 6: return _s.unpack_from(">q", buf, dp)[0], dp+8
+            if t == 7: return _s.unpack_from(">d", buf, dp)[0], dp+8
+            if t >= 12 and t%2==0:
+                n=(t-12)//2; return bytes(buf[dp:dp+n]), dp+n
+            if t >= 13 and t%2==1:
+                n=(t-13)//2
+                return bytes(buf[dp:dp+n]).decode("utf-8",errors="replace"), dp+n
+            return None, dp
+
+        vals = []
+        dp = he
+        for t in ts[:9]:
+            try:
+                v, dp = gs(t, pl, dp)
+                vals.append(repr(v)[:60])
+            except Exception as e:
+                vals.append(f"ERROR:{e}")
+                break
+
+        # check results
+        checks = {
+            "k": k,
+            "ps_start": ps_start,
+            "hs_byte_hex": hex(hs_byte),
+            "hs": hs,
+            "ts": ts,
+            "len_ts": len(ts),
+            "ts[0]": ts[0] if ts else None,
+            "ts[3]": ts[3] if len(ts) > 3 else None,
+            "ts[4]": ts[4] if len(ts) > 4 else None,
+            "check_ts0_ok": ts[0] == 0 if ts else False,
+            "check_ts34_ok": (len(ts) > 4 and ts[3] == 7 and ts[4] == 7),
+            "vals": vals,
+        }
+        if len(vals) >= 6:
+            sl_repr = vals[5]
+            checks["sl_has_SPEAKER"] = "SPEAKER" in sl_repr
+
+        return JSONResponse(checks)
+    except Exception:
+        return JSONResponse({"error": _tb.format_exc()}, status_code=500)
+
+
 @app.get("/api/admin/recover-diag4")
 async def recover_diag4(user: AdminUser) -> JSONResponse:
     """【一時診断4】WAL内SPEAKER_0前後の生バイトを表示。"""
