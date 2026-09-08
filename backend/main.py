@@ -111,15 +111,22 @@ _MAINTENANCE_BYPASS_PREFIXES = (
 
 
 class MaintenanceMiddleware(BaseHTTPMiddleware):
-    """メンテナンスフラグファイルが存在する間、管理者ルート以外に 503 を返す。"""
+    """メンテナンスフラグファイルが存在する間、管理者以外に 503 を返す。"""
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if not any(path.startswith(p) for p in _MAINTENANCE_BYPASS_PREFIXES):
             if _MAINTENANCE_FLAG.exists():
-                html = _BACKEND_DIR / "templates" / "maintenance.html"
-                body = html.read_text(encoding="utf-8") if html.exists() else "<h1>メンテナンス中</h1>"
-                return HTMLResponse(content=body, status_code=503)
+                # 管理者はメンテナンス中も全ページにアクセス可能
+                user = request.session.get("user") if hasattr(request, "session") else None
+                is_admin = (
+                    isinstance(user, dict)
+                    and user.get("email", "").lower() == settings.admin_email
+                )
+                if not is_admin:
+                    html = _BACKEND_DIR / "templates" / "maintenance.html"
+                    body = html.read_text(encoding="utf-8") if html.exists() else "<h1>メンテナンス中</h1>"
+                    return HTMLResponse(content=body, status_code=503)
         return await call_next(request)
 
 
