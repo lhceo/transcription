@@ -709,24 +709,13 @@ async def transcript_detail(
 
 
 def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
-    """ユーザーの People台帳 + 話者履歴を合わせた候補リスト（台帳優先）。"""
-    history_rows = db.scalars(
-        select(SpeakerHistory)
-        .where(SpeakerHistory.user_id == user_id)
-        .order_by(SpeakerHistory.last_used_at.desc())
-        .limit(50)
-    )
-    history_names = [r.name for r in history_rows]
-
-    people_names = list(db.scalars(
+    """話者リネームの候補 = People台帳に登録された名前のみ。
+    speaker_history（過去の使用履歴）はゴミが混入するため除外。"""
+    return list(db.scalars(
         select(Person.name)
         .where(Person.owner_user_id == user_id)
         .order_by(Person.name)
     ))
-
-    seen = set(history_names)
-    merged = history_names + [n for n in people_names if n not in seen]
-    return merged[:60]
 
 
 @router.get("/api/transcripts/{transcript_id}/status")
