@@ -481,6 +481,21 @@
                     this.maintenanceLoading = false;
                 }
             },
+            async clearSpeakerHistory() {
+                const ok = await window.showConfirm(
+                    '管理者以外の全ユーザーの話者候補履歴を削除します。よろしいですか？',
+                    { title: '話者候補履歴のクリア', okLabel: 'クリアする' }
+                );
+                if (!ok) return;
+                try {
+                    const res = await fetch('/api/admin/speaker-history', { method: 'DELETE' });
+                    if (!res.ok) throw new Error(res.status);
+                    const data = await res.json();
+                    window.showToast(`話者候補履歴を ${data.deleted} 件削除しました`, 'success');
+                } catch (e) {
+                    window.showToast('削除に失敗しました', 'error');
+                }
+            },
             formatDate(iso) {
                 if (!iso) return '—';
                 const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);

@@ -175,6 +175,23 @@
         </div>
     </section>
 
+    {# ── 話者候補履歴 ── #}
+    <section class="admin-section">
+        <h2 class="admin-section-title">話者候補の履歴</h2>
+        <div class="admin-maintenance-card admin-maintenance-off">
+            <p class="admin-maintenance-desc">
+                話者リネーム時に「候補」として表示される名前の履歴をクリアします。<br>
+                テスト時に入力した不要な名前をまとめて消したい場合に使用してください。
+            </p>
+            <div class="admin-maintenance-actions">
+                <button type="button" class="btn-maintenance-start"
+                        @click="clearSpeakerHistory()">
+                    管理者以外の履歴を全クリア
+                </button>
+            </div>
+        </div>
+    </section>
+
     {# ── 危険操作 ── #}
     <section class="admin-section">
         <h2 class="admin-section-title admin-danger-title">危険操作</h2>

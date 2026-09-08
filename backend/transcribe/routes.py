@@ -556,6 +556,13 @@ async def transcript_detail(
     # ユーザーが過去に使った話者名（候補リスト）
     history_names = _user_speaker_history_names(user["id"], db)
 
+    # 参加者リスト（JSON テキスト → Python list）
+    import json as _json
+    try:
+        meeting_participants: list[str] = _json.loads(transcript.meeting_participants) if transcript.meeting_participants else []
+    except (ValueError, TypeError):
+        meeting_participants = []
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -570,6 +577,7 @@ async def transcript_detail(
             "speaker_name_map": speaker_name_map,
             "name_to_color": name_to_color,
             "history_names": history_names,
+            "meeting_participants": meeting_participants,
         },
     )
 

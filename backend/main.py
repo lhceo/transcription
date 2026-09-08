@@ -26,7 +26,7 @@ from backend.auth import router as auth_router
 from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Transcript, User
+from backend.db.models import SpeakerHistory, Transcript, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import select
@@ -397,6 +397,34 @@ async def maintenance_stop(user: AdminUser) -> JSONResponse:
         _MAINTENANCE_FLAG.unlink()
     logger.info("メンテナンスモード終了: %s", user["email"])
     return JSONResponse({"active": False})
+
+
+@app.delete("/api/admin/speaker-history")
+async def clear_speaker_history(
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+    user_id: int | None = None,
+) -> JSONResponse:
+    """管理者専用: 話者候補の履歴を削除する。
+    user_id 指定 → そのユーザーのみ削除。
+    user_id 未指定 → 管理者以外の全ユーザーの履歴を削除。
+    """
+    settings = load_settings()
+    if user_id is not None:
+        target = db.get(User, user_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+        count = db.query(SpeakerHistory).filter(SpeakerHistory.user_id == user_id).delete()
+    else:
+        # 管理者ユーザーの ID を除外
+        admin_ids = [u.id for u in db.scalars(select(User).where(User.email == settings.admin_email))]
+        q = db.query(SpeakerHistory)
+        if admin_ids:
+            q = q.filter(SpeakerHistory.user_id.notin_(admin_ids))
+        count = q.delete()
+    db.commit()
+    logger.info("話者履歴クリア by %s: %d 件削除 (target_user_id=%s)", user["email"], count, user_id)
+    return JSONResponse({"deleted": count})
 
 
 @app.get("/admin/users/{target_user_id}", response_class=HTMLResponse)

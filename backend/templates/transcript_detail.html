@@ -21,6 +21,7 @@
         meetingLocation: {{ (transcript.meeting_location or '') | tojson }},
         meetingPurpose: {{ (transcript.meeting_purpose or '') | tojson }},
         meetingAgenda: {{ (transcript.meeting_agenda or '') | tojson }},
+        meetingParticipants: {{ meeting_participants | tojson }},
     };
 </script>
 
@@ -221,6 +222,28 @@
             <div class="form-row form-row-inline">
                 <label class="form-label">アジェンダ</label>
                 <textarea class="form-input form-textarea" x-model="form.meeting_agenda" placeholder="例: &#10;1. 前回議事録の確認&#10;2. 要件定義の確認&#10;3. 次回スケジュール" rows="3"></textarea>
+            </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">参加者</label>
+                <div class="participant-editor">
+                    <div class="participant-tags" x-show="participants.length > 0">
+                        <template x-for="name in participants" :key="name">
+                            <span class="participant-tag">
+                                <span x-text="name"></span>
+                                <button type="button" class="participant-tag-remove" @click="removeParticipant(name)" aria-label="削除">×</button>
+                            </span>
+                        </template>
+                    </div>
+                    <div class="participant-input-row">
+                        <input type="text" class="form-input participant-input"
+                               x-model="participantInput"
+                               placeholder="名前を入力して Enter"
+                               @keydown.enter.prevent="addParticipant()"
+                               maxlength="100">
+                        <button type="button" class="btn btn-outline btn-sm" @click="addParticipant()" :disabled="!participantInput.trim()">追加</button>
+                    </div>
+                    <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます</p>
+                </div>
             </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving">
@@ -1542,8 +1565,11 @@ function segmentsApp(transcriptId, historyNames) {
         // ── 話者編集ポップアップ ─────────────────────────────────
         filteredCandidates() {
             const q = (this.editor.input || '').trim();
-            if (!q) return this.history.slice(0, 8);
-            return this.history.filter(n => n.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+            // 参加者 + 履歴を重複なくマージ（参加者を優先）
+            const participants = window.__MTG_PARTICIPANTS || [];
+            const merged = [...participants, ...this.history.filter(n => !participants.includes(n))];
+            if (!q) return merged.slice(0, 10);
+            return merged.filter(n => n.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
         },
 
         openSpeakerEditorFromEvent(event) {
@@ -1643,6 +1669,7 @@ function segmentsApp(transcriptId, historyNames) {
                 }
                 this.recolorByName();
                 if (this.history.indexOf(name) < 0) this.history.unshift(name);
+                this._addToParticipants(name);
                 this.closeEditor();
             } catch (e) {
                 window.showToast(e.message, 'error');
@@ -1679,10 +1706,26 @@ function segmentsApp(transcriptId, historyNames) {
                 });
                 this.recolorByName();
                 if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
+                this._addToParticipants(newName);
                 this.closeEditor();
             } catch (e) {
                 window.showToast(e.message, 'error');
             }
+        },
+
+        // 話者リネーム時に参加者リストへ自動追加し、APIに保存
+        _addToParticipants(name) {
+            const pts = window.__MTG_PARTICIPANTS || [];
+            if (pts.includes(name)) return;
+            pts.push(name);
+            window.__MTG_PARTICIPANTS = pts;
+            const init = window.__TRANSCRIPT_INIT || {};
+            if (!init.id) return;
+            fetch('/api/transcripts/' + init.id + '/metadata', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ meeting_participants: pts }),
+            }).catch(() => {});
         },
     };
 }
@@ -1831,6 +1874,30 @@ function mtgInfo() {
             meeting_purpose: init.meetingPurpose || '',
             meeting_agenda: init.meetingAgenda || '',
         },
+        participants: (init.meetingParticipants || []).slice(),
+        participantInput: '',
+
+        addParticipant() {
+            const name = this.participantInput.trim();
+            if (!name || this.participants.includes(name)) {
+                this.participantInput = '';
+                return;
+            }
+            this.participants.push(name);
+            this.participantInput = '';
+            this._syncParticipants();
+        },
+
+        removeParticipant(name) {
+            this.participants = this.participants.filter(n => n !== name);
+            this._syncParticipants();
+        },
+
+        // 参加者リストを segmentsApp に伝播する
+        _syncParticipants() {
+            window.__MTG_PARTICIPANTS = this.participants.slice();
+        },
+
         async save() {
             this.saving = true;
             this.saved = false;
@@ -1843,9 +1910,11 @@ function mtgInfo() {
                         meeting_location: this.form.meeting_location || null,
                         meeting_purpose: this.form.meeting_purpose || null,
                         meeting_agenda: this.form.meeting_agenda || null,
+                        meeting_participants: this.participants,
                     }),
                 });
                 if (!res.ok) throw new Error(res.status);
+                this._syncParticipants();
                 this.saved = true;
                 setTimeout(() => { this.saved = false; }, 3000);
             } catch (e) {
@@ -1853,6 +1922,10 @@ function mtgInfo() {
             } finally {
                 this.saving = false;
             }
+        },
+
+        init() {
+            this._syncParticipants();
         },
     };
 }

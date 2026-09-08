@@ -93,6 +93,7 @@ class TranscriptMetadataUpdate(BaseModel):
     meeting_location: str | None = None
     meeting_purpose: str | None = None
     meeting_agenda: str | None = None
+    meeting_participants: list[str] | None = None  # 参加者名リスト
 
 
 class ProfileUpdate(BaseModel):
@@ -587,6 +588,10 @@ async def update_transcript_metadata(
         transcript.meeting_purpose = body.meeting_purpose.strip() or None
     if body.meeting_agenda is not None:
         transcript.meeting_agenda = body.meeting_agenda.strip() or None
+    if body.meeting_participants is not None:
+        import json as _json
+        cleaned = [n.strip() for n in body.meeting_participants if n.strip()]
+        transcript.meeting_participants = _json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
     db.commit()
     return JSONResponse({"ok": True})

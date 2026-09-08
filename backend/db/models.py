@@ -124,6 +124,8 @@ class Transcript(Base):
     meeting_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     meeting_purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
     meeting_agenda: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON 配列テキスト: ["田中", "鈴木"] — 話者ポップアップ候補に統合
+    meeting_participants: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 最後に整文を実行した日時（コンテキスト更新後の再整文促進に使用）
     last_polished_at: Mapped[datetime | None] = mapped_column(
