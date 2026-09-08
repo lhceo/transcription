@@ -53,6 +53,59 @@ async def lifespan(app: FastAPI):
        初めてマウントされるためここで実行)
     2. 自動削除バックグラウンドタスクの起動 (v1.0.2)
     """
+    # 0. 直接 sqlite3 でスキーマ修復 (alembic が誤ったDBに当たっても最低限保証)
+    import sqlite3 as _sq3
+    import os as _os
+    _db_url = _os.environ.get("DATABASE_URL", "")
+    _db_path = _db_url.replace("sqlite:///", "") if _db_url.startswith("sqlite:") else None
+    if _db_path:
+        logger.info("スキーマ修復開始: %s", _db_path)
+        try:
+            _co = _sq3.connect(_db_path)
+            _cu = _co.cursor()
+            for _sql in [
+                "ALTER TABLE transcripts ADD COLUMN meeting_date DATETIME",
+                "ALTER TABLE transcripts ADD COLUMN meeting_location VARCHAR(200)",
+                "ALTER TABLE transcripts ADD COLUMN meeting_purpose TEXT",
+                "ALTER TABLE transcripts ADD COLUMN meeting_agenda TEXT",
+                "ALTER TABLE transcripts ADD COLUMN last_polished_at DATETIME",
+                "ALTER TABLE transcripts ADD COLUMN meeting_participants TEXT",
+                "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
+                "ALTER TABLE project_vocabulary ADD COLUMN meaning TEXT",
+            ]:
+                try:
+                    _cu.execute(_sql)
+                except Exception:
+                    pass
+            _cu.execute(
+                "CREATE TABLE IF NOT EXISTS transcript_shares("
+                "id INTEGER NOT NULL,"
+                "transcript_id INTEGER NOT NULL,"
+                "shared_with_user_id INTEGER NOT NULL,"
+                "created_at DATETIME NOT NULL,"
+                "PRIMARY KEY(id),"
+                "CONSTRAINT uq_transcript_share "
+                "UNIQUE(transcript_id,shared_with_user_id),"
+                "FOREIGN KEY(transcript_id) "
+                "REFERENCES transcripts(id) ON DELETE CASCADE,"
+                "FOREIGN KEY(shared_with_user_id) "
+                "REFERENCES users(id) ON DELETE CASCADE)"
+            )
+            try:
+                _cu.execute(
+                    "CREATE INDEX ix_transcript_shares_user "
+                    "ON transcript_shares(shared_with_user_id)"
+                )
+            except Exception:
+                pass
+            _cu.execute("UPDATE alembic_version SET version_num='f3c9e2a7b165'")
+            _co.commit()
+            _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            _co.close()
+            logger.info("スキーマ修復完了")
+        except Exception as _e:
+            logger.warning("スキーマ修復失敗: %s", _e)
+
     # 1. マイグレーション
     alembic_ini = _REPO_ROOT / "alembic.ini"
     logger.info("Alembic マイグレーション開始: %s", alembic_ini)
