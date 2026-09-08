@@ -709,13 +709,21 @@ async def transcript_detail(
 
 
 def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
-    """話者リネームの候補 = People台帳に登録された名前のみ。
+    """話者リネームの候補 = 自分の名前 + People台帳。
     speaker_history（過去の使用履歴）はゴミが混入するため除外。"""
-    return list(db.scalars(
+    db_user = db.get(User, user_id)
+    own_name = db_user.name if db_user else None
+
+    people_names = list(db.scalars(
         select(Person.name)
         .where(Person.owner_user_id == user_id)
         .order_by(Person.name)
     ))
+
+    # 自分の名前を先頭に（People台帳に同名がなければ追加）
+    if own_name and own_name not in people_names:
+        return [own_name] + people_names
+    return people_names
 
 
 @router.get("/api/transcripts/{transcript_id}/status")
