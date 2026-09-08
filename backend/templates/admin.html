@@ -3,7 +3,7 @@
 {% block title %}管理 | 音声文字起こし{% endblock %}
 
 {% block content %}
-<div class="admin-page" x-data="adminMenu()" x-init="load()">
+<div class="admin-page" x-data="adminMenu()" x-init="init()">
     <div class="admin-page-head">
         <h1 class="admin-page-title">管理パネル</h1>
     </div>
@@ -130,6 +130,41 @@
                 </div>
             </div>
         </template>
+    </section>
+
+    {# ── メンテナンスモード ── #}
+    <section class="admin-section">
+        <h2 class="admin-section-title">メンテナンスモード</h2>
+        <div class="admin-maintenance-card" :class="maintenance ? 'admin-maintenance-on' : 'admin-maintenance-off'">
+            <div class="admin-maintenance-status">
+                <span class="admin-maintenance-dot" :class="maintenance ? 'dot-on' : 'dot-off'"></span>
+                <span x-text="maintenance ? 'メンテナンス中' : '稼働中'"></span>
+            </div>
+            <p class="admin-maintenance-desc" x-show="!maintenance">
+                メンテナンスを開始すると、管理者以外のユーザーは「メンテナンス中」画面が表示されます。<br>
+                アップデートのデプロイ前後に使用してください。
+            </p>
+            <p class="admin-maintenance-desc" x-show="maintenance">
+                現在メンテナンスモードです。管理者以外はアクセスできません。<br>
+                デプロイが完了したら「メンテナンス解除」を押してください。
+            </p>
+            <div class="admin-maintenance-actions">
+                <button type="button"
+                        class="btn-maintenance-start"
+                        x-show="!maintenance"
+                        :disabled="maintenanceLoading"
+                        @click="startMaintenance()">
+                    メンテナンス開始
+                </button>
+                <button type="button"
+                        class="btn-maintenance-stop"
+                        x-show="maintenance"
+                        :disabled="maintenanceLoading"
+                        @click="stopMaintenance()">
+                    メンテナンス解除
+                </button>
+            </div>
+        </div>
     </section>
 
     {# ── 危険操作 ── #}

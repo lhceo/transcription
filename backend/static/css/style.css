@@ -4252,3 +4252,81 @@ a.history-item-filename:hover {
 .diff-textarea:focus { outline: none; border-color: #6366f1; }
 .diff-actions { display: flex; gap: 6px; margin-top: 8px; }
 .polish-diff-footer { margin-top: 12px; }
+
+/* ── メンテナンスモード ─────────────────────────────────────────── */
+.admin-maintenance-card {
+    border: 2px solid var(--color-border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    transition: border-color 0.2s, background 0.2s;
+}
+.admin-maintenance-on {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+.admin-maintenance-off {
+    border-color: #d1fae5;
+    background: #f0fdf4;
+}
+.admin-maintenance-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+.admin-maintenance-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.dot-on {
+    background: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.25);
+}
+.dot-off {
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.2);
+}
+.admin-maintenance-desc {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+.admin-maintenance-actions { display: flex; gap: 8px; }
+.btn-maintenance-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    background: #f59e0b;
+    color: #fff;
+    transition: background 0.15s;
+}
+.btn-maintenance-start:hover { background: #d97706; }
+.btn-maintenance-start:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-maintenance-stop {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    background: #10b981;
+    color: #fff;
+    transition: background 0.15s;
+}
+.btn-maintenance-stop:hover { background: #059669; }
+.btn-maintenance-stop:disabled { opacity: 0.5; cursor: not-allowed; }

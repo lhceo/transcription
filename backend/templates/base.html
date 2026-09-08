@@ -387,6 +387,12 @@
             open: false,
             loading: false,
             users: [],
+            maintenance: false,
+            maintenanceLoading: false,
+            init() {
+                this.load();
+                this.checkMaintenance();
+            },
             toggle() {
                 this.open = !this.open;
                 if (this.open) this.load();
@@ -403,6 +409,41 @@
                     window.showToast('利用状況の取得に失敗しました', 'error');
                 } finally {
                     this.loading = false;
+                }
+            },
+            async checkMaintenance() {
+                try {
+                    const res = await fetch('/api/admin/maintenance/status');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    this.maintenance = data.active;
+                } catch (e) { /* 無視 */ }
+            },
+            async startMaintenance() {
+                if (!confirm('メンテナンスモードを開始しますか？\n管理者以外のユーザーはアクセスできなくなります。')) return;
+                this.maintenanceLoading = true;
+                try {
+                    const res = await fetch('/api/admin/maintenance/start', { method: 'POST' });
+                    if (!res.ok) throw new Error(res.status);
+                    this.maintenance = true;
+                    window.showToast('メンテナンスモードを開始しました', 'success');
+                } catch (e) {
+                    window.showToast('開始に失敗しました', 'error');
+                } finally {
+                    this.maintenanceLoading = false;
+                }
+            },
+            async stopMaintenance() {
+                this.maintenanceLoading = true;
+                try {
+                    const res = await fetch('/api/admin/maintenance/stop', { method: 'POST' });
+                    if (!res.ok) throw new Error(res.status);
+                    this.maintenance = false;
+                    window.showToast('メンテナンスモードを解除しました', 'success');
+                } catch (e) {
+                    window.showToast('解除に失敗しました', 'error');
+                } finally {
+                    this.maintenanceLoading = false;
                 }
             },
             formatDate(iso) {

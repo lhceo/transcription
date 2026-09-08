@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from backend.auth import router as auth_router
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 settings = load_settings()
 
 _BACKEND_DIR = Path(__file__).resolve().parent
+_MAINTENANCE_FLAG = Path("/data/maintenance.flag")
 _REPO_ROOT = _BACKEND_DIR.parent
 _TEMPLATES_DIR = _BACKEND_DIR / "templates"
 _STATIC_DIR = _BACKEND_DIR / "static"
@@ -98,12 +100,38 @@ async def lifespan(app: FastAPI):
         logger.info("バックグラウンドタスク停止")
 
 
+_MAINTENANCE_BYPASS_PREFIXES = (
+    "/health",
+    "/admin",
+    "/api/admin",
+    "/login",
+    "/auth",
+    "/static",
+)
+
+
+class MaintenanceMiddleware(BaseHTTPMiddleware):
+    """メンテナンスフラグファイルが存在する間、管理者ルート以外に 503 を返す。"""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if not any(path.startswith(p) for p in _MAINTENANCE_BYPASS_PREFIXES):
+            if _MAINTENANCE_FLAG.exists():
+                html = _BACKEND_DIR / "templates" / "maintenance.html"
+                body = html.read_text(encoding="utf-8") if html.exists() else "<h1>メンテナンス中</h1>"
+                return HTMLResponse(content=body, status_code=503)
+        return await call_next(request)
+
+
 app = FastAPI(
     title="Transcription Web App",
     version=APP_VERSION,
     description="社内向け音声文字起こし Web アプリ",
     lifespan=lifespan,
 )
+
+# メンテナンスミドルウェア（SessionMiddleware より先に追加 = リクエスト処理の先頭で動く）
+app.add_middleware(MaintenanceMiddleware)
 
 # セッション Cookie（署名付き）の設定。
 # Cookie 属性は本番環境では Secure を強制したいので、APP_ENV で切り替える。
@@ -316,6 +344,31 @@ async def free_audio_space(user: AdminUser) -> JSONResponse:
         "freed_bytes": freed_bytes,
         "freed_pretty": f"{freed_bytes / 1_000_000:.1f} MB",
     })
+
+
+@app.get("/api/admin/maintenance/status")
+async def maintenance_status(user: AdminUser) -> JSONResponse:
+    """メンテナンスモードの現在の状態を返す。"""
+    active = _MAINTENANCE_FLAG.exists()
+    return JSONResponse({"active": active})
+
+
+@app.post("/api/admin/maintenance/start")
+async def maintenance_start(user: AdminUser) -> JSONResponse:
+    """メンテナンスモードを開始する（フラグファイルを作成）。"""
+    _MAINTENANCE_FLAG.parent.mkdir(parents=True, exist_ok=True)
+    _MAINTENANCE_FLAG.touch()
+    logger.info("メンテナンスモード開始: %s", user["email"])
+    return JSONResponse({"active": True})
+
+
+@app.post("/api/admin/maintenance/stop")
+async def maintenance_stop(user: AdminUser) -> JSONResponse:
+    """メンテナンスモードを終了する（フラグファイルを削除）。"""
+    if _MAINTENANCE_FLAG.exists():
+        _MAINTENANCE_FLAG.unlink()
+    logger.info("メンテナンスモード終了: %s", user["email"])
+    return JSONResponse({"active": False})
 
 
 @app.get("/admin/users/{target_user_id}", response_class=HTMLResponse)
