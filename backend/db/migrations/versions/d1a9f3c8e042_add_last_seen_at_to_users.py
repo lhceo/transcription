@@ -9,7 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, text as _text
 
 
 revision: str = 'd1a9f3c8e042'
@@ -19,12 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa_inspect(bind)
-    existing = [c["name"] for c in inspector.get_columns("users")]
-    if "last_seen_at" not in existing:
-        op.add_column("users", sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True))
+    conn = op.get_bind()
+    conn.execute(_text("PRAGMA foreign_keys=OFF"))
+    cols = {c['name'] for c in sa_inspect(conn).get_columns('users')}
+    with op.batch_alter_table('users', schema=None) as batch_op:
+        if 'last_seen_at' not in cols:
+            batch_op.add_column(sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=True))
+    conn.execute(_text("PRAGMA foreign_keys=ON"))
 
 
 def downgrade() -> None:
-    op.drop_column("users", "last_seen_at")
+    with op.batch_alter_table('users', schema=None) as batch_op:
+        batch_op.drop_column('last_seen_at')

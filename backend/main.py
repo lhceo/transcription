@@ -228,7 +228,11 @@ async def admin_users_stats(
     from backend.transcribe.cost import month_start_utc, estimate_cost_yen
     from backend.transcribe.retention import _ensure_utc_aware
 
-    users = list(db.scalars(select(User).order_by(User.last_login_at.desc())))
+    try:
+        users = list(db.scalars(select(User).order_by(User.last_login_at.desc())))
+    except Exception as e:
+        logger.error("users-stats: DB クエリ失敗 %s", e)
+        return JSONResponse({"users": [], "db_error": str(e)}, status_code=200)
 
     audio_sizes: dict[int, int] = {}
     if _AUDIO_DIR.exists():
