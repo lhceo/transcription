@@ -1168,6 +1168,11 @@ html, body {
     color: var(--color-text-muted);
     line-height: 1.5;
 }
+.form-hint-link {
+    color: var(--color-primary);
+    text-decoration: none;
+}
+.form-hint-link:hover { text-decoration: underline; }
 
 /* v1.0.3: アップロード進捗バー (#6)
    - htmx:xhr:progress イベントで loaded/total が更新される
