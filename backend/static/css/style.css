@@ -2097,11 +2097,44 @@ a.history-item-filename:hover {
     letter-spacing: 0.05em;
 }
 
+.speaker-candidate-list { display: flex; flex-direction: column; }
+.speaker-candidate-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.speaker-candidate-row:hover { background: #f1f5f9; border-radius: 4px; }
+.speaker-candidate-row:hover .speaker-candidate-edit-btn { opacity: 1; }
+.speaker-candidate-edit-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    padding: 4px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+.speaker-candidate-edit-btn svg { width: 13px; height: 13px; display: block; }
+.speaker-candidate-edit-btn:hover { color: var(--color-primary); background: rgba(59,130,246,0.08); }
+
+.speaker-candidate-edit-panel {
+    padding: 4px 8px 8px;
+    display: flex;
+    flex-direction: column;
+}
+.speaker-candidate-edit-panel .form-input {
+    font-size: 13px;
+    padding: 6px 10px;
+}
+.speaker-candidate-edit-actions { display: flex; gap: 8px; }
+
 .speaker-popup-candidate {
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 100%;
+    flex: 1;
     padding: 8px 12px;
     border: none;
     background: transparent;
@@ -2113,7 +2146,7 @@ a.history-item-filename:hover {
 }
 
 .speaker-popup-candidate:hover {
-    background: #f1f5f9;
+    background: transparent;
 }
 
 .speaker-popup-avatar {

@@ -680,6 +680,7 @@ async def transcript_detail(
 
     # ユーザーが過去に使った話者名（候補リスト）
     history_names = _user_speaker_history_names(user["id"], db)
+    people_registry = _user_people_registry(user["id"], db)
 
     # 参加者リスト（JSON テキスト → Python list）
     import json as _json
@@ -702,10 +703,28 @@ async def transcript_detail(
             "speaker_name_map": speaker_name_map,
             "name_to_color": name_to_color,
             "history_names": history_names,
+            "people_registry": people_registry,
             "meeting_participants": meeting_participants,
             "is_owner": is_owner,
         },
     )
+
+
+def _user_people_registry(user_id: int, db: Session) -> dict:
+    """People台帳を {name: {id, name, company, job_title, role}} で返す。"""
+    rows = db.scalars(
+        select(Person).where(Person.owner_user_id == user_id)
+    )
+    return {
+        p.name: {
+            "id": p.id,
+            "name": p.name,
+            "company": p.company or "",
+            "job_title": p.job_title or "",
+            "role": p.role or "",
+        }
+        for p in rows
+    }
 
 
 def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
