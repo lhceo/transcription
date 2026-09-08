@@ -298,7 +298,7 @@
                     <button type="button" class="release-modal-close" @click="closeModal()" aria-label="閉じる">×</button>
                 </div>
                 <ul class="release-modal-list">
-                    {% for item in release_notes.items %}
+                    {% for item in release_notes['items'] %}
                     <li>{{ item }}</li>
                     {% endfor %}
                 </ul>
