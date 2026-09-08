@@ -281,35 +281,30 @@
     {% endif %}
 
     {% if user is defined and user and release_notes %}
-    <div id="release-banner"
-         x-data="releaseBanner('{{ app_version }}')"
-         x-show="visible"
-         x-cloak
-         class="release-banner">
-        <span class="release-banner-text">
-            🎉 <strong>v{{ app_version }}</strong> にアップデートしました
-        </span>
-        <button type="button" class="release-banner-detail" @click="openModal()">更新内容を見る →</button>
-        <button type="button" class="release-banner-close" @click="dismiss()" aria-label="閉じる">×</button>
-    </div>
-
-    <div x-data="releaseBanner('{{ app_version }}')"
-         x-show="modalOpen"
-         x-cloak
-         class="release-modal-overlay"
-         @click.self="closeModal()">
-        <div class="release-modal">
-            <div class="release-modal-head">
-                <h2 class="release-modal-title">{{ release_notes.title }}</h2>
-                <button type="button" class="release-modal-close" @click="closeModal()" aria-label="閉じる">×</button>
-            </div>
-            <ul class="release-modal-list">
-                {% for item in release_notes.items %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-            <div class="release-modal-footer">
-                <button type="button" class="btn-primary" @click="dismiss(); closeModal()">確認しました</button>
+    <div x-data="releaseBanner('{{ app_version }}')">
+        {# バナー #}
+        <div class="release-banner" x-show="visible" x-cloak x-transition>
+            <span class="release-banner-text">
+                <strong>v{{ app_version }}</strong> にアップデートしました
+            </span>
+            <button type="button" class="release-banner-detail" @click="openModal()">更新内容を見る →</button>
+            <button type="button" class="release-banner-close" @click="dismiss()" aria-label="閉じる">×</button>
+        </div>
+        {# モーダル #}
+        <div class="release-modal-overlay" x-show="modalOpen" x-cloak @click.self="closeModal()" @keydown.escape.window="closeModal()">
+            <div class="release-modal">
+                <div class="release-modal-head">
+                    <h2 class="release-modal-title">{{ release_notes.title }}</h2>
+                    <button type="button" class="release-modal-close" @click="closeModal()" aria-label="閉じる">×</button>
+                </div>
+                <ul class="release-modal-list">
+                    {% for item in release_notes.items %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                <div class="release-modal-footer">
+                    <button type="button" class="btn btn-primary" @click="dismiss()">確認しました</button>
+                </div>
             </div>
         </div>
     </div>
