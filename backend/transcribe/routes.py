@@ -479,10 +479,12 @@ async def transcript_detail(
     db: Annotated[Session, Depends(get_db)],
 ) -> HTMLResponse:
     """文字起こし詳細ページ（カード形式の発言表示・編集 UI）。"""
+    settings = load_settings()
+    is_admin = user["email"].lower() == settings.admin_email
     transcript = db.get(Transcript, transcript_id)
     if (
         transcript is None
-        or transcript.user_id != user["id"]
+        or (not is_admin and transcript.user_id != user["id"])
         or transcript.deleted_at is not None
     ):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
@@ -517,7 +519,6 @@ async def transcript_detail(
     # ユーザーが過去に使った話者名（候補リスト）
     history_names = _user_speaker_history_names(user["id"], db)
 
-    settings = load_settings()
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",

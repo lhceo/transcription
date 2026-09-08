@@ -47,7 +47,7 @@
                             <tr :class="t.deleted_at ? 'admin-row-deleted' : ''">
                                 <td>
                                     <template x-if="!t.deleted_at">
-                                        <a :href="'/transcript/' + t.id" class="admin-transcript-link" x-text="t.title" target="_blank"></a>
+                                        <a :href="'/transcripts/' + t.id" class="admin-transcript-link" x-text="t.title" target="_blank"></a>
                                     </template>
                                     <template x-if="t.deleted_at">
                                         <span class="admin-transcript-deleted" x-text="t.title"></span>
