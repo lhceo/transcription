@@ -75,6 +75,45 @@
         {% endif %}
         <span class="meta-item">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
     </div>
+
+    {# 共有ボタン（オーナーのみ） #}
+    {% if is_owner %}
+    <div class="detail-share-wrap"
+         x-data="sharePanel({{ transcript.id }})"
+         @click.outside="open = false">
+        <button type="button" class="detail-share-btn" @click="toggle()" :class="{ 'has-shares': shares.length > 0 }">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span x-text="shares.length > 0 ? '共有中 (' + shares.length + '人)' : '共有'"></span>
+        </button>
+        <div class="share-dropdown" x-show="open" x-cloak>
+            <p class="share-dropdown-label">編集を共有するメンバーを選択</p>
+            <div class="share-dropdown-list" x-show="shares.length > 0">
+                <template x-for="s in shares" :key="s.user_id">
+                    <div class="share-member">
+                        <span class="share-member-name" x-text="s.name"></span>
+                        <button type="button" class="share-member-remove" @click="removeShare(s.user_id)" title="共有を解除">×</button>
+                    </div>
+                </template>
+            </div>
+            <div class="share-add-row">
+                <select class="form-input share-select" x-model="selectedUserId">
+                    <option value="">メンバーを選択…</option>
+                    <template x-for="u in availableUsers()" :key="u.id">
+                        <option :value="u.id" x-text="u.name"></option>
+                    </template>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm" @click="addShare()" :disabled="!selectedUserId">追加</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {# v1.0.2: 自動削除カウントダウン。詳細画面では safe (30 日超) も
        控えめに常時表示する。完了していない transcript には出ない。 #}
     {% set _es = expiry_status(transcript) %}
@@ -1857,6 +1896,67 @@ function polishModal() {
                 window.showToast('保存に失敗しました', 'error');
             } finally {
                 this.saving = false;
+            }
+        },
+    };
+}
+
+function sharePanel(transcriptId) {
+    return {
+        open: false,
+        shares: [],   // [{user_id, name, email}]
+        allUsers: [], // [{id, name, email}]
+        selectedUserId: '',
+
+        async toggle() {
+            this.open = !this.open;
+            if (this.open && this.allUsers.length === 0) await this.load();
+        },
+
+        async load() {
+            try {
+                const [sharesRes, usersRes] = await Promise.all([
+                    fetch('/api/transcripts/' + transcriptId + '/shares'),
+                    fetch('/api/users'),
+                ]);
+                if (sharesRes.ok) this.shares = await sharesRes.json();
+                if (usersRes.ok) this.allUsers = await usersRes.json();
+            } catch (e) {
+                window.showToast('読み込みに失敗しました', 'error');
+            }
+        },
+
+        availableUsers() {
+            const sharedIds = new Set(this.shares.map(s => s.user_id));
+            return this.allUsers.filter(u => !sharedIds.has(u.id));
+        },
+
+        async addShare() {
+            if (!this.selectedUserId) return;
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/shares', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shared_with_user_id: parseInt(this.selectedUserId) }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const data = await res.json();
+                window.showToast(data.name + ' さんと共有しました');
+                this.selectedUserId = '';
+                await this.load();
+            } catch (e) {
+                window.showToast('共有に失敗しました', 'error');
+            }
+        },
+
+        async removeShare(userId) {
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/shares/' + userId, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                window.showToast('共有を解除しました');
+                await this.load();
+            } catch (e) {
+                window.showToast('解除に失敗しました', 'error');
             }
         },
     };

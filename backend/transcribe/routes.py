@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript
+from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -57,6 +57,116 @@ templates.env.globals["storage_usage"] = get_storage_summary
 templates.env.globals["cost_usage"] = get_cost_summary
 
 router = APIRouter()
+
+
+# ── アクセス制御ヘルパー ────────────────────────────────────────────────────
+
+def _is_owner(transcript: Transcript, user_id: int) -> bool:
+    return transcript.user_id == user_id
+
+
+def _can_access(transcript: Transcript, user_id: int, db: Session) -> bool:
+    """オーナーまたは共有されたユーザーならアクセス可。"""
+    if _is_owner(transcript, user_id):
+        return True
+    return db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript.id,
+            TranscriptShare.shared_with_user_id == user_id,
+        )
+    ) is not None
+
+
+class ShareBody(BaseModel):
+    shared_with_user_id: int
+
+
+# ── 共有 API ─────────────────────────────────────────────────────────────────
+
+@router.get("/api/transcripts/{transcript_id}/shares")
+async def list_shares(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """共有先ユーザー一覧を返す（オーナーのみ）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404)
+    shares = db.scalars(
+        select(TranscriptShare)
+        .where(TranscriptShare.transcript_id == transcript_id)
+    ).all()
+    return JSONResponse([
+        {"user_id": s.shared_with_user_id, "name": s.shared_with.name, "email": s.shared_with.email}
+        for s in shares
+    ])
+
+
+@router.post("/api/transcripts/{transcript_id}/shares", status_code=201)
+async def add_share(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: ShareBody,
+) -> JSONResponse:
+    """共有先を追加する（オーナーのみ）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404)
+    if body.shared_with_user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="自分自身には共有できません")
+    target = db.get(User, body.shared_with_user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    existing = db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == body.shared_with_user_id,
+        )
+    )
+    if existing:
+        return JSONResponse({"ok": True, "already": True})
+    share = TranscriptShare(
+        transcript_id=transcript_id,
+        shared_with_user_id=body.shared_with_user_id,
+    )
+    db.add(share)
+    db.commit()
+    return JSONResponse({"ok": True, "name": target.name}, status_code=201)
+
+
+@router.delete("/api/transcripts/{transcript_id}/shares/{target_user_id}")
+async def remove_share(
+    transcript_id: int,
+    target_user_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """共有を解除する（オーナーのみ）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404)
+    share = db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == target_user_id,
+        )
+    )
+    if share:
+        db.delete(share)
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.get("/api/users")
+async def list_users(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """共有先選択用のユーザー一覧（自分以外）。"""
+    users = db.scalars(select(User).where(User.id != user["id"]).order_by(User.name)).all()
+    return JSONResponse([{"id": u.id, "name": u.name, "email": u.email} for u in users])
 
 
 @router.post("/api/transcripts", status_code=status.HTTP_201_CREATED)
@@ -327,19 +437,33 @@ async def list_transcripts(
     db: Annotated[Session, Depends(get_db)],
 ) -> HTMLResponse:
     """履歴一覧を返す（HTMX で部分更新するための HTML）。"""
-    stmt = (
+    my_stmt = (
         select(Transcript)
         .where(Transcript.user_id == user["id"])
         .where(Transcript.deleted_at.is_(None))
         .order_by(Transcript.created_at.desc())
         .limit(100)
     )
-    transcripts = list(db.scalars(stmt))
+    transcripts = list(db.scalars(my_stmt))
+
+    # 共有されたファイル（自分がオーナーでないもの）
+    shared_ids = db.scalars(
+        select(TranscriptShare.transcript_id)
+        .where(TranscriptShare.shared_with_user_id == user["id"])
+    ).all()
+    shared_transcripts: list[Transcript] = []
+    if shared_ids:
+        shared_transcripts = list(db.scalars(
+            select(Transcript)
+            .where(Transcript.id.in_(shared_ids))
+            .where(Transcript.deleted_at.is_(None))
+            .order_by(Transcript.created_at.desc())
+        ))
 
     return templates.TemplateResponse(
         request,
         "_transcript_list.html",
-        {"transcripts": transcripts},
+        {"transcripts": transcripts, "shared_transcripts": shared_transcripts},
     )
 
 
@@ -402,7 +526,7 @@ async def get_audio(
     transcript = db.get(Transcript, transcript_id)
     if (
         transcript is None
-        or transcript.user_id != user["id"]
+        or not _can_access(transcript, user["id"], db)
         or transcript.deleted_at is not None
     ):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
@@ -521,10 +645,11 @@ async def transcript_detail(
     transcript = db.get(Transcript, transcript_id)
     if (
         transcript is None
-        or (not is_admin and transcript.user_id != user["id"])
         or transcript.deleted_at is not None
+        or (not is_admin and not _can_access(transcript, user["id"], db))
     ):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    is_owner = _is_owner(transcript, user["id"]) or is_admin
 
     segments = list(
         db.scalars(
@@ -578,6 +703,7 @@ async def transcript_detail(
             "name_to_color": name_to_color,
             "history_names": history_names,
             "meeting_participants": meeting_participants,
+            "is_owner": is_owner,
         },
     )
 
@@ -601,7 +727,7 @@ async def get_transcript_status(
 ) -> JSONResponse:
     """軽量なステータス確認用 JSON エンドポイント。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or transcript.user_id != user["id"]:
+    if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     return JSONResponse(
@@ -713,7 +839,7 @@ async def update_segment(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     transcript = db.get(Transcript, segment.transcript_id)
-    if transcript is None or transcript.user_id != user["id"]:
+    if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     # text 更新
@@ -778,11 +904,7 @@ async def get_segments_count(
 ) -> JSONResponse:
     """保存済みセグメント件数を返す。フロントエンドの自動保存検証用。"""
     transcript = db.get(Transcript, transcript_id)
-    if (
-        transcript is None
-        or transcript.user_id != user["id"]
-        or transcript.deleted_at is not None
-    ):
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     from sqlalchemy import func
@@ -825,7 +947,7 @@ async def split_segment(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     transcript = db.get(Transcript, segment.transcript_id)
-    if transcript is None or transcript.user_id != user["id"]:
+    if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     raw_position = payload.get("position")
@@ -1016,11 +1138,7 @@ async def export_transcript(
 ) -> Response:
     """文字起こしを TXT / SRT / JSON でダウンロード。"""
     transcript = db.get(Transcript, transcript_id)
-    if (
-        transcript is None
-        or transcript.user_id != user["id"]
-        or transcript.deleted_at is not None
-    ):
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     segments = list(
@@ -1097,7 +1215,7 @@ async def rename_segments_by_effective_name(
     payload: {"from_name": "話者A", "to_name": "山田さん"}
     """
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or transcript.user_id != user["id"]:
+    if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     from_name = (payload.get("from_name") or "").strip()

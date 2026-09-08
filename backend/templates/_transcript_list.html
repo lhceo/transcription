@@ -8,3 +8,18 @@
         まだ文字起こしはありません。
     </li>
 {% endif %}
+
+{% if shared_transcripts %}
+    <li class="history-section-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+            <polyline points="16 6 12 2 8 6"></polyline>
+            <line x1="12" y1="2" x2="12" y2="15"></line>
+        </svg>
+        共有されたファイル
+    </li>
+    {% for transcript in shared_transcripts %}
+        {% set _shared_view = true %}
+        {% include "_transcript_row.html" %}
+    {% endfor %}
+{% endif %}

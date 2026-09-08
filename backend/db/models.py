@@ -150,6 +150,10 @@ class Transcript(Base):
         back_populates="transcript",
         cascade="all, delete-orphan",
     )
+    shares: Mapped[list["TranscriptShare"]] = relationship(
+        back_populates="transcript",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         # 「一覧表示」（ユーザー別・soft delete 除外・新しい順）用の複合 INDEX
@@ -263,6 +267,29 @@ class SpeakerHistory(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_speaker_history_user_name"),
         Index("ix_speaker_history_user_recent", "user_id", "last_used_at"),
+    )
+
+
+# ── transcript_shares ──────────────────────────────────────────────────────
+class TranscriptShare(Base):
+    __tablename__ = "transcript_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    shared_with_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    transcript: Mapped["Transcript"] = relationship(back_populates="shares")
+    shared_with: Mapped["User"] = relationship(foreign_keys=[shared_with_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("transcript_id", "shared_with_user_id", name="uq_transcript_share"),
     )
 
 
