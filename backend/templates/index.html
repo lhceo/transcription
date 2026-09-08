@@ -69,7 +69,10 @@
                 <div class="dropzone-file">
                     <p class="dropzone-filename" x-text="fileName"></p>
                     <p class="dropzone-filesize" x-text="prettySize"></p>
-                    <button type="button" class="btn-link" @click="reset()">取り消す</button>
+                    <button type="button" class="btn-cancel-upload" @click="reset()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        ファイルを選択し直す
+                    </button>
                 </div>
             </template>
         </div>
@@ -117,8 +120,8 @@
             <div class="form-row">
                 <label for="model_tier" class="form-label">品質モード</label>
                 <select id="model_tier" name="model_tier" class="form-select">
-                    <option value="best">高精度（推奨）— 約 55円 / 時間</option>
-                    <option value="nano">標準 — 約 20円 / 時間</option>
+                    <option value="best">高精度（推奨）— 約 55円 / 時間　[AssemblyAI Best]</option>
+                    <option value="nano">標準 — 約 20円 / 時間　[AssemblyAI Nano]</option>
                 </select>
             </div>
 
