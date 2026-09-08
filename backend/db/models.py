@@ -270,6 +270,30 @@ class SpeakerHistory(Base):
     )
 
 
+# ── people ────────────────────────────────────────────────────────────────
+class Person(Base):
+    """ユーザーごとの人物台帳。話者リネームの候補・参加者管理に使用。"""
+
+    __tablename__ = "people"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    owner: Mapped["User"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "name", name="uq_people_owner_name"),
+    )
+
+
 # ── transcript_shares ──────────────────────────────────────────────────────
 class TranscriptShare(Base):
     __tablename__ = "transcript_shares"

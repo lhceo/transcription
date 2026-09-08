@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}People台帳 | 音声文字起こし{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2 class="page-title">People台帳</h2>
+    <p class="page-subtitle">登録した人物は話者リネームの候補・参加者入力の補完に自動表示されます。</p>
+</div>
+
+<div x-data="peoplePage()" x-init="load()">
+
+    {# 追加フォーム #}
+    <div class="detail-section people-add-section">
+        <h3 class="detail-section-title" style="margin-bottom:12px">人物を追加</h3>
+        <div class="people-add-form">
+            <div class="form-row">
+                <label class="form-label">名前 <span class="required-mark">*</span></label>
+                <input type="text" class="form-input" x-model="newPerson.name"
+                       placeholder="山田 太郎"
+                       @keydown.enter.prevent="add()"
+                       maxlength="100">
+            </div>
+            <div class="people-add-sub-row">
+                <div class="form-row">
+                    <label class="form-label">会社名</label>
+                    <input type="text" class="form-input" x-model="newPerson.company"
+                           placeholder="株式会社例"
+                           maxlength="200">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">役職</label>
+                    <input type="text" class="form-input" x-model="newPerson.job_title"
+                           placeholder="営業部長"
+                           maxlength="200">
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" @click="add()" :disabled="adding || !newPerson.name.trim()">
+                    <span x-show="!adding">追加する</span>
+                    <span x-show="adding" x-cloak>追加中…</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# 人物リスト #}
+    <div class="detail-section">
+        <div class="detail-section-header" style="border-bottom:1px solid var(--color-border);padding-bottom:12px;margin-bottom:16px">
+            <h3 class="detail-section-title">登録済み</h3>
+            <span class="text-muted" style="font-size:13px" x-text="people.length + '人'"></span>
+        </div>
+
+        <template x-if="loading">
+            <p class="text-muted" style="padding:16px 0">読み込み中…</p>
+        </template>
+
+        <template x-if="!loading && people.length === 0">
+            <p class="text-muted" style="padding:16px 0">まだ登録されていません。上のフォームから追加してください。</p>
+        </template>
+
+        <template x-if="!loading && people.length > 0">
+            <div class="people-list">
+                <template x-for="person in people" :key="person.id">
+                    <div class="people-row">
+                        <template x-if="editId !== person.id">
+                            <div class="people-row-view">
+                                <div class="people-row-main">
+                                    <span class="people-name" x-text="person.name"></span>
+                                    <span class="people-sub" x-show="person.company || person.job_title">
+                                        <span x-text="[person.company, person.job_title].filter(Boolean).join(' · ')"></span>
+                                    </span>
+                                </div>
+                                <div class="people-row-actions">
+                                    <button class="btn btn-outline btn-sm" @click="startEdit(person)">編集</button>
+                                    <button class="btn btn-ghost btn-sm people-delete-btn" @click="remove(person.id)">削除</button>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="editId === person.id">
+                            <div class="people-row-edit">
+                                <div class="people-edit-fields">
+                                    <input type="text" class="form-input" x-model="editForm.name" placeholder="名前" maxlength="100">
+                                    <input type="text" class="form-input" x-model="editForm.company" placeholder="会社名" maxlength="200">
+                                    <input type="text" class="form-input" x-model="editForm.job_title" placeholder="役職" maxlength="200">
+                                </div>
+                                <div class="people-edit-actions">
+                                    <button class="btn btn-primary btn-sm" @click="saveEdit(person.id)" :disabled="saving || !editForm.name.trim()">保存</button>
+                                    <button class="btn btn-ghost btn-sm" @click="cancelEdit()">キャンセル</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+
+</div>
+
+<script>
+function peoplePage() {
+    return {
+        loading: false,
+        adding: false,
+        saving: false,
+        people: [],
+        editId: null,
+        editForm: { name: '', company: '', job_title: '' },
+        newPerson: { name: '', company: '', job_title: '' },
+
+        async load() {
+            this.loading = true;
+            try {
+                const res = await fetch('/api/people');
+                if (res.ok) this.people = await res.json();
+            } catch (e) {
+                window.showToast('読み込みに失敗しました', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async add() {
+            const name = this.newPerson.name.trim();
+            if (!name) return;
+            this.adding = true;
+            try {
+                const res = await fetch('/api/people', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        company: this.newPerson.company.trim() || null,
+                        job_title: this.newPerson.job_title.trim() || null,
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || res.status);
+                }
+                const person = await res.json();
+                this.people.push(person);
+                this.people.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+                this.newPerson = { name: '', company: '', job_title: '' };
+                window.showToast(name + ' を追加しました', 'success');
+            } catch (e) {
+                window.showToast('追加に失敗しました: ' + e.message, 'error');
+            } finally {
+                this.adding = false;
+            }
+        },
+
+        startEdit(person) {
+            this.editId = person.id;
+            this.editForm = { name: person.name, company: person.company || '', job_title: person.job_title || '' };
+        },
+
+        cancelEdit() {
+            this.editId = null;
+        },
+
+        async saveEdit(id) {
+            if (!this.editForm.name.trim()) return;
+            this.saving = true;
+            try {
+                const res = await fetch('/api/people/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.editForm.name.trim(),
+                        company: this.editForm.company.trim() || null,
+                        job_title: this.editForm.job_title.trim() || null,
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || res.status);
+                }
+                const updated = await res.json();
+                const idx = this.people.findIndex(p => p.id === id);
+                if (idx >= 0) this.people[idx] = updated;
+                this.people.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+                this.editId = null;
+                window.showToast('更新しました', 'success');
+            } catch (e) {
+                window.showToast('更新に失敗しました: ' + e.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async remove(id) {
+            const person = this.people.find(p => p.id === id);
+            if (!person) return;
+            const ok = await window.showConfirm(
+                person.name + ' をPeople台帳から削除しますか？',
+                { title: '人物の削除', okLabel: '削除する' }
+            );
+            if (!ok) return;
+            try {
+                const res = await fetch('/api/people/' + id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.people = this.people.filter(p => p.id !== id);
+                window.showToast(person.name + ' を削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

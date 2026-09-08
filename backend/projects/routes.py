@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Theme, Transcript, User
+from backend.db.models import Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Theme, Transcript, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -97,6 +97,18 @@ class TranscriptMetadataUpdate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
+    company: str | None = None
+    job_title: str | None = None
+
+
+class PersonCreate(BaseModel):
+    name: str
+    company: str | None = None
+    job_title: str | None = None
+
+
+class PersonUpdate(BaseModel):
+    name: str | None = None
     company: str | None = None
     job_title: str | None = None
 
@@ -707,11 +719,11 @@ async def polish_estimate(
         ) or 0
 
     context_items = [
-        {"label": "PJTに紐づいている", "ok": has_project},
-        {"label": f"固有名詞辞書（{vocab_count}件）", "ok": vocab_count > 0},
-        {"label": "MTGの目的が設定されている", "ok": has_purpose},
-        {"label": "アジェンダが設定されている", "ok": has_agenda},
-        {"label": f"参加者情報（{member_count}人）", "ok": member_count > 0},
+        {"label": "PJTに紐づいている", "ok": has_project, "action": None},
+        {"label": f"固有名詞辞書（{vocab_count}件）", "ok": vocab_count > 0, "action": None},
+        {"label": "MTGの目的が設定されている", "ok": has_purpose, "action": "scroll_mtg"},
+        {"label": "アジェンダが設定されている", "ok": has_agenda, "action": "scroll_mtg"},
+        {"label": f"参加者情報（{member_count}人）", "ok": member_count > 0, "action": "scroll_mtg"},
     ]
     context_score = sum(1 for c in context_items if c["ok"])
 
@@ -886,3 +898,104 @@ async def update_profile(
         db_user.job_title = body.job_title.strip() or None
     db.commit()
     return JSONResponse({"ok": True, "company": db_user.company, "job_title": db_user.job_title})
+
+
+# ── People台帳 ────────────────────────────────────────────────────────────────
+
+@router.get("/people", response_class=HTMLResponse)
+async def people_page(
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> HTMLResponse:
+    """People台帳管理ページ。"""
+    ctx = _common_ctx(user, db)
+    return templates.TemplateResponse(request, "people.html", ctx)
+
+
+@router.get("/api/people")
+async def list_people(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """ログインユーザーの People台帳を返す。"""
+    rows = db.scalars(
+        select(Person)
+        .where(Person.owner_user_id == user["id"])
+        .order_by(Person.name)
+    )
+    return JSONResponse([
+        {"id": p.id, "name": p.name, "company": p.company or "", "job_title": p.job_title or ""}
+        for p in rows
+    ])
+
+
+@router.post("/api/people")
+async def create_person(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PersonCreate,
+) -> JSONResponse:
+    """People台帳に人物を追加する。"""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="名前は必須です")
+    existing = db.scalar(
+        select(Person)
+        .where(Person.owner_user_id == user["id"], Person.name == name)
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="同じ名前がすでに登録されています")
+    person = Person(
+        owner_user_id=user["id"],
+        name=name,
+        company=body.company.strip() if body.company else None,
+        job_title=body.job_title.strip() if body.job_title else None,
+    )
+    db.add(person)
+    db.commit()
+    db.refresh(person)
+    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or ""})
+
+
+@router.put("/api/people/{person_id}")
+async def update_person(
+    person_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PersonUpdate,
+) -> JSONResponse:
+    """People台帳の人物情報を更新する。"""
+    person = db.scalar(
+        select(Person).where(Person.id == person_id, Person.owner_user_id == user["id"])
+    )
+    if not person:
+        raise HTTPException(status_code=404, detail="見つかりません")
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="名前は必須です")
+        person.name = name
+    if body.company is not None:
+        person.company = body.company.strip() or None
+    if body.job_title is not None:
+        person.job_title = body.job_title.strip() or None
+    db.commit()
+    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or ""})
+
+
+@router.delete("/api/people/{person_id}")
+async def delete_person(
+    person_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """People台帳から人物を削除する。"""
+    person = db.scalar(
+        select(Person).where(Person.id == person_id, Person.owner_user_id == user["id"])
+    )
+    if not person:
+        raise HTTPException(status_code=404, detail="見つかりません")
+    db.delete(person)
+    db.commit()
+    return JSONResponse({"ok": True})

@@ -140,6 +140,15 @@
                             </svg>
                             <span>プロジェクト</span>
                         </a>
+                        <a href="/people" class="nav-link nav-link-with-icon">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            <span>People台帳</span>
+                        </a>
                         <a href="/help" class="nav-link nav-link-with-icon">
                             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <circle cx="12" cy="12" r="10"></circle>
@@ -149,7 +158,7 @@
                             <span>ヘルプ</span>
                         </a>
                         {% if is_admin %}
-                        <div class="admin-menu" x-data="adminMenu()" @click.outside="close()" @keydown.escape.window="close()">
+                        <div class="admin-menu" x-data="adminMenu()" x-init="checkMaintenance()" @click.outside="close()" @keydown.escape.window="close()">
                             <button
                                 type="button"
                                 class="admin-menu-trigger nav-link nav-link-with-icon"
@@ -161,6 +170,7 @@
                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                                 </svg>
                                 <span>管理</span>
+                                <span class="maintenance-nav-dot" x-show="maintenance" x-cloak aria-label="メンテナンス中" title="メンテナンスモード稼働中"></span>
                             </button>
                             <div class="admin-menu-dropdown" x-show="open" x-transition x-cloak>
                                 <div class="admin-menu-header">
@@ -251,6 +261,22 @@
         </div>
     </header>
     {% endblock %}
+
+    {# メンテナンスモード稼働中バナー（管理者のみ表示） #}
+    {% if is_admin %}
+    <div x-data="{ on: false }"
+         x-init="fetch('/api/admin/maintenance/status').then(r=>r.json()).then(d=>{on=d.active}).catch(()=>{})"
+         x-show="on" x-cloak x-transition
+         class="maintenance-admin-banner" role="alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:16px;height:16px;flex-shrink:0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span><strong>メンテナンスモード稼働中</strong> — 管理者以外のユーザーはアクセスできません</span>
+        <a href="/admin" class="maintenance-admin-banner-link">管理ページへ →</a>
+    </div>
+    {% endif %}
 
     {# v1.0.2: ストレージ警告バナー (70% 以上で表示)。
        70-90% は黄色、90% 超は赤。ログイン済みかつ閾値超過時のみ表示。 #}

@@ -4803,3 +4803,100 @@ a.history-item-filename:hover {
     justify-content: flex-end;
     flex-shrink: 0;
 }
+
+/* ── メンテナンスモード管理者バナー ─────────────────────────────── */
+.maintenance-admin-banner {
+    background: #f97316;
+    color: #fff;
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 500;
+}
+.maintenance-admin-banner-link {
+    color: #fff;
+    text-decoration: underline;
+    white-space: nowrap;
+    opacity: 0.9;
+}
+.maintenance-admin-banner-link:hover { opacity: 1; }
+
+/* 管理ボタンの赤い点 */
+.maintenance-nav-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: maintenance-pulse 1.5s ease-in-out infinite;
+}
+@keyframes maintenance-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── OKF ダイアログ アクションボタン ─────────────────────────────── */
+.polish-context-item-label { flex: 1; }
+.polish-context-action {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.polish-context-action:hover {
+    background: rgba(59,130,246,0.08);
+}
+
+/* ── People台帳 ─────────────────────────────────────────────── */
+.people-add-section { margin-bottom: 16px; }
+.people-add-form { display: flex; flex-direction: column; gap: 12px; max-width: 540px; }
+.people-add-sub-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.people-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.people-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.people-row:last-child { border-bottom: none; }
+.people-row-view {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.people-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.people-name { font-weight: 600; font-size: 14px; }
+.people-sub { font-size: 12px; color: var(--color-text-muted); }
+.people-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.people-delete-btn { color: #dc2626; }
+.people-delete-btn:hover { color: #b91c1c; }
+.people-row-edit { display: flex; flex-direction: column; gap: 8px; }
+.people-edit-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.people-edit-actions { display: flex; gap: 8px; }
+.required-mark { color: #dc2626; }
+.form-link { color: var(--color-primary); text-decoration: none; font-size: 12px; }
+.form-link:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+    .people-add-sub-row { grid-template-columns: 1fr; }
+    .people-edit-fields { grid-template-columns: 1fr; }
+    .people-row-view { flex-wrap: wrap; }
+}

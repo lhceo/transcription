@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import Person, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -709,14 +709,24 @@ async def transcript_detail(
 
 
 def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
-    """ユーザーが過去に使った話者名（直近順）。"""
-    rows = db.scalars(
+    """ユーザーの People台帳 + 話者履歴を合わせた候補リスト（台帳優先）。"""
+    history_rows = db.scalars(
         select(SpeakerHistory)
         .where(SpeakerHistory.user_id == user_id)
         .order_by(SpeakerHistory.last_used_at.desc())
         .limit(50)
     )
-    return [r.name for r in rows]
+    history_names = [r.name for r in history_rows]
+
+    people_names = list(db.scalars(
+        select(Person.name)
+        .where(Person.owner_user_id == user_id)
+        .order_by(Person.name)
+    ))
+
+    seen = set(history_names)
+    merged = history_names + [n for n in people_names if n not in seen]
+    return merged[:60]
 
 
 @router.get("/api/transcripts/{transcript_id}/status")

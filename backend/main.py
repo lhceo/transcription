@@ -98,7 +98,21 @@ async def lifespan(app: FastAPI):
                 )
             except Exception:
                 pass
-            _cu.execute("UPDATE alembic_version SET version_num='f3c9e2a7b165'")
+            _cu.execute(
+                "CREATE TABLE IF NOT EXISTS people("
+                "id INTEGER NOT NULL,"
+                "owner_user_id INTEGER NOT NULL,"
+                "name VARCHAR(100) NOT NULL,"
+                "company VARCHAR(200),"
+                "job_title VARCHAR(200),"
+                "created_at DATETIME NOT NULL,"
+                "PRIMARY KEY(id),"
+                "CONSTRAINT uq_people_owner_name "
+                "UNIQUE(owner_user_id,name),"
+                "FOREIGN KEY(owner_user_id) "
+                "REFERENCES users(id) ON DELETE CASCADE)"
+            )
+            _cu.execute("UPDATE alembic_version SET version_num='b1c2d3e4f5a6'")
             _co.commit()
             _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
             _co.close()

@@ -227,7 +227,7 @@
 {% endif %}
 
 {# ── MTG 情報（OKF メタ情報）── #}
-<section class="detail-section mtg-info-section" x-data="mtgInfo()" x-cloak>
+<section class="detail-section mtg-info-section" x-data="mtgInfo()" x-cloak @open-mtg-section.window="open = true; $el.scrollIntoView({behavior:'smooth'})">
     <div class="detail-section-header" @click="open = !open" style="cursor:pointer">
         <h3 class="detail-section-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:16px;height:16px;vertical-align:-2px;margin-right:6px">
@@ -278,10 +278,16 @@
                                x-model="participantInput"
                                placeholder="名前を入力して Enter"
                                @keydown.enter.prevent="addParticipant()"
+                               list="mtg-people-datalist"
                                maxlength="100">
                         <button type="button" class="btn btn-outline btn-sm" @click="addParticipant()" :disabled="!participantInput.trim()">追加</button>
                     </div>
-                    <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます</p>
+                    <datalist id="mtg-people-datalist">
+                        <template x-for="name in peopleSuggestions" :key="name">
+                            <option :value="name"></option>
+                        </template>
+                    </datalist>
+                    <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます。<a href="/people" class="form-link">People台帳を管理</a></p>
                 </div>
             </div>
             <div class="form-actions">
@@ -539,7 +545,8 @@
                         <template x-for="item in estimate.context_items" :key="item.label">
                             <li class="polish-context-item" :class="item.ok ? 'ok' : 'ng'">
                                 <span x-text="item.ok ? '✓' : '✗'" class="polish-context-icon"></span>
-                                <span x-text="item.label"></span>
+                                <span x-text="item.label" class="polish-context-item-label"></span>
+                                <button x-show="!item.ok && item.action" @click="doAction(item.action)" class="polish-context-action">→ 入力する</button>
                             </li>
                         </template>
                     </ul>
@@ -1797,6 +1804,15 @@ function polishModal() {
             this.show = false;
         },
 
+        doAction(action) {
+            this.close();
+            setTimeout(() => {
+                if (action === 'scroll_mtg') {
+                    window.dispatchEvent(new CustomEvent('open-mtg-section'));
+                }
+            }, 80);
+        },
+
         async startPickup() {
             this.step = 'pickup';
             this.loading = true;
@@ -1968,6 +1984,7 @@ function mtgInfo() {
         open: false,
         saving: false,
         saved: false,
+        peopleSuggestions: [],
         form: {
             meeting_date: init.meetingDate || '',
             meeting_location: init.meetingLocation || '',
@@ -2024,8 +2041,19 @@ function mtgInfo() {
             }
         },
 
+        async fetchPeople() {
+            try {
+                const res = await fetch('/api/people');
+                if (res.ok) {
+                    const data = await res.json();
+                    this.peopleSuggestions = data.map(p => p.name);
+                }
+            } catch (e) {}
+        },
+
         init() {
             this._syncParticipants();
+            this.fetchPeople();
         },
     };
 }
