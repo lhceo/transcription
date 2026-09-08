@@ -90,6 +90,9 @@
                                         <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
                                     </template>
                                     <span class="admin-user-name" x-text="u.name"></span>
+                                    <template x-if="isOnline(u)">
+                                        <span class="admin-online-badge">利用中</span>
+                                    </template>
                                 </td>
                                 <td class="admin-email-cell" x-text="u.email"></td>
                                 <td class="admin-col-num" x-text="u.transcript_count + '件'"></td>
@@ -111,7 +114,12 @@
                                     <img :src="u.picture" class="admin-user-avatar" referrerpolicy="no-referrer" alt="">
                                 </template>
                                 <div>
-                                    <div class="admin-user-card-name" x-text="u.name"></div>
+                                    <div class="admin-user-card-name">
+                                        <span x-text="u.name"></span>
+                                        <template x-if="isOnline(u)">
+                                            <span class="admin-online-badge">利用中</span>
+                                        </template>
+                                    </div>
                                     <div class="admin-user-card-email" x-text="u.email"></div>
                                 </div>
                             </div>

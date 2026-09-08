@@ -4330,3 +4330,31 @@ a.history-item-filename:hover {
 }
 .btn-maintenance-stop:hover { background: #059669; }
 .btn-maintenance-stop:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 利用中バッジ ────────────────────────────────────────────────── */
+.admin-online-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #059669;
+    background: #d1fae5;
+    border-radius: 999px;
+    padding: 1px 7px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.admin-online-badge::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}

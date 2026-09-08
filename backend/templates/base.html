@@ -457,12 +457,28 @@
                 if (diffDays < 60) return '1ヶ月前';
                 return `${Math.floor(diffDays / 30)}ヶ月前`;
             },
+            isOnline(u) {
+                if (!u.last_seen_at) return false;
+                return (Date.now() - new Date(u.last_seen_at).getTime()) < 5 * 60 * 1000;
+            },
             lastActivity(u) {
-                const dates = [u.last_login_at, u.last_upload_at].filter(Boolean).map(s => new Date(s).getTime());
+                const dates = [u.last_login_at, u.last_upload_at, u.last_seen_at].filter(Boolean).map(s => new Date(s).getTime());
                 return dates.length ? new Date(Math.max(...dates)).toISOString() : null;
             },
         };
     }
+    // ── ハートビート ──────────────────────────────────────────────
+    // ログイン中のみ実行（ログインページ等では user が存在しない）
+    (function () {
+        {% if user is defined and user %}
+        function sendHeartbeat() {
+            if (document.visibilityState === 'hidden') return;
+            fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+        }
+        sendHeartbeat();
+        setInterval(sendHeartbeat, 60_000);
+        {% endif %}
+    })();
     </script>
 </body>
 </html>

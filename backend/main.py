@@ -191,6 +191,20 @@ app.include_router(transcribe_router)
 app.include_router(projects_router)
 
 
+@app.post("/api/heartbeat")
+async def heartbeat(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """ログイン中ユーザーの最終アクティブ時刻を更新する。フロントが60秒ごとに呼ぶ。"""
+    from datetime import datetime, timezone
+    u = db.get(User, user["id"])
+    if u:
+        u.last_seen_at = datetime.now(timezone.utc)
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     """Railway などのヘルスチェック用エンドポイント。認証不要。"""
@@ -249,6 +263,7 @@ async def admin_users_stats(
             "cost_this_month_pretty": f"¥{cost_this_month:,}" if cost_this_month > 0 else "¥0",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "last_upload_at": last_upload.isoformat() if last_upload else None,
+            "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,
         })
 
     return JSONResponse({"users": result})
