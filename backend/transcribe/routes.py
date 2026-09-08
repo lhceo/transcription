@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from pydantic import BaseModel
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -69,6 +70,10 @@ async def create_transcript(
     speakers_expected: str | None = Form(None),
     word_boost: str | None = Form(None),
     project_id: str | None = Form(None),
+    meeting_date: str | None = Form(None),
+    meeting_location: str | None = Form(None),
+    meeting_purpose: str | None = Form(None),
+    meeting_agenda: str | None = Form(None),
 ) -> HTMLResponse:
     """音声ファイルをアップロードし、ジョブを作成する。
 
@@ -240,6 +245,14 @@ async def create_transcript(
     initial_status = "processing" if settings.has_assemblyai else "uploaded"
 
     try:
+        from datetime import datetime as _dt
+        parsed_meeting_date: datetime | None = None
+        if meeting_date and meeting_date.strip():
+            try:
+                parsed_meeting_date = _dt.fromisoformat(meeting_date.strip())
+            except ValueError:
+                pass
+
         transcript = Transcript(
             user_id=user["id"],
             original_filename=file.filename,
@@ -250,6 +263,10 @@ async def create_transcript(
             language="ja",
             created_at=datetime.now(timezone.utc),
             project_id=parsed_project_id,
+            meeting_date=parsed_meeting_date,
+            meeting_location=meeting_location.strip() if meeting_location else None,
+            meeting_purpose=meeting_purpose.strip() if meeting_purpose else None,
+            meeting_agenda=meeting_agenda.strip() if meeting_agenda else None,
         )
         db.add(transcript)
         db.commit()
@@ -445,6 +462,26 @@ async def delete_transcript(
     delete_stored_audio(transcript_id)
     # HTMX が delete swap を実行するために 2xx を返す（ボディ不要）
     return Response(status_code=200, content="")
+
+
+class ProjectAssignBody(BaseModel):
+    project_id: int | None = None
+
+
+@router.patch("/api/transcripts/{transcript_id}/project")
+async def update_transcript_project(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: ProjectAssignBody,
+) -> JSONResponse:
+    """文字起こしのプロジェクト帰属を変更する（あとから追加・移動・解除）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.user_id != user["id"] or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript.project_id = body.project_id
+    db.commit()
+    return JSONResponse({"ok": True, "project_id": body.project_id})
 
 
 @router.get("/api/transcripts/{transcript_id}/row", response_class=HTMLResponse)

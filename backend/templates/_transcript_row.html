@@ -112,6 +112,39 @@
     </div>
 
     <div class="history-item-actions">
+        {# プロジェクトに追加ボタン #}
+        {% if transcript.status == 'completed' %}
+        <div class="history-item-project-wrap"
+             x-data="projectAssigner({{ transcript.id }}, {{ transcript.project_id or 'null' }})"
+             @click.outside="open = false">
+            <button type="button"
+                    class="history-item-project-btn"
+                    :class="{ 'has-project': projectId }"
+                    @click="toggle()"
+                    :title="projectId ? 'プロジェクトを変更' : 'プロジェクトに追加'"
+                    aria-label="プロジェクトに追加">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+            </button>
+            <div class="history-item-project-dropdown" x-show="open" x-cloak>
+                <p class="project-dropdown-label">プロジェクトに追加</p>
+                <template x-if="projects.length === 0">
+                    <p class="project-dropdown-empty"><a href="/themes">プロジェクトを作成する →</a></p>
+                </template>
+                <template x-for="p in projects" :key="p.id">
+                    <button type="button"
+                            class="project-dropdown-item"
+                            :class="{ 'is-selected': projectId === p.id }"
+                            @click="assign(p.id)"
+                            x-text="p.name"></button>
+                </template>
+                <template x-if="projectId">
+                    <button type="button" class="project-dropdown-item project-dropdown-remove" @click="assign(null)">プロジェクトから外す</button>
+                </template>
+            </div>
+        </div>
+        {% endif %}
         {% if audio_available %}
         <button
             type="button"

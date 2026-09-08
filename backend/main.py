@@ -176,7 +176,9 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
 from backend.transcribe.eta import compute_eta_text  # noqa: E402
+from backend.release_notes import get_release_notes  # noqa: E402
 templates.env.globals["eta_text"] = compute_eta_text
+templates.env.globals["release_notes"] = get_release_notes(APP_VERSION)
 
 from backend.transcribe.cost import get_cost_summary  # noqa: E402
 from backend.transcribe.display import has_stored_audio, transcript_display_name  # noqa: E402

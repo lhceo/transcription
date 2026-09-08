@@ -78,6 +78,34 @@
         </div>
 
         <div class="upload-controls" x-show="fileName" x-cloak>
+
+            {# ── MTG情報（OKF）────────────────────────────────────── #}
+            <div class="okf-section">
+                <div class="okf-section-head">
+                    <span class="okf-section-title">MTG情報</span>
+                    <span class="okf-section-hint">任意 — 登録すると整文の精度が上がります</span>
+                </div>
+                <div class="okf-grid">
+                    <div class="form-row okf-row">
+                        <label for="meeting_date" class="form-label">日時</label>
+                        <input type="datetime-local" id="meeting_date" name="meeting_date" class="form-input">
+                    </div>
+                    <div class="form-row okf-row">
+                        <label for="meeting_location" class="form-label">場所</label>
+                        <input type="text" id="meeting_location" name="meeting_location" class="form-input" placeholder="例: 会議室A / オンライン">
+                    </div>
+                    <div class="form-row okf-row okf-row-full">
+                        <label for="meeting_purpose" class="form-label">目的・テーマ</label>
+                        <input type="text" id="meeting_purpose" name="meeting_purpose" class="form-input" placeholder="例: 2026年度下期 営業戦略の確認">
+                    </div>
+                    <div class="form-row okf-row okf-row-full">
+                        <label for="meeting_agenda" class="form-label">アジェンダ</label>
+                        <textarea id="meeting_agenda" name="meeting_agenda" class="form-textarea" rows="2" placeholder="例: ① 前回振り返り ② 新規案件共有 ③ 次回アクション確認"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            {# ── プロジェクト ──────────────────────────────────────── #}
             <div class="form-row" x-data="projectSelector()" x-init="loadProjects()">
                 <label class="form-label">プロジェクト <span class="form-label-hint">任意</span></label>
                 <select name="project_id" class="form-select" x-model="selectedId" @change="onProjectChange()">
@@ -677,6 +705,42 @@ document.body.addEventListener('htmx:afterSwap', function () {
 })();
 
 // ── プロジェクトセレクター ────────────────────────────────────────────────
+// ── プロジェクト帰属変更（ダッシュボード行） ──────────────────────────────
+function projectAssigner(transcriptId, initialProjectId) {
+    return {
+        transcriptId,
+        projectId: initialProjectId,
+        open: false,
+        projects: [],
+        async toggle() {
+            if (!this.open && this.projects.length === 0) {
+                try {
+                    const res = await fetch('/api/projects-list');
+                    if (res.ok) this.projects = await res.json();
+                } catch (_) {}
+            }
+            this.open = !this.open;
+        },
+        async assign(pid) {
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/project`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: pid }),
+                });
+                if (res.ok) {
+                    this.projectId = pid;
+                    const p = this.projects.find(p => p.id === pid);
+                    window.showToast(pid ? `「${p?.name}」に追加しました` : 'プロジェクトから外しました', 'success');
+                }
+            } catch (_) {
+                window.showToast('変更に失敗しました', 'error');
+            }
+            this.open = false;
+        },
+    };
+}
+
 // Alpine x-data="projectSelector()" として使用。
 // プロジェクト選択時に vocabulary と member_count を自動適用する。
 function projectSelector() {
