@@ -46,6 +46,7 @@
                     <span x-show="!adding">追加する</span>
                     <span x-show="adding" x-cloak>追加中…</span>
                 </button>
+                <button class="btn btn-ghost" type="button" @click="newPerson = { name: '', company: '', job_title: '', role: '' }" :disabled="adding">クリア</button>
             </div>
         </div>
     </div>
