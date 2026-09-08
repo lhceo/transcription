@@ -503,8 +503,7 @@
                     @click="editor.input = name; editor.fromCandidate = true; $refs.input.focus()"
                 >
                     <span
-                        class="speaker-badge"
-                        :class="'speaker-color-' + colorForName(name)"
+                        class="speaker-badge speaker-badge-candidate"
                         x-text="name"
                     ></span>
                 </button>

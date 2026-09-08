@@ -1941,6 +1941,10 @@ a.history-item-filename:hover {
     transition: opacity 0.15s ease;
     font-family: inherit;
 }
+.speaker-badge-candidate {
+    background: #f1f5f9;
+    color: #475569;
+}
 
 .speaker-badge:hover {
     opacity: 0.85;
