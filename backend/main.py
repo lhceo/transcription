@@ -105,6 +105,7 @@ async def lifespan(app: FastAPI):
                 "name VARCHAR(100) NOT NULL,"
                 "company VARCHAR(200),"
                 "job_title VARCHAR(200),"
+                "role VARCHAR(200),"
                 "created_at DATETIME NOT NULL,"
                 "PRIMARY KEY(id),"
                 "CONSTRAINT uq_people_owner_name "
@@ -112,7 +113,11 @@ async def lifespan(app: FastAPI):
                 "FOREIGN KEY(owner_user_id) "
                 "REFERENCES users(id) ON DELETE CASCADE)"
             )
-            _cu.execute("UPDATE alembic_version SET version_num='b1c2d3e4f5a6'")
+            try:
+                _cu.execute("ALTER TABLE people ADD COLUMN role VARCHAR(200)")
+            except Exception:
+                pass
+            _cu.execute("UPDATE alembic_version SET version_num='c2d4e6f8a0b1'")
             _co.commit()
             _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
             _co.close()

@@ -105,12 +105,14 @@ class PersonCreate(BaseModel):
     name: str
     company: str | None = None
     job_title: str | None = None
+    role: str | None = None
 
 
 class PersonUpdate(BaseModel):
     name: str | None = None
     company: str | None = None
     job_title: str | None = None
+    role: str | None = None
 
 
 # ── ヘルパー ────────────────────────────────────────────────────────────────
@@ -925,7 +927,7 @@ async def list_people(
         .order_by(Person.name)
     )
     return JSONResponse([
-        {"id": p.id, "name": p.name, "company": p.company or "", "job_title": p.job_title or ""}
+        {"id": p.id, "name": p.name, "company": p.company or "", "job_title": p.job_title or "", "role": p.role or ""}
         for p in rows
     ])
 
@@ -951,11 +953,12 @@ async def create_person(
         name=name,
         company=body.company.strip() if body.company else None,
         job_title=body.job_title.strip() if body.job_title else None,
+        role=body.role.strip() if body.role else None,
     )
     db.add(person)
     db.commit()
     db.refresh(person)
-    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or ""})
+    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or "", "role": person.role or ""})
 
 
 @router.put("/api/people/{person_id}")
@@ -980,8 +983,10 @@ async def update_person(
         person.company = body.company.strip() or None
     if body.job_title is not None:
         person.job_title = body.job_title.strip() or None
+    if body.role is not None:
+        person.role = body.role.strip() or None
     db.commit()
-    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or ""})
+    return JSONResponse({"id": person.id, "name": person.name, "company": person.company or "", "job_title": person.job_title or "", "role": person.role or ""})
 
 
 @router.delete("/api/people/{person_id}")

@@ -34,6 +34,12 @@
                            placeholder="営業部長"
                            maxlength="200">
                 </div>
+                <div class="form-row">
+                    <label class="form-label">役割</label>
+                    <input type="text" class="form-input" x-model="newPerson.role"
+                           placeholder="クライアント / 社内PM / パートナー"
+                           maxlength="200">
+                </div>
             </div>
             <div class="form-actions">
                 <button class="btn btn-primary" @click="add()" :disabled="adding || !newPerson.name.trim()">
@@ -66,7 +72,10 @@
                         <template x-if="editId !== person.id">
                             <div class="people-row-view">
                                 <div class="people-row-main">
-                                    <span class="people-name" x-text="person.name"></span>
+                                    <div class="people-name-row">
+                                        <span class="people-name" x-text="person.name"></span>
+                                        <span class="people-role-badge" x-show="person.role" x-text="person.role"></span>
+                                    </div>
                                     <span class="people-sub" x-show="person.company || person.job_title">
                                         <span x-text="[person.company, person.job_title].filter(Boolean).join(' · ')"></span>
                                     </span>
@@ -83,6 +92,7 @@
                                     <input type="text" class="form-input" x-model="editForm.name" placeholder="名前" maxlength="100">
                                     <input type="text" class="form-input" x-model="editForm.company" placeholder="会社名" maxlength="200">
                                     <input type="text" class="form-input" x-model="editForm.job_title" placeholder="役職" maxlength="200">
+                                    <input type="text" class="form-input" x-model="editForm.role" placeholder="役割（クライアント等）" maxlength="200">
                                 </div>
                                 <div class="people-edit-actions">
                                     <button class="btn btn-primary btn-sm" @click="saveEdit(person.id)" :disabled="saving || !editForm.name.trim()">保存</button>
@@ -106,8 +116,8 @@ function peoplePage() {
         saving: false,
         people: [],
         editId: null,
-        editForm: { name: '', company: '', job_title: '' },
-        newPerson: { name: '', company: '', job_title: '' },
+        editForm: { name: '', company: '', job_title: '', role: '' },
+        newPerson: { name: '', company: '', job_title: '', role: '' },
 
         async load() {
             this.loading = true;
@@ -133,6 +143,7 @@ function peoplePage() {
                         name,
                         company: this.newPerson.company.trim() || null,
                         job_title: this.newPerson.job_title.trim() || null,
+                        role: this.newPerson.role.trim() || null,
                     }),
                 });
                 if (!res.ok) {
@@ -153,7 +164,7 @@ function peoplePage() {
 
         startEdit(person) {
             this.editId = person.id;
-            this.editForm = { name: person.name, company: person.company || '', job_title: person.job_title || '' };
+            this.editForm = { name: person.name, company: person.company || '', job_title: person.job_title || '', role: person.role || '' };
         },
 
         cancelEdit() {
@@ -171,6 +182,7 @@ function peoplePage() {
                         name: this.editForm.name.trim(),
                         company: this.editForm.company.trim() || null,
                         job_title: this.editForm.job_title.trim() || null,
+                        role: this.editForm.role.trim() || null,
                     }),
                 });
                 if (!res.ok) {

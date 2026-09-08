@@ -4883,13 +4883,24 @@ a.history-item-filename:hover {
     gap: 12px;
 }
 .people-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.people-name-row { display: flex; align-items: center; gap: 8px; }
 .people-name { font-weight: 600; font-size: 14px; }
+.people-role-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: #7c3aed;
+    background: rgba(124,58,237,0.08);
+    border: 1px solid rgba(124,58,237,0.2);
+    border-radius: 4px;
+    padding: 1px 7px;
+    white-space: nowrap;
+}
 .people-sub { font-size: 12px; color: var(--color-text-muted); }
 .people-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .people-delete-btn { color: #dc2626; }
 .people-delete-btn:hover { color: #b91c1c; }
 .people-row-edit { display: flex; flex-direction: column; gap: 8px; }
-.people-edit-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.people-edit-fields { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
 .people-edit-actions { display: flex; gap: 8px; }
 .required-mark { color: #dc2626; }
 .form-link { color: var(--color-primary); text-decoration: none; font-size: 12px; }
