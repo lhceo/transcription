@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.auth.dependencies import CurrentUser
@@ -490,21 +490,25 @@ async def projects_list(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """アップロードフォームのプロジェクト選択用一覧。"""
-    projects = list(
-        db.scalars(
-            select(Project)
-            .options(selectinload(Project.theme))
-            .order_by(Project.name)
-        )
+    """プロジェクト一覧（アップロードフォーム選択 + プロジェクトページ共用）。"""
+    count_sq = (
+        select(Transcript.project_id, func.count().label("cnt"))
+        .where(Transcript.deleted_at.is_(None))
+        .group_by(Transcript.project_id)
+        .subquery()
     )
+    rows = db.execute(
+        select(Project, count_sq.c.cnt)
+        .outerjoin(count_sq, Project.id == count_sq.c.project_id)
+        .order_by(Project.name)
+    ).all()
     result = [
         {
             "id": p.id,
             "name": p.name,
-            "theme_name": p.theme.name if p.theme else None,
+            "transcript_count": cnt or 0,
         }
-        for p in projects
+        for p, cnt in rows
     ]
     return JSONResponse(result)
 
