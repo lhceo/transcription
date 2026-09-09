@@ -4549,6 +4549,17 @@ a.history-item-filename:hover {
     .okf-row-full { grid-column: 1; }
 }
 
+.datetime-split {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+.datetime-date { flex: 1; min-width: 0; }
+.datetime-hour { width: 64px; flex-shrink: 0; }
+.datetime-minute { width: 64px; flex-shrink: 0; }
+.datetime-sep { color: var(--text-secondary); font-size: 0.9rem; flex-shrink: 0; }
+
 /* ── ダッシュボード プロジェクト割り当てボタン ───────────────────────── */
 .history-item-project-wrap {
     position: relative;

@@ -87,8 +87,23 @@
                 </div>
                 <div class="okf-grid">
                     <div class="form-row okf-row">
-                        <label for="meeting_date" class="form-label">日時</label>
-                        <input type="datetime-local" id="meeting_date" name="meeting_date" class="form-input">
+                        <label class="form-label">日時</label>
+                        <div class="datetime-split">
+                            <input type="date" class="form-input datetime-date" x-model="mtgDate" placeholder="yyyy-mm-dd">
+                            <select class="form-select datetime-hour" x-model="mtgHour" :disabled="!mtgDate">
+                                <template x-for="h in Array.from({length:24},(_,i)=>String(i).padStart(2,'0'))" :key="h">
+                                    <option :value="h" x-text="h"></option>
+                                </template>
+                            </select>
+                            <span class="datetime-sep">時</span>
+                            <select class="form-select datetime-minute" x-model="mtgMinute" :disabled="!mtgDate">
+                                <template x-for="m in ['00','05','10','15','20','25','30','35','40','45','50','55']" :key="m">
+                                    <option :value="m" x-text="m"></option>
+                                </template>
+                            </select>
+                            <span class="datetime-sep">分</span>
+                        </div>
+                        <input type="hidden" name="meeting_date" :value="mtgDate ? mtgDate + 'T' + mtgHour + ':' + mtgMinute : ''">
                     </div>
                     <div class="form-row okf-row">
                         <label for="meeting_location" class="form-label">場所</label>
@@ -281,6 +296,9 @@ function uploadForm() {
         // v1.0.3: アップロード進捗 (htmx:xhr:progress イベントから更新)
         progress: 0,
         progressDetail: '',
+        mtgDate: '',
+        mtgHour: '10',
+        mtgMinute: '00',
 
         get maxUploadBytes() {
             const form = document.getElementById('upload-form');
@@ -410,6 +428,9 @@ function uploadForm() {
         reset() {
             this.fileName = '';
             this.fileSize = 0;
+            this.mtgDate = '';
+            this.mtgHour = '10';
+            this.mtgMinute = '00';
             const input = document.getElementById('file-input');
             if (input) input.value = '';
             const dur = document.getElementById('audio-duration-input');
