@@ -2,40 +2,32 @@
 
 {% block title %}{{ project.name }} | プロジェクト | 音声文字起こし{% endblock %}
 
+{% macro format_duration(seconds) %}{% if seconds %}{% set m = (seconds / 60) | int %}{% set h = m // 60 %}{% set rm = m % 60 %}{% if h > 0 %}{{ h }}時間{% if rm > 0 %}{{ rm }}分{% endif %}{% else %}{{ rm }}分{% endif %}{% endif %}{% endmacro %}
+
 {% block content %}
-<div class="page-header">
-    <div class="page-header-breadcrumb">
-        <a href="/themes" class="breadcrumb-link">プロジェクト管理</a>
-        {% if project.theme %}
-        <span class="breadcrumb-sep">›</span>
-        <span class="breadcrumb-text">{{ project.theme.name }}</span>
-        {% endif %}
-        <span class="breadcrumb-sep">›</span>
-        <span class="breadcrumb-text breadcrumb-current">{{ project.name }}</span>
-    </div>
-</div>
+<div class="pjt-page" id="project-root" x-data="projectDetail()">
 
-<div id="project-root" x-data="projectDetail()">
-
-    {# ── プロジェクト情報 ── #}
-    <section class="detail-section">
-        <div class="detail-section-header">
-            <h2 class="detail-section-title">プロジェクト情報</h2>
-            <button class="btn btn-outline btn-sm" @click="editingInfo = !editingInfo" x-text="editingInfo ? 'キャンセル' : '編集'"></button>
+    {# ── ヘッダー（フルwidth） ── #}
+    <div class="pjt-header">
+        <div class="pjt-header-breadcrumb">
+            <a href="/themes" class="breadcrumb-link">プロジェクト管理</a>
+            {% if project.theme %}
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-text">{{ project.theme.name }}</span>
+            {% endif %}
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-text breadcrumb-current" x-text="projectName"></span>
         </div>
-        <div x-show="!editingInfo">
-            <dl class="info-dl">
-                <dt>プロジェクト名</dt>
-                <dd x-text="projectName"></dd>
-                {% if project.theme %}
-                <dt>大テーマ</dt>
-                <dd>{{ project.theme.name }}</dd>
-                {% endif %}
-                <dt>説明</dt>
-                <dd x-text="projectDescription || '（なし）'" :class="{ 'text-muted': !projectDescription }"></dd>
-            </dl>
+        <div class="pjt-header-body" x-show="!editingInfo">
+            <div class="pjt-header-title-row">
+                <h1 class="pjt-title" x-text="projectName"></h1>
+                <button class="btn-icon pjt-edit-btn" @click="startEditInfo()" title="編集">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+            </div>
+            <p class="pjt-description text-muted" x-text="projectDescription || '説明なし'" :class="{ 'text-muted': !projectDescription }"></p>
         </div>
-        <div x-show="editingInfo" x-cloak>
+        <div class="pjt-header-edit" x-show="editingInfo" x-cloak>
             <div class="form-row">
                 <label class="form-label">プロジェクト名 <span class="required">*</span></label>
                 <input type="text" class="form-input" x-model="draftName">
@@ -49,181 +41,167 @@
                 <button class="btn btn-ghost btn-sm" @click="cancelEditInfo()">キャンセル</button>
             </div>
         </div>
-    </section>
+    </div>
 
-    {# ── メンバー ── #}
-    <section class="detail-section">
-        <div class="detail-section-header">
-            <h2 class="detail-section-title">メンバー</h2>
-            <button class="btn btn-outline btn-sm" @click="showMemberForm = !showMemberForm">
-                <span x-text="showMemberForm ? 'キャンセル' : '追加'"></span>
-            </button>
-        </div>
+    {# ── 2カラムレイアウト ── #}
+    <div class="pjt-layout">
 
-        {# メンバー追加フォーム #}
-        <div x-show="showMemberForm" x-cloak class="inline-form inline-form-nested">
-            <div class="form-row">
-                <label class="form-label">種別</label>
-                <div class="radio-group">
-                    <label class="radio-label">
-                        <input type="radio" x-model="memberType" value="internal"> 社内ユーザー
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" x-model="memberType" value="external"> 社外メンバー
-                    </label>
-                </div>
+        {# ── 左：音声データ一覧（主役） ── #}
+        <section class="pjt-main">
+            <div class="pjt-section-header">
+                <h2 class="pjt-section-title">音声データ</h2>
+                <a href="/" class="btn btn-outline btn-sm">＋ アップロード</a>
             </div>
-            <template x-if="memberType === 'internal'">
-                <div class="form-row">
-                    <label class="form-label">ユーザー</label>
-                    <select class="form-select" x-model="newMember.user_id">
-                        <option value="">選択してください</option>
-                        {% for u in all_users %}
-                        <option value="{{ u.id }}">{{ u.name }}（{{ u.email }}）</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </template>
-            <template x-if="memberType === 'external'">
-                <div>
-                    <div class="form-row">
-                        <label class="form-label">名前 <span class="required">*</span></label>
-                        <input type="text" class="form-input" x-model="newMember.name" placeholder="山田 太郎">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">会社 <span class="form-label-hint">任意</span></label>
-                        <input type="text" class="form-input" x-model="newMember.company" placeholder="株式会社〇〇">
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">役職 <span class="form-label-hint">任意</span></label>
-                        <input type="text" class="form-input" x-model="newMember.job_title" placeholder="営業部長">
-                    </div>
-                </div>
-            </template>
-            <div class="form-row">
-                <label class="form-label">PJTでの役割 <span class="form-label-hint">任意</span></label>
-                <input type="text" class="form-input" x-model="newMember.project_role" placeholder="例: PM・進行管理、意思決定者、技術担当">
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-primary btn-sm" @click="addMember()">追加</button>
-                <button class="btn btn-ghost btn-sm" @click="cancelMemberForm()">キャンセル</button>
-            </div>
-        </div>
 
-        {# メンバーテーブル #}
-        <template x-if="members.length === 0">
-            <p class="empty-state-inline">まだメンバーがいません</p>
-        </template>
-        <template x-if="members.length > 0">
-            <div class="data-table-wrap">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>名前</th>
-                            <th class="col-med">会社</th>
-                            <th class="col-med">役職</th>
-                            <th class="col-sm">PJTでの役割</th>
-                            <th class="col-action"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            {% if related_transcripts %}
+            <ul class="pjt-transcript-list">
+                {% for t in related_transcripts %}
+                {% set status = t.status %}
+                <li class="pjt-transcript-item">
+                    <a href="/transcripts/{{ t.id }}" class="pjt-transcript-link">
+                        <div class="pjt-transcript-title-row">
+                            {% if status == 'processing' or status == 'uploading' %}
+                            <span class="pjt-status-dot pjt-status-processing" title="処理中"></span>
+                            {% elif status == 'failed' %}
+                            <span class="pjt-status-dot pjt-status-failed" title="失敗"></span>
+                            {% endif %}
+                            <span class="pjt-transcript-name">{{ display_name(t) }}</span>
+                        </div>
+                        <div class="pjt-transcript-meta">
+                            {% if t.meeting_date %}
+                            <span>{{ t.meeting_date.strftime('%Y/%m/%d %H:%M') }}</span>
+                            {% else %}
+                            <span>{{ t.created_at.strftime('%Y/%m/%d') }}</span>
+                            {% endif %}
+                            {% if t.audio_duration_seconds %}
+                            <span class="pjt-meta-sep">·</span>
+                            <span>{{ format_duration(t.audio_duration_seconds) }}</span>
+                            {% endif %}
+                            {% if t.cost_yen %}
+                            <span class="pjt-meta-sep">·</span>
+                            <span>約{{ t.cost_yen }}円</span>
+                            {% endif %}
+                        </div>
+                        {% if t.meeting_purpose %}
+                        <div class="pjt-transcript-purpose">{{ t.meeting_purpose }}</div>
+                        {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="pjt-empty">
+                <p class="text-muted">まだ音声データがありません。</p>
+                <p class="text-muted" style="font-size:13px;">アップロード時にこのプロジェクトを選択すると、ここに表示されます。</p>
+            </div>
+            {% endif %}
+        </section>
+
+        {# ── 右：コンテキストサイドバー ── #}
+        <aside class="pjt-sidebar">
+
+            {# ── メンバー ── #}
+            <section class="pjt-sidebar-section">
+                <div class="pjt-section-header">
+                    <h2 class="pjt-section-title">メンバー</h2>
+                    <button class="btn btn-outline btn-sm" @click="showMemberForm = !showMemberForm">
+                        <span x-text="showMemberForm ? 'キャンセル' : '追加'"></span>
+                    </button>
+                </div>
+
+                <div x-show="showMemberForm" x-cloak class="pjt-inline-form">
+                    <div class="radio-group" style="margin-bottom:10px;">
+                        <label class="radio-label"><input type="radio" x-model="memberType" value="internal"> 社内</label>
+                        <label class="radio-label"><input type="radio" x-model="memberType" value="external"> 社外</label>
+                    </div>
+                    <template x-if="memberType === 'internal'">
+                        <div class="form-row">
+                            <select class="form-select" x-model="newMember.user_id">
+                                <option value="">ユーザーを選択</option>
+                                {% for u in all_users %}
+                                <option value="{{ u.id }}">{{ u.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </template>
+                    <template x-if="memberType === 'external'">
+                        <div>
+                            <div class="form-row"><input type="text" class="form-input" x-model="newMember.name" placeholder="名前 *"></div>
+                            <div class="form-row"><input type="text" class="form-input" x-model="newMember.company" placeholder="会社名"></div>
+                            <div class="form-row"><input type="text" class="form-input" x-model="newMember.job_title" placeholder="役職"></div>
+                        </div>
+                    </template>
+                    <div class="form-row"><input type="text" class="form-input" x-model="newMember.project_role" placeholder="PJTでの役割（例: PM、意思決定者）"></div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary btn-sm" @click="addMember()">追加</button>
+                        <button class="btn btn-ghost btn-sm" @click="cancelMemberForm()">キャンセル</button>
+                    </div>
+                </div>
+
+                <template x-if="members.length === 0">
+                    <p class="text-muted" style="font-size:13px; margin:0;">まだメンバーがいません</p>
+                </template>
+                <template x-if="members.length > 0">
+                    <ul class="pjt-member-list">
                         <template x-for="m in members" :key="m.id">
-                            <tr>
-                                <td>
-                                    <span x-text="m.display_name"></span>
+                            <li class="pjt-member-item">
+                                <div class="pjt-member-info">
+                                    <span class="pjt-member-name" x-text="m.display_name"></span>
                                     <template x-if="m.is_internal">
                                         <span class="badge-internal">社内</span>
                                     </template>
-                                </td>
-                                <td x-text="m.company || '—'"></td>
-                                <td x-text="m.job_title || '—'"></td>
-                                <td>
-                                    <input type="text" class="form-input form-input-sm" x-model="m.project_role" placeholder="—" @blur="updateMemberRole(m)">
-                                </td>
-                                <td>
-                                    <button class="btn-icon btn-icon-danger" @click="deleteMember(m)" title="削除">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-                                        </svg>
-                                    </button>
-                                </td>
-                            </tr>
+                                    <span class="pjt-member-role text-muted" x-show="m.project_role" x-text="m.project_role"></span>
+                                </div>
+                                <button class="btn-icon btn-icon-danger btn-icon-xs" @click="deleteMember(m)" title="削除">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+                                </button>
+                            </li>
                         </template>
-                    </tbody>
-                </table>
-            </div>
-        </template>
-    </section>
+                    </ul>
+                </template>
+            </section>
 
-    {# ── 固有名詞 ── #}
-    <section class="detail-section">
-        <div class="detail-section-header">
-            <h2 class="detail-section-title">固有名詞リスト</h2>
-        </div>
-        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として文字起こしに反映されます。読み方を登録すると表記ゆれ補正にも使われます。意味を登録すると整文の精度が上がります。</p>
-        <div class="vocab-add-row">
-            <input type="text" class="form-input" x-model="newWord" placeholder="単語（例: LionHeart）" @keydown.enter="addWord()" style="flex:1">
-            <input type="text" class="form-input" x-model="newReading" placeholder="読み方（任意、例: ライオンハート）" style="flex:1">
-            <input type="text" class="form-input" x-model="newMeaning" placeholder="意味・説明（任意、例: クライアント社名）" style="flex:2">
-            <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
-        </div>
-        <template x-if="vocabulary.length === 0">
-            <p class="empty-state-inline">まだ単語が登録されていません</p>
-        </template>
-        <template x-if="vocabulary.length > 0">
-            <div class="data-table-wrap">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>単語</th>
-                            <th>読み方</th>
-                            <th>意味・説明</th>
-                            <th class="col-action"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            {# ── 固有名詞辞書 ── #}
+            <section class="pjt-sidebar-section">
+                <div class="pjt-section-header">
+                    <h2 class="pjt-section-title">固有名詞辞書</h2>
+                </div>
+                <p class="pjt-sidebar-hint">登録した単語はアップロード時に自動的に文字起こし精度向上に使われます。</p>
+
+                <div class="pjt-vocab-add">
+                    <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="addWord()" style="flex:1; min-width:0;">
+                    <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
+                </div>
+                <div class="pjt-vocab-subfields" x-show="newWord.trim()">
+                    <input type="text" class="form-input form-input-sm" x-model="newReading" placeholder="読み方（例: ライオンハート）">
+                    <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="意味・説明">
+                </div>
+
+                <template x-if="vocabulary.length === 0">
+                    <p class="text-muted" style="font-size:13px; margin:8px 0 0 0;">まだ登録されていません</p>
+                </template>
+                <template x-if="vocabulary.length > 0">
+                    <ul class="pjt-vocab-list">
                         <template x-for="v in vocabulary" :key="v.id">
-                            <tr>
-                                <td x-text="v.word"></td>
-                                <td x-text="v.reading || '—'" :class="{ 'text-muted': !v.reading }"></td>
-                                <td x-text="v.meaning || '—'" :class="{ 'text-muted': !v.meaning }"></td>
-                                <td>
-                                    <button class="btn-icon btn-icon-danger" @click="deleteWord(v)" aria-label="削除" title="削除">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-                                        </svg>
-                                    </button>
-                                </td>
-                            </tr>
+                            <li class="pjt-vocab-item">
+                                <div class="pjt-vocab-word">
+                                    <span x-text="v.word"></span>
+                                    <span class="pjt-vocab-reading text-muted" x-show="v.reading" x-text="'(' + v.reading + ')'"></span>
+                                </div>
+                                <span class="pjt-vocab-meaning text-muted" x-show="v.meaning" x-text="v.meaning"></span>
+                                <button class="btn-icon btn-icon-danger btn-icon-xs" @click="deleteWord(v)" title="削除">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+                                </button>
+                            </li>
                         </template>
-                    </tbody>
-                </table>
-            </div>
-        </template>
-    </section>
+                    </ul>
+                </template>
+            </section>
 
-    {# ── 関連文字起こし ── #}
-    <section class="detail-section">
-        <div class="detail-section-header">
-            <h2 class="detail-section-title">関連する文字起こし</h2>
-        </div>
-        {% if related_transcripts %}
-        <ul class="related-transcripts">
-            {% for t in related_transcripts %}
-            <li class="related-transcript-row">
-                <a href="/transcripts/{{ t.id }}" class="related-transcript-link">{{ display_name(t) }}</a>
-                <span class="related-transcript-date text-muted">{{ t.created_at.strftime('%Y/%m/%d') if t.created_at else '' }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="empty-state-inline">このプロジェクトに紐付いた文字起こしはまだありません。<br>アップロード時にプロジェクトを選択すると、ここに表示されます。</p>
-        {% endif %}
-    </section>
+        </aside>
+    </div>{# /pjt-layout #}
 
-</div>
+</div>{# /pjt-page #}
 
 <script>
 (function () {
@@ -336,18 +314,6 @@ function projectDetail() {
                 window.showToast('メンバーを追加しました');
             } catch (e) {
                 window.showToast('追加に失敗しました: ' + e.message, 'error');
-            }
-        },
-
-        async updateMemberRole(m) {
-            try {
-                await fetch('/api/projects/' + this.projectId + '/members/' + m.id, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project_role: m.project_role || null }),
-                });
-            } catch (e) {
-                window.showToast('更新に失敗しました', 'error');
             }
         },
 
