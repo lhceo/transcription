@@ -222,6 +222,9 @@ class Speaker(Base):
     speaker_label: Mapped[str] = mapped_column(String(50), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    person_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("people.id", ondelete="SET NULL"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -236,6 +239,7 @@ class Speaker(Base):
     )
 
     transcript: Mapped["Transcript"] = relationship(back_populates="speakers")
+    person: Mapped["Person | None"] = relationship(foreign_keys=[person_id])
 
     __table_args__ = (
         UniqueConstraint(

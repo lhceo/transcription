@@ -745,6 +745,16 @@ def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
     return people_names
 
 
+def _link_speaker_to_person(speaker: Speaker, to_name: str, user_id: int, db: Session) -> None:
+    """話者の display_name が People台帳の名前と一致すれば person_id をリンクする。
+    一致しない場合は person_id を None にクリアする。"""
+    person = db.scalars(
+        select(Person)
+        .where(Person.owner_user_id == user_id, Person.name == to_name)
+    ).first()
+    speaker.person_id = person.id if person else None
+
+
 @router.get("/api/transcripts/{transcript_id}/status")
 async def get_transcript_status(
     transcript_id: int,
@@ -1281,9 +1291,17 @@ async def rename_segments_by_effective_name(
             )
 
     # 検証通過したので実際に書き換える
+    matched_labels: set[str] = set()
     for seg in segments:
         if seg.id in matched_ids:
             seg.display_name = to_name
+            matched_labels.add(seg.speaker_label)
+
+    # リネームに関与した Speaker レコードを People台帳にリンク
+    speaker_map = {s.speaker_label: s for s in speakers}
+    for label in matched_labels:
+        if label in speaker_map:
+            _link_speaker_to_person(speaker_map[label], to_name, user["id"], db)
 
     _record_speaker_history(user["id"], to_name, db)
     db.commit()

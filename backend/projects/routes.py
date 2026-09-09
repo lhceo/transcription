@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Theme, Transcript, User
+from backend.db.models import Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -640,6 +640,7 @@ def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Tra
 
 def _build_transcript_context(transcript: Transcript, db: Session) -> str:
     """トランスクリプトに紐づくPJT/MTGのコンテキストテキストを構築する。"""
+    from sqlalchemy.orm import selectinload as _sil
     project = None
     members: list[dict] = []
     vocabulary: list[dict] = []
@@ -663,6 +664,23 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
                 })
             for v in project.vocabulary:
                 vocabulary.append({"word": v.word, "meaning": v.meaning or ""})
+
+    # PJTがない場合、Speaker→Peopleリンクから話者情報を補完する
+    if not members:
+        speakers = list(db.scalars(
+            select(Speaker)
+            .options(_sil(Speaker.person))
+            .where(Speaker.transcript_id == transcript.id, Speaker.person_id.isnot(None))
+        ))
+        for s in speakers:
+            p = s.person
+            if p is None:
+                continue
+            members.append({
+                "display_name": s.display_name or p.name,
+                "company": p.company or "",
+                "project_role": " / ".join(filter(None, [p.job_title, p.role])),
+            })
 
     meeting_date_str = None
     if transcript.meeting_date:
