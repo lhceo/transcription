@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import Person, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -239,11 +239,9 @@ async def create_transcript(
         except (TypeError, ValueError):
             pass
 
-    parsed_word_boost: list[str] | None = None
+    user_word_boost: list[str] = []
     if word_boost and word_boost.strip():
-        words = [w.strip() for w in word_boost.splitlines() if w.strip()]
-        if words:
-            parsed_word_boost = words[:50]  # AssemblyAI の推奨上限
+        user_word_boost = [w.strip() for w in word_boost.splitlines() if w.strip()]
 
     parsed_project_id: int | None = None
     if project_id:
@@ -401,11 +399,40 @@ async def create_transcript(
         initial_status,
     )
 
+    # ──── word_boost と custom_spelling を自動収集 ────────────────────────
+    # ユーザー入力語 → PJT固有名詞辞書 → People台帳の名前 の順でマージし上限50語
+    auto_boost: list[str] = []
+    auto_custom_spelling: list[dict] = []
+    vocab_rows: list = []
+    if parsed_project_id:
+        vocab_rows = list(db.scalars(
+            select(ProjectVocabulary).where(ProjectVocabulary.project_id == parsed_project_id)
+        ))
+        for v in vocab_rows:
+            if v.word:
+                auto_boost.append(v.word)
+            if v.reading and v.word:
+                auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+    people_names = list(db.scalars(
+        select(Person.name).where(Person.owner_user_id == user["id"])
+    ))
+    auto_boost.extend(people_names)
+
+    merged = list(dict.fromkeys(user_word_boost + auto_boost))  # 重複排除・順序保持
+    parsed_word_boost = merged[:50] if merged else None
+    parsed_custom_spelling = auto_custom_spelling if auto_custom_spelling else None
+
+    logger.info(
+        "word_boost 自動補完: user=%s pjt_vocab=%s people=%s total=%s custom_spelling=%s",
+        len(user_word_boost), len(vocab_rows), len(people_names),
+        len(merged), len(auto_custom_spelling),
+    )
+
     # ──── バックグラウンドで文字起こしを開始 ───────────────────────────
     if settings.has_assemblyai:
         # asyncio.create_task で fire-and-forget。
         # レスポンスが返った後も event loop 上で動き続ける。
-        asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers, word_boost=parsed_word_boost))
+        asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers, word_boost=parsed_word_boost, custom_spelling=parsed_custom_spelling))
     else:
         logger.warning(
             "ASSEMBLYAI_API_KEY 未設定のため、ジョブ %s は uploaded 状態のままです",

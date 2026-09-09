@@ -86,6 +86,7 @@ class MemberUpdate(BaseModel):
 class VocabularyAdd(BaseModel):
     word: str
     meaning: str | None = None
+    reading: str | None = None
 
 
 class TranscriptMetadataUpdate(BaseModel):
@@ -449,11 +450,12 @@ async def add_vocabulary(
     if not word:
         raise HTTPException(status_code=400, detail="単語は必須です")
     meaning = body.meaning.strip() if body.meaning else None
-    vocab = ProjectVocabulary(project_id=project_id, word=word, meaning=meaning)
+    reading = body.reading.strip() if body.reading else None
+    vocab = ProjectVocabulary(project_id=project_id, word=word, meaning=meaning, reading=reading)
     db.add(vocab)
     db.commit()
     db.refresh(vocab)
-    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning}, status_code=201)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning, "reading": vocab.reading}, status_code=201)
 
 
 @router.delete("/api/projects/{project_id}/vocabulary/{vocab_id}")

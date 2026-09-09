@@ -161,10 +161,11 @@
         <div class="detail-section-header">
             <h2 class="detail-section-title">固有名詞リスト</h2>
         </div>
-        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として設定されます。意味を登録すると整文の精度が上がります。</p>
+        <p class="section-hint">ここに登録した単語は、このプロジェクトで音声をアップロードする際に自動的に「よく出る単語」として文字起こしに反映されます。読み方を登録すると表記ゆれ補正にも使われます。意味を登録すると整文の精度が上がります。</p>
         <div class="vocab-add-row">
-            <input type="text" class="form-input" x-model="newWord" placeholder="単語（例: あっくん）" @keydown.enter="addWord()" style="flex:1">
-            <input type="text" class="form-input" x-model="newMeaning" placeholder="意味・説明（任意、例: 市川のニックネーム）" style="flex:2">
+            <input type="text" class="form-input" x-model="newWord" placeholder="単語（例: LionHeart）" @keydown.enter="addWord()" style="flex:1">
+            <input type="text" class="form-input" x-model="newReading" placeholder="読み方（任意、例: ライオンハート）" style="flex:1">
+            <input type="text" class="form-input" x-model="newMeaning" placeholder="意味・説明（任意、例: クライアント社名）" style="flex:2">
             <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
         </div>
         <template x-if="vocabulary.length === 0">
@@ -176,6 +177,7 @@
                     <thead>
                         <tr>
                             <th>単語</th>
+                            <th>読み方</th>
                             <th>意味・説明</th>
                             <th class="col-action"></th>
                         </tr>
@@ -184,6 +186,7 @@
                         <template x-for="v in vocabulary" :key="v.id">
                             <tr>
                                 <td x-text="v.word"></td>
+                                <td x-text="v.reading || '—'" :class="{ 'text-muted': !v.reading }"></td>
                                 <td x-text="v.meaning || '—'" :class="{ 'text-muted': !v.meaning }"></td>
                                 <td>
                                     <button class="btn-icon btn-icon-danger" @click="deleteWord(v)" aria-label="削除" title="削除">
@@ -240,7 +243,7 @@
 
     var initialVocabulary = [];
     {% for v in project.vocabulary %}
-    initialVocabulary.push({ id: {{ v.id }}, word: {{ v.word | tojson }}, meaning: {{ (v.meaning or '') | tojson }} });
+    initialVocabulary.push({ id: {{ v.id }}, word: {{ v.word | tojson }}, meaning: {{ (v.meaning or '') | tojson }}, reading: {{ (v.reading or '') | tojson }} });
     {% endfor %}
 
     window._projectInit = {
@@ -270,6 +273,7 @@ function projectDetail() {
         newMember: { user_id: '', name: '', company: '', job_title: '', project_role: '' },
 
         newWord: '',
+        newReading: '',
         newMeaning: '',
 
         startEditInfo() {
@@ -363,17 +367,19 @@ function projectDetail() {
         async addWord() {
             const word = this.newWord.trim();
             if (!word) return;
+            const reading = this.newReading.trim() || null;
             const meaning = this.newMeaning.trim() || null;
             try {
                 const res = await fetch('/api/projects/' + this.projectId + '/vocabulary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ word, meaning }),
+                    body: JSON.stringify({ word, reading, meaning }),
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || res.status);
                 const data = await res.json();
                 this.vocabulary.push(data);
                 this.newWord = '';
+                this.newReading = '';
                 this.newMeaning = '';
                 window.showToast('単語を追加しました');
             } catch (e) {
