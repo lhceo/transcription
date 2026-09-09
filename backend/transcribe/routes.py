@@ -773,13 +773,21 @@ def _user_speaker_history_names(user_id: int, db: Session) -> list[str]:
 
 
 def _link_speaker_to_person(speaker: Speaker, to_name: str, user_id: int, db: Session) -> None:
-    """話者の display_name が People台帳の名前と一致すれば person_id をリンクする。
-    一致しない場合は person_id を None にクリアする。"""
+    """話者リネーム時に Person レコードへリンクする。
+    People台帳に同名がなければ自動作成する（話者リネームだけで台帳が育つ）。"""
+    from datetime import datetime, timezone as _tz
     person = db.scalars(
-        select(Person)
-        .where(Person.owner_user_id == user_id, Person.name == to_name)
+        select(Person).where(Person.owner_user_id == user_id, Person.name == to_name)
     ).first()
-    speaker.person_id = person.id if person else None
+    if person is None:
+        person = Person(
+            owner_user_id=user_id,
+            name=to_name,
+            created_at=datetime.now(_tz.utc),
+        )
+        db.add(person)
+        db.flush()
+    speaker.person_id = person.id
 
 
 @router.get("/api/transcripts/{transcript_id}/status")

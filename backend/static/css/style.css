@@ -4349,6 +4349,38 @@ a.history-item-filename:hover {
 .pjt-vocab-meaning { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
 .btn-icon-xs { width: 24px; height: 24px; flex-shrink: 0; }
 
+/* 登場した人物リスト */
+.pjt-people-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.pjt-people-item {
+    padding: 7px 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
+}
+.pjt-people-item:last-child { border-bottom: none; padding-bottom: 0; }
+.pjt-people-item:first-child { padding-top: 0; }
+.pjt-people-name { font-weight: 500; margin-bottom: 2px; }
+.pjt-people-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 3px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+.pjt-people-sep { opacity: 0.5; }
+.pjt-people-role {
+    background: #f3f0ff;
+    color: #6d28d9;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    margin-left: 2px;
+}
+
 /* モバイル：1カラムにスタック */
 @media (max-width: 900px) {
     .pjt-layout {

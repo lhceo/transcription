@@ -313,12 +313,32 @@ async def project_detail_page(
     # 社内ユーザー一覧（メンバー追加用）
     all_users = list(db.scalars(select(User).order_by(User.name)))
 
+    # このPJTの音声に登場した人物（Speaker→People リンク済み、重複排除）
+    transcript_ids = [t.id for t in related_transcripts]
+    project_people: list[Person] = []
+    if transcript_ids:
+        seen_ids: set[int] = set()
+        speakers_with_person = db.scalars(
+            select(Speaker)
+            .options(selectinload(Speaker.person))
+            .where(
+                Speaker.transcript_id.in_(transcript_ids),
+                Speaker.person_id.isnot(None),
+            )
+        )
+        for s in speakers_with_person:
+            if s.person and s.person.id not in seen_ids:
+                seen_ids.add(s.person.id)
+                project_people.append(s.person)
+        project_people.sort(key=lambda p: p.name)
+
     ctx = _common_ctx(user, db)
     ctx.update({
         "project": proj,
         "related_transcripts": related_transcripts,
         "all_users": all_users,
         "member_display_name": _member_display_name,
+        "project_people": project_people,
     })
     return templates.TemplateResponse(request, "project_detail.html", ctx)
 
