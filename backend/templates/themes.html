@@ -28,7 +28,7 @@
             <label class="form-label">プロジェクト名 <span class="required">*</span></label>
             <input type="text" class="form-input" x-model="newProject.name"
                    placeholder="例: ○○社 打ち合わせ"
-                   @keydown.enter="createProject()"
+                   @keydown.enter="if (!$event.isComposing) createProject()"
                    x-ref="nameInput">
         </div>
         <div class="form-row">

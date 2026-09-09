@@ -169,7 +169,7 @@
                 <p class="pjt-sidebar-hint">登録した単語はアップロード時に自動的に文字起こし精度向上に使われます。</p>
 
                 <div class="pjt-vocab-add">
-                    <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="addWord()" style="flex:1; min-width:0;">
+                    <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="if (!$event.isComposing) addWord()" style="flex:1; min-width:0;">
                     <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
                 </div>
                 <div class="pjt-vocab-subfields" x-show="newWord.trim()">

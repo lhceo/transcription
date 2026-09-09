@@ -18,7 +18,7 @@
                 <label class="form-label">名前 <span class="required-mark">*</span></label>
                 <input type="text" class="form-input" x-model="newPerson.name"
                        placeholder="山田 太郎"
-                       @keydown.enter.prevent="add()"
+                       @keydown.enter.prevent="if (!$event.isComposing) add()"
                        maxlength="100">
             </div>
             <div class="people-add-sub-row">

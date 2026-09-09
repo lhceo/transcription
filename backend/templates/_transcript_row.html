@@ -50,7 +50,7 @@
                     x-model="draft"
                     maxlength="500"
                     placeholder="ファイル名を入力（空にすると元のファイル名に戻ります）"
-                    @keydown.enter.prevent="saveTitle()"
+                    @keydown.enter.prevent="if (!$event.isComposing) saveTitle()"
                     @keydown.escape.prevent="cancelEdit()"
                 >
                 <button type="button" class="btn btn-primary btn-small" @click="saveTitle()" :disabled="saving">

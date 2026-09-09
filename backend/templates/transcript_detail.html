@@ -52,7 +52,7 @@
                 x-ref="titleInput"
                 x-model="draft"
                 maxlength="500"
-                @keydown.enter.prevent="save()"
+                @keydown.enter.prevent="if (!$event.isComposing) save()"
                 @keydown.escape.prevent="cancel()"
             >
             <button type="button" class="btn btn-primary btn-small" @click="save()" :disabled="saving">保存</button>
@@ -278,7 +278,7 @@
                         <input type="text" class="form-input participant-input"
                                x-model="participantInput"
                                placeholder="名前を入力して Enter"
-                               @keydown.enter.prevent="addParticipant()"
+                               @keydown.enter.prevent="if (!$event.isComposing) addParticipant()"
                                list="mtg-people-datalist"
                                maxlength="100">
                         <button type="button" class="btn btn-outline btn-sm" @click="addParticipant()" :disabled="!participantInput.trim()">追加</button>
