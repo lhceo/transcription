@@ -737,7 +737,7 @@ html, body {
 
 /* 固定プレイヤーがある transcript 詳細ページではコンテンツ下部にパディングを確保 */
 body:has(.audio-player-fixed) {
-    padding-bottom: 80px;
+    padding-bottom: 100px;
 }
 
 .audio-player-section {
@@ -751,14 +751,15 @@ body:has(.audio-player-fixed) {
     right: 0;
     z-index: 40;
     background: transparent;
-    padding-bottom: 8px;
+    /* 下端ピッタリ — 隙間なし */
 }
 
 .audio-player-fixed .player-inner {
     border: 1px solid var(--color-border);
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.10);
-    backdrop-filter: blur(12px);
+    border-bottom: none;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.10);
+    backdrop-filter: blur(14px);
     overflow: hidden;
 }
 
@@ -768,57 +769,75 @@ body:has(.audio-player-fixed) {
     max-width: 800px;
     margin: 0 auto;
     padding: 0;
-    background: rgba(255,255,255,0.97);
+    background: rgba(255, 255, 255, 0.98);
 }
 
-/* タイムライン */
+/* タイムライン：Notta スタイル — バー上下にスペースを設けたクリック領域 */
 .player-timeline {
     position: relative;
     width: 100%;
-    height: 4px;
-    background: #e2e8f0;
+    height: 20px;           /* クリック領域を広く */
+    display: flex;
+    align-items: center;
     cursor: pointer;
     flex-shrink: 0;
+    padding: 0 2px;
+    box-sizing: border-box;
 }
 
-.player-timeline:hover {
-    height: 6px;
+/* バー本体（細い横線） */
+.player-timeline::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 3px;
+    background: #dde3ec;
+    border-radius: 2px;
+    pointer-events: none;
 }
 
 .player-timeline-fill {
     position: absolute;
     left: 0;
-    top: 0;
-    height: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 3px;
     background: var(--color-primary);
-    border-radius: 0 2px 2px 0;
+    border-radius: 2px;
     pointer-events: none;
     transition: width 0.1s linear;
 }
 
+/* 丸いつまみ */
 .player-timeline-thumb {
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--color-primary);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(59,130,246,0.4);
     pointer-events: none;
+    transition: opacity 0.15s, transform 0.12s;
     opacity: 0;
-    transition: opacity 0.15s;
 }
 
 .player-timeline:hover .player-timeline-thumb {
     opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
 }
 
 /* コントロール行 */
 .player-controls {
     display: flex;
     align-items: center;
-    padding: 0;
-    height: 60px;
+    padding: 0 20px;    /* 左右に余白 */
+    height: 68px;       /* 押しやすい高さ */
     gap: 12px;
 }
 
@@ -828,7 +847,7 @@ body:has(.audio-player-fixed) {
     font-variant-numeric: tabular-nums;
     color: var(--color-text-muted);
     white-space: nowrap;
-    min-width: 90px;
+    min-width: 96px;
 }
 
 .player-time-sep {
@@ -840,42 +859,45 @@ body:has(.audio-player-fixed) {
 .player-controls-center {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex: 1;
     justify-content: center;
 }
 
-/* ±3 秒ボタン：矢印アイコン＋数字 */
+/* ±3秒ボタン：丸形 + SVGアイコン + 数字をオーバーレイ */
 .player-skip-btn {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 36px;
-    border-radius: 8px;
-    border: 1px solid #cbd5e1;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #94a3b8;
     background: transparent;
     color: #64748b;
-    font-size: 10px;
-    font-weight: 800;
     font-family: inherit;
     cursor: pointer;
     transition: border-color 0.12s, color 0.12s, background 0.12s;
     flex-shrink: 0;
-    gap: 1px;
 }
 
 .player-skip-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 26px;
+    height: 26px;
     flex-shrink: 0;
 }
 
+/* 数字を SVG の中央に重ねる */
 .player-skip-num {
-    font-size: 10px;
-    font-weight: 800;
+    position: absolute;
+    font-size: 9px;
+    font-weight: 900;
     line-height: 1;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -46%);
+    pointer-events: none;
 }
 
 .player-skip-btn:hover {
@@ -885,7 +907,7 @@ body:has(.audio-player-fixed) {
 }
 
 .player-skip-btn:active {
-    transform: scale(0.94);
+    transform: scale(0.92);
 }
 
 /* 再生/一時停止：青い丸角ボタン＋テキスト */
@@ -893,14 +915,14 @@ body:has(.audio-player-fixed) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    height: 40px;
-    padding: 0 20px;
-    border-radius: 20px;
+    gap: 7px;
+    height: 44px;
+    padding: 0 24px;
+    border-radius: 22px;
     border: none;
     background: var(--color-primary);
     color: #fff;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
@@ -918,8 +940,8 @@ body:has(.audio-player-fixed) {
 }
 
 .player-play-icon {
-    width: 16px;
-    height: 16px;
+    width: 17px;
+    height: 17px;
     flex-shrink: 0;
 }
 
@@ -927,8 +949,8 @@ body:has(.audio-player-fixed) {
 .player-right-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-width: 90px;
+    gap: 10px;
+    min-width: 96px;
     justify-content: flex-end;
 }
 
@@ -1008,13 +1030,14 @@ body:has(.audio-player-fixed) {
 /* スマホ向け調整 */
 @media (max-width: 640px) {
     .audio-player-fixed .player-inner {
-        width: 95%;
-        border-radius: 10px 10px 0 0;
+        width: 96%;
+        border-radius: 12px 12px 0 0;
     }
 
     .player-controls {
-        height: 56px;
-        gap: 8px;
+        height: 60px;
+        padding: 0 14px;
+        gap: 10px;
     }
 
     .player-time {
@@ -1023,8 +1046,9 @@ body:has(.audio-player-fixed) {
     }
 
     .player-play-btn {
-        padding: 0 14px;
+        padding: 0 16px;
         font-size: 13px;
+        height: 40px;
         height: 36px;
     }
 
@@ -3320,7 +3344,7 @@ a.history-item-filename:hover {
 .resync-fab {
     position: fixed;
     bottom: calc(
-        88px
+        104px
         + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
     );
     left: 50%;
@@ -3362,7 +3386,7 @@ a.history-item-filename:hover {
 @media (max-width: 640px) {
     .resync-fab {
         bottom: calc(
-            80px
+            96px
             + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
         );
         padding: 10px 16px;
