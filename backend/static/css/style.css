@@ -3320,7 +3320,7 @@ a.history-item-filename:hover {
 .resync-fab {
     position: fixed;
     bottom: calc(
-        20px
+        88px
         + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
     );
     left: 50%;
@@ -3362,7 +3362,7 @@ a.history-item-filename:hover {
 @media (max-width: 640px) {
     .resync-fab {
         bottom: calc(
-            14px
+            80px
             + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
         );
         padding: 10px 16px;
