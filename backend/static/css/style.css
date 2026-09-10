@@ -756,6 +756,13 @@ body:has(.audio-player-fixed) {
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
 }
 
+/* タイムラインとコントロールを content 幅で中央寄せ */
+.player-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
 /* タイムライン */
 .player-timeline {
     position: relative;
@@ -802,7 +809,7 @@ body:has(.audio-player-fixed) {
 .player-controls {
     display: flex;
     align-items: center;
-    padding: 0 16px;
+    padding: 0;
     height: 60px;
     gap: 12px;
 }
@@ -978,8 +985,11 @@ body:has(.audio-player-fixed) {
 
 /* スマホ向け調整 */
 @media (max-width: 640px) {
-    .player-controls {
+    .player-inner {
         padding: 0 10px;
+    }
+
+    .player-controls {
         height: 56px;
         gap: 8px;
     }

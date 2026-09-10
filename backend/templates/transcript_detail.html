@@ -148,6 +148,7 @@
     x-data="audioPlayer({{ transcript.id }})"
     x-init="init()"
 >
+    <div class="player-inner">
     {# タイムライン #}
     <div class="player-timeline" @click="seekFromClick($event)" title="クリックでシーク">
         <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
@@ -234,6 +235,7 @@
             </button>
         </div>
     </div>
+    </div>{# /player-inner #}
 
     {# 非表示オーディオ要素 #}
     <audio
