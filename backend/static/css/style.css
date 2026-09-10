@@ -2121,20 +2121,66 @@ a.history-item-filename:hover {
 }
 
 /* 編集中セグメントの再生位置バー */
-.segment-edit-progress-wrap {
-    height: 3px;
-    background: #e2e8f0;
-    border-radius: 2px 2px 0 0;
-    overflow: hidden;
-    margin-bottom: 1px;
+/* セグメント内ミニタイムライン：アクティブ時のみ表示、クリックでシーク */
+.segment-progress-wrap {
+    position: relative;
+    height: 16px;           /* クリック領域を広く */
+    display: none;          /* 通常は非表示 */
+    align-items: center;
+    cursor: pointer;
+    margin-bottom: 4px;
 }
 
-.segment-edit-progress-bar {
-    height: 100%;
+/* アクティブセグメントのみ表示 */
+.segment-card-active .segment-progress-wrap {
+    display: flex;
+}
+
+/* バー本体 */
+.segment-progress-wrap::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 3px;
+    background: #dde3ec;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.segment-progress-bar {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 3px;
     width: 0%;
     background: var(--color-primary);
     border-radius: 2px;
+    pointer-events: none;
     transition: width 0.1s linear;
+}
+
+/* つまみ */
+.segment-progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(59,130,246,0.4);
+    pointer-events: none;
+    transition: left 0.1s linear;
+}
+
+.segment-progress-wrap:hover .segment-progress-thumb {
+    transform: translate(-50%, -50%) scale(1.2);
 }
 
 .segment-text-edit {

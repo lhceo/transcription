@@ -457,12 +457,15 @@
                         {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
                     </header>
 
-                    {# v1.1 Option C インラインエディタ:
-                       - View mode: クリック = シーク
-                       - Edit mode: クリック = この segment を textarea 化 + focus
-                       - Edit mode で他のセグメントを編集中はカラオケ div 表示 (黄色マーカー進行)
-                       - 文字単位ハイライト用に <span> を 2 つに分割
-                       - v1.0.3: ダブルクリック (PC のみ) で編集モードに入る + この segment を編集対象に #}
+                    {# セグメント内ミニタイムライン：アクティブ時に表示、クリックでシーク #}
+                    <div class="segment-progress-wrap"
+                         @click="seekFromSegmentBar($event)"
+                         title="クリックでこの位置から再生">
+                        <div class="segment-progress-bar"></div>
+                        <div class="segment-progress-thumb"></div>
+                    </div>
+
+                    {# v1.1 Option C インラインエディタ #}
                     <div
                         class="segment-text"
                         x-show="!shouldShowTextarea({{ seg.id }})"
@@ -471,10 +474,8 @@
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
                     {# 編集モード + この segment を編集中: textarea が表示される #}
-                    {# 再生位置バー: 編集中もどこを再生中か一目でわかる #}
-                    <div class="segment-edit-progress-wrap" x-show="shouldShowTextarea({{ seg.id }})" x-cloak>
-                        <div class="segment-edit-progress-bar"></div>
-                    </div>
+                    <textarea
+                        class="segment-text-edit"
                     <textarea
                         class="segment-text-edit"
                         x-show="shouldShowTextarea({{ seg.id }})"
@@ -1295,12 +1296,31 @@ function segmentsApp(transcriptId, historyNames) {
                     if (remainSpan.textContent !== remainText) remainSpan.textContent = remainText;
                 }
             }
-            // 編集中セグメントにも進行バーを反映（編集中でも再生位置がわかる）
-            const editBar = card.querySelector('.segment-edit-progress-bar');
-            if (editBar) {
+            // セグメント内ミニタイムラインバーを更新
+            const bar = card.querySelector('.segment-progress-bar');
+            const thumb = card.querySelector('.segment-progress-thumb');
+            if (bar) {
                 const pct = Math.round(ratio * 1000) / 10;
-                editBar.style.width = pct + '%';
+                bar.style.width = pct + '%';
+                if (thumb) thumb.style.left = pct + '%';
             }
+        },
+
+        // セグメント内タイムラインバーのクリックでシーク
+        seekFromSegmentBar(e) {
+            const wrap = e.currentTarget;
+            const card = wrap.closest('.segment-card');
+            if (!card) return;
+            const start = parseFloat(card.dataset.startSeconds) || 0;
+            const end = parseFloat(card.dataset.endSeconds) || (start + 5);
+            const dur = Math.max(0, end - start);
+            const rect = wrap.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const seekTo = start + ratio * dur;
+            const audio = document.querySelector('.audio-player-section audio');
+            if (!audio) return;
+            audio.currentTime = seekTo;
+            if (audio.paused) audio.play().catch(() => {});
         },
 
         // ダブルクリックで該当テキスト位置付近から再生
