@@ -865,40 +865,35 @@ body:has(.audio-player-fixed) {
     justify-content: center;
 }
 
-/* ±3秒ボタン：丸形 + SVGアイコン + 数字をオーバーレイ */
+/* ±3秒ボタン：アイコン＋ラベルの横並び */
 .player-skip-btn {
-    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 2px solid #94a3b8;
+    gap: 3px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
     background: transparent;
     color: #64748b;
     font-family: inherit;
     cursor: pointer;
     transition: border-color 0.12s, color 0.12s, background 0.12s;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 
-.player-skip-btn svg {
-    width: 26px;
-    height: 26px;
+.player-skip-icon {
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
 }
 
-/* 数字を SVG の中央に重ねる */
-.player-skip-num {
-    position: absolute;
-    font-size: 9px;
-    font-weight: 900;
+.player-skip-label {
+    font-size: 12px;
+    font-weight: 700;
     line-height: 1;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -46%);
-    pointer-events: none;
 }
 
 .player-skip-btn:hover {
@@ -908,7 +903,7 @@ body:has(.audio-player-fixed) {
 }
 
 .player-skip-btn:active {
-    transform: scale(0.92);
+    transform: scale(0.94);
 }
 
 /* 再生/一時停止：青い丸角ボタン＋テキスト */
