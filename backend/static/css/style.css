@@ -781,7 +781,8 @@ body:has(.audio-player-fixed) {
     align-items: center;
     cursor: pointer;
     flex-shrink: 0;
-    padding: 0 2px;
+    padding: 0 20px;        /* コントロール行の左右余白と揃える */
+    margin-top: 6px;        /* 上マージンでつまみがはみ出ないように */
     box-sizing: border-box;
 }
 
