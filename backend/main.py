@@ -128,7 +128,11 @@ async def lifespan(app: FastAPI):
                 _cu.execute("ALTER TABLE project_vocabulary ADD COLUMN reading VARCHAR(200)")
             except Exception:
                 pass
-            _cu.execute("UPDATE alembic_version SET version_num='e4f6a8b0c2d3'")
+            try:
+                _cu.execute("ALTER TABLE transcripts ADD COLUMN overview TEXT")
+            except Exception:
+                pass
+            _cu.execute("UPDATE alembic_version SET version_num='f5a7b9c1d3e4'")
             _co.commit()
             _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
             _co.close()

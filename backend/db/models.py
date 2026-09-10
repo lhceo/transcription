@@ -122,6 +122,7 @@ class Transcript(Base):
         DateTime(timezone=True), nullable=True
     )
     meeting_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    overview: Mapped[str | None] = mapped_column(Text, nullable=True)
     meeting_purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
     meeting_agenda: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON 配列テキスト: ["田中", "鈴木"] — 話者ポップアップ候補に統合

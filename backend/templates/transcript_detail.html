@@ -20,6 +20,7 @@
         originalFilename: {{ transcript.original_filename|tojson }},
         meetingDate: {{ (transcript.meeting_date.strftime('%Y-%m-%dT%H:%M') if transcript.meeting_date else '') | tojson }},
         meetingLocation: {{ (transcript.meeting_location or '') | tojson }},
+        meetingOverview: {{ (transcript.overview or '') | tojson }},
         meetingPurpose: {{ (transcript.meeting_purpose or '') | tojson }},
         meetingAgenda: {{ (transcript.meeting_agenda or '') | tojson }},
         meetingParticipants: {{ meeting_participants | tojson }},
@@ -254,6 +255,10 @@
             <div class="form-row form-row-inline">
                 <label class="form-label">場所</label>
                 <input type="text" class="form-input" x-model="form.meeting_location" placeholder="例: 弊社会議室A、オンライン（Zoom）">
+            </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">概要</label>
+                <textarea class="form-input form-textarea" x-model="form.overview" placeholder="この音声の背景・経緯・ポイントなど自由に（整文に活用されます）" rows="3" style="resize:vertical"></textarea>
             </div>
             <div class="form-row form-row-inline">
                 <label class="form-label">目的</label>
@@ -2059,6 +2064,7 @@ function mtgInfo() {
         form: {
             meeting_date: init.meetingDate || '',
             meeting_location: init.meetingLocation || '',
+            overview: init.meetingOverview || '',
             meeting_purpose: init.meetingPurpose || '',
             meeting_agenda: init.meetingAgenda || '',
         },
@@ -2096,6 +2102,7 @@ function mtgInfo() {
                     body: JSON.stringify({
                         meeting_date: this.form.meeting_date || null,
                         meeting_location: this.form.meeting_location || null,
+                        overview: this.form.overview || null,
                         meeting_purpose: this.form.meeting_purpose || null,
                         meeting_agenda: this.form.meeting_agenda || null,
                         meeting_participants: this.participants,

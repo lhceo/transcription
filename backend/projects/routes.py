@@ -92,6 +92,7 @@ class VocabularyAdd(BaseModel):
 class TranscriptMetadataUpdate(BaseModel):
     meeting_date: str | None = None       # ISO 8601 文字列、フロントから渡す
     meeting_location: str | None = None
+    overview: str | None = None
     meeting_purpose: str | None = None
     meeting_agenda: str | None = None
     meeting_participants: list[str] | None = None  # 参加者名リスト
@@ -651,6 +652,8 @@ async def update_transcript_metadata(
 
     if body.meeting_location is not None:
         transcript.meeting_location = body.meeting_location.strip() or None
+    if body.overview is not None:
+        transcript.overview = body.overview.strip() or None
     if body.meeting_purpose is not None:
         transcript.meeting_purpose = body.meeting_purpose.strip() or None
     if body.meeting_agenda is not None:
@@ -759,6 +762,7 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
         vocabulary=vocabulary or None,
         meeting_date=meeting_date_str,
         meeting_location=transcript.meeting_location,
+        meeting_overview=transcript.overview,
         meeting_purpose=transcript.meeting_purpose,
         meeting_agenda=transcript.meeting_agenda,
     )

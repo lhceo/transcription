@@ -34,7 +34,7 @@
             </div>
             <div class="form-row">
                 <label class="form-label">説明 <span class="form-label-hint">任意</span></label>
-                <input type="text" class="form-input" x-model="draftDescription">
+                <textarea class="form-input" x-model="draftDescription" rows="4" placeholder="プロジェクトの背景・目的・登場人物など自由に記入（整文に活用されます）" style="resize:vertical"></textarea>
             </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" @click="saveInfo()">保存</button>

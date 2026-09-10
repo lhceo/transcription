@@ -63,6 +63,7 @@ def build_context_text(
     project_attachments_summaries: list[str] | None = None,
     meeting_date: str | None = None,
     meeting_location: str | None = None,
+    meeting_overview: str | None = None,
     meeting_purpose: str | None = None,
     meeting_agenda: str | None = None,
     mtg_attachments_summaries: list[str] | None = None,
@@ -108,6 +109,8 @@ def build_context_text(
         mtg_parts.append(f"日時: {meeting_date}")
     if meeting_location:
         mtg_parts.append(f"場所: {meeting_location}")
+    if meeting_overview:
+        mtg_parts.append(f"概要:\n{meeting_overview}")
     if meeting_purpose:
         mtg_parts.append(f"目的: {meeting_purpose}")
     if meeting_agenda:
