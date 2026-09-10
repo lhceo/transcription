@@ -550,6 +550,7 @@ async def get_audio(
     認証必須。所有権チェックを行う。ファイルが存在しない場合 404。
     Range リクエストは FileResponse が自動で扱う（シーク・部分再生に対応）。
     """
+    settings = load_settings()
     transcript = db.get(Transcript, transcript_id)
     is_admin = user["email"].lower() == settings.admin_email
     if transcript is None or transcript.deleted_at is not None:
@@ -1207,6 +1208,7 @@ async def export_transcript(
     format: str = "txt",
 ) -> Response:
     """文字起こしを TXT / SRT / JSON でダウンロード。"""
+    settings = load_settings()
     transcript = db.get(Transcript, transcript_id)
     is_admin = user["email"].lower() == settings.admin_email
     if transcript is None or transcript.deleted_at is not None:
