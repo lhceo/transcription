@@ -733,15 +733,23 @@ function projectAssigner(transcriptId, initialProjectId) {
         projectId: initialProjectId,
         open: false,
         projects: [],
+
+        async init() {
+            try {
+                const res = await fetch('/api/projects-list');
+                if (res.ok) this.projects = await res.json();
+            } catch (_) {}
+        },
+
+        get projectName() {
+            if (!this.projectId || !this.projects.length) return null;
+            return this.projects.find(p => p.id === this.projectId)?.name || null;
+        },
+
         async toggle() {
-            if (!this.open && this.projects.length === 0) {
-                try {
-                    const res = await fetch('/api/projects-list');
-                    if (res.ok) this.projects = await res.json();
-                } catch (_) {}
-            }
             this.open = !this.open;
         },
+
         async assign(pid) {
             try {
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/project`, {
