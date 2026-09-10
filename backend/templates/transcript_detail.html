@@ -488,6 +488,9 @@
                         @dblclick="enterEditModeForSegment($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
+                    {# 編集中カラオケカーソル：再生位置の文字をハイライト表示 #}
+                    <div class="segment-edit-cursor"></div>
+
                     {# 編集モード + この segment を編集中: textarea が表示される #}
                     <textarea
                         class="segment-text-edit"
@@ -1296,10 +1299,15 @@ function segmentsApp(transcriptId, historyNames) {
         // 文字単位ハイライト: ratio (0〜1) に応じて progress span / remaining span の
         // テキストを更新する。文字数 × ratio の位置で分割。
         applyProgressToCard(card, ratio) {
-            const div = card.querySelector('.segment-text');
-            if (div) {
-                const progressSpan = div.querySelector('.segment-text-progress');
-                const remainSpan = div.querySelector('.segment-text-remaining');
+            const textDiv = card.querySelector('.segment-text');
+            const textarea = card.querySelector('.segment-text-edit');
+            const cursorDiv = card.querySelector('.segment-edit-cursor');
+            const isEditing = textarea && textarea.style.display !== 'none';
+
+            if (!isEditing && textDiv) {
+                // 通常カラオケ：segment-text の progress/remaining スパンを更新
+                const progressSpan = textDiv.querySelector('.segment-text-progress');
+                const remainSpan = textDiv.querySelector('.segment-text-remaining');
                 if (progressSpan && remainSpan) {
                     const fullText = (progressSpan.textContent || '') + (remainSpan.textContent || '');
                     const n = Math.floor(fullText.length * ratio);
@@ -1309,6 +1317,31 @@ function segmentsApp(transcriptId, historyNames) {
                     if (remainSpan.textContent !== remainText) remainSpan.textContent = remainText;
                 }
             }
+
+            // 編集中カーソルインジケーター
+            if (cursorDiv) {
+                if (isEditing) {
+                    const text = textarea.value || '';
+                    const n = Math.floor(text.length * ratio);
+                    const CONTEXT = 12;
+                    const s = Math.max(0, n - CONTEXT);
+                    const e = Math.min(text.length, n + CONTEXT + 1);
+                    const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    const before = esc(text.substring(s, n));
+                    const cur    = esc(text.substring(n, n + 1)) || '|';
+                    const after  = esc(text.substring(n + 1, e));
+                    cursorDiv.innerHTML =
+                        (s > 0 ? '<span class="ec-ellipsis">…</span>' : '') +
+                        '<span class="ec-before">' + before + '</span>' +
+                        '<span class="ec-current">' + cur + '</span>' +
+                        '<span class="ec-after">' + after + '</span>' +
+                        (e < text.length ? '<span class="ec-ellipsis">…</span>' : '');
+                    cursorDiv.style.display = '';
+                } else {
+                    cursorDiv.style.display = 'none';
+                }
+            }
+
             // セグメント内ミニタイムラインバーを更新
             const bar = card.querySelector('.segment-progress-bar');
             const thumb = card.querySelector('.segment-progress-thumb');

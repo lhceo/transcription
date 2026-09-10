@@ -2210,6 +2210,28 @@ a.history-item-filename:hover {
     display: block;
 }
 
+/* 編集中カラオケカーソル */
+.segment-edit-cursor {
+    display: none;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 2px 0 6px;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+}
+.ec-ellipsis { color: #94a3b8; }
+.ec-before   { color: #94a3b8; }
+.ec-current  {
+    background: #fef08a;
+    color: #713f12;
+    border-radius: 2px;
+    padding: 0 1px;
+    font-weight: 700;
+}
+.ec-after    { color: #94a3b8; }
+
 /* トラック */
 .segment-progress-track {
     position: relative;
