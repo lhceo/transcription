@@ -359,51 +359,47 @@
 
     {# ──── ツールバー：編集モード切替＋エクスポート ──── #}
     <div class="detail-toolbar" :class="editMode ? 'detail-toolbar-editing' : ''">
-        <button
-            type="button"
-            class="btn btn-with-icon"
-            :class="editMode ? 'btn-primary' : 'btn-secondary-outline'"
-            @click="toggleEditMode()"
-        >
-            <span x-show="!editMode" class="btn-icon-label">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                </svg>
-                編集する
+        {# 左グループ: 編集トグル + 保存ステータスチップ #}
+        <div class="toolbar-left">
+            <button
+                type="button"
+                class="btn btn-with-icon"
+                :class="editMode ? 'btn-edit-active' : 'btn-secondary-outline'"
+                @click="toggleEditMode()"
+            >
+                <span class="btn-icon-label">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                    </svg>
+                    <span x-text="editMode ? '編集中' : '編集する'"></span>
+                </span>
+            </button>
+            <span class="autosave-chip autosave-chip-pending" x-show="saveStatus === 'pending'" x-cloak>
+                <span class="autosave-dot"></span>未保存
             </span>
-            <span x-show="editMode" x-cloak class="btn-icon-label">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                編集を終了
+            <span class="autosave-chip autosave-chip-saving" x-show="saveStatus === 'saving'" x-cloak>
+                <span class="autosave-spinner"></span>保存中…
             </span>
-        </button>
-        <span class="edit-hint" x-show="editMode && saveStatus !== 'pending' && saveStatus !== 'saving' && saveStatus !== 'error'" x-cloak>
-            ダブルクリックで編集 / Shift + Return で分割
-        </span>
-        <span class="autosave-status autosave-pending" x-show="saveStatus === 'pending'" x-cloak>
-            <span class="autosave-dot"></span>未保存の変更あり
-        </span>
-        <span class="autosave-status autosave-saving" x-show="saveStatus === 'saving'" x-cloak>
-            <span class="autosave-spinner"></span>保存中…
-        </span>
-        <span class="autosave-status autosave-saved" x-show="saveStatus === 'saved' && editMode" x-cloak>
-            ✓ 保存済み
-        </span>
-        <span class="autosave-status autosave-error" x-show="saveStatus === 'error'" x-cloak>
-            ⚠ 保存に失敗しました — 再度編集すると再試行します
-        </span>
+            <span class="autosave-chip autosave-chip-saved" x-show="saveStatus === 'saved' && editMode" x-cloak>
+                ✓ 保存済み
+            </span>
+            <span class="autosave-chip autosave-chip-error" x-show="saveStatus === 'error'" x-cloak>
+                ⚠ 保存失敗
+            </span>
+        </div>
 
-        <button type="button" class="btn btn-polish" @click="openPolish()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
-                <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-            </svg>
-            整文する
-        </button>
+        {# 右グループ: 整文する + エクスポート（常に右端固定） #}
+        <div class="toolbar-right">
+            <button type="button" class="btn btn-polish" @click="openPolish()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
+                    <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+                <span x-text="pickupWords.some(w => w.meaning.trim()) ? '登録してから整文する' : '整文する'"></span>
+            </button>
 
-        <details class="export-menu">
-            <summary class="btn btn-secondary-outline">エクスポート ▾</summary>
+            <details class="export-menu">
+                <summary class="btn btn-secondary-outline">エクスポート ▾</summary>
             <div class="export-options">
                 <a href="/api/transcripts/{{ transcript.id }}/export?format=txt" class="export-option">
                     <strong>TXT</strong><span>テキスト形式（タイムスタンプ＋話者）</span>
@@ -416,7 +412,8 @@
                 </a>
             </div>
         </details>
-    </div>
+        </div>{# /toolbar-right #}
+    </div>{# /detail-toolbar #}
 
     {# ──── セグメント一覧 ──── #}
     {% if not segments %}

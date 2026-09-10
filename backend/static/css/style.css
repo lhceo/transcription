@@ -1866,37 +1866,56 @@ a.history-item-filename:hover {
 
 .detail-toolbar {
     display: flex;
-    gap: 12px;
     align-items: center;
+    justify-content: space-between;
     margin-bottom: 12px;
     padding: 10px 14px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    /* v1.2: プレイヤーが下部固定になったため top: 8px で OK */
     position: sticky;
     top: 8px;
     z-index: 5;
 }
 
-.edit-hint {
-    flex: 1;
-    font-size: 12px;
-    color: var(--color-text-muted);
-}
-
-/* 自動保存ステータス */
-.autosave-status {
-    flex: 1;
-    font-size: 12px;
+.toolbar-left {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
 }
-.autosave-saved  { color: #1a7a3a; }
-.autosave-pending { color: #7a5300; }
-.autosave-saving  { color: #1a4fc0; }
-.autosave-error   { color: #c0392b; }
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* 編集中トグルボタン */
+.btn-edit-active {
+    background: var(--color-primary);
+    color: #fff;
+    border: 1px solid var(--color-primary);
+}
+.btn-edit-active:hover {
+    background: #2d5ec4;
+    border-color: #2d5ec4;
+}
+
+/* 自動保存チップ（色付きバッジ） */
+.autosave-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.autosave-chip-saved   { background: #d1fae5; color: #065f46; }
+.autosave-chip-pending { background: #fef3c7; color: #92400e; }
+.autosave-chip-saving  { background: #dbeafe; color: #1e40af; }
+.autosave-chip-error   { background: #fee2e2; color: #991b1b; }
 
 .autosave-dot {
     width: 7px; height: 7px;
@@ -2110,7 +2129,7 @@ a.history-item-filename:hover {
 .segment-progress-wrap {
     display: none;
     cursor: pointer;
-    padding: 6px 0 4px;     /* 上下クリック領域 */
+    padding: 6px 0 10px;    /* 上6px 下10px — テキストとの余白 */
     margin: 0 2px;
 }
 
@@ -3244,8 +3263,11 @@ a.history-item-filename:hover {
     /* === ツールバー === */
     .detail-toolbar {
         padding: 10px 12px;
-        gap: 8px;
         margin-bottom: 10px;
+    }
+
+    .toolbar-left, .toolbar-right {
+        gap: 8px;
     }
 
     .detail-toolbar .btn,
