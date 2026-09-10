@@ -141,79 +141,112 @@
 </section>
 
 {% if has_audio(transcript) %}
-{# v1.1: 音声プレイヤーを sticky 配置にして、編集中もスクロールしても操作できるように。
-   ±3 秒ボタンと速度変更ドロップダウンを併設。 #}
+{# v1.2: 音声プレイヤーをページ下部固定バーに刷新。
+   タイムライン・時刻表示・カスタム再生ボタンを配置。 #}
 <section
-    class="audio-player-section audio-player-sticky"
+    class="audio-player-section audio-player-fixed"
     x-data="audioPlayer({{ transcript.id }})"
     x-init="init()"
 >
-    <div class="audio-player-row">
-        <button
-            type="button"
-            class="audio-skip-btn"
-            @click="skipBackward()"
-            title="3 秒戻る (キーボード: ←)"
-            aria-label="3 秒戻る"
-        >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 12a9 9 0 1 0 9-9"></path>
-                <polyline points="3 5 3 12 10 12"></polyline>
-            </svg>
-            <span class="audio-skip-btn-num">3</span>
-        </button>
-        <audio
-            x-ref="audioEl"
-            controls
-            preload="none"
-            class="audio-player"
-            src="/api/transcripts/{{ transcript.id }}/audio"
-        ></audio>
-        <button
-            type="button"
-            class="audio-skip-btn"
-            @click="skipForward()"
-            title="3 秒進む (キーボード: →)"
-            aria-label="3 秒進む"
-        >
-            <span class="audio-skip-btn-num">3</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 12a9 9 0 1 1-9-9"></path>
-                <polyline points="21 5 21 12 14 12"></polyline>
-            </svg>
-        </button>
-        <select
-            class="audio-speed-select"
-            x-model="playbackRate"
-            @change="onSpeedChange()"
-            title="再生速度"
-            aria-label="再生速度"
-        >
-            <option value="0.5">0.5x</option>
-            <option value="0.75">0.75x</option>
-            <option value="1">1x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="1.75">1.75x</option>
-            <option value="2">2x</option>
-        </select>
+    {# タイムライン #}
+    <div class="player-timeline" @click="seekFromClick($event)" title="クリックでシーク">
+        <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
+        <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'"></div>
     </div>
-    <div class="audio-player-footer">
-        <button
-            type="button"
-            class="audio-delete-btn"
-            @click="confirmDelete()"
-            title="音声ファイルだけを削除します（文字起こしテキストは残ります）"
-        >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                <path d="M10 11v6M14 11v6"></path>
-                <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
-            </svg>
-            音声ファイルを削除
-        </button>
+
+    {# コントロール行 #}
+    <div class="player-controls">
+        {# 時刻表示 #}
+        <span class="player-time">
+            <span x-text="formatTime(currentTime)">0:00</span>
+            <span class="player-time-sep">/</span>
+            <span x-text="formatTime(duration)">0:00</span>
+        </span>
+
+        <div class="player-controls-center">
+            {# 3秒戻る：丸に「3」 #}
+            <button
+                type="button"
+                class="player-skip-btn"
+                @click="skipBackward()"
+                title="3秒戻る (←)"
+                aria-label="3秒戻る"
+            >3</button>
+
+            {# 再生 / 一時停止：アイコン＋テキスト #}
+            <button
+                type="button"
+                class="player-play-btn"
+                @click="togglePlay()"
+                :aria-label="paused ? '再生' : '一時停止'"
+                :title="paused ? '再生 (Space)' : '一時停止 (Space)'"
+            >
+                <svg x-show="paused" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="player-play-icon">
+                    <path d="M8 5v14l11-7z"></path>
+                </svg>
+                <svg x-show="!paused" x-cloak viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="player-play-icon">
+                    <rect x="6" y="5" width="4" height="14"></rect>
+                    <rect x="14" y="5" width="4" height="14"></rect>
+                </svg>
+                <span x-text="paused ? '再生' : '一時停止'"></span>
+            </button>
+
+            {# 3秒進む：丸に「3」 #}
+            <button
+                type="button"
+                class="player-skip-btn"
+                @click="skipForward()"
+                title="3秒進む (→)"
+                aria-label="3秒進む"
+            >3</button>
+        </div>
+
+        {# 速度 + 削除 #}
+        <div class="player-right-controls">
+            <select
+                class="audio-speed-select"
+                x-model="playbackRate"
+                @change="onSpeedChange()"
+                title="再生速度"
+                aria-label="再生速度"
+            >
+                <option value="0.5">0.5x</option>
+                <option value="0.75">0.75x</option>
+                <option value="1">1x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="1.75">1.75x</option>
+                <option value="2">2x</option>
+            </select>
+            <button
+                type="button"
+                class="audio-delete-btn"
+                @click="confirmDelete()"
+                title="音声ファイルだけを削除（テキストは残ります）"
+                aria-label="音声ファイルを削除"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                    <path d="M10 11v6M14 11v6"></path>
+                    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                </svg>
+            </button>
+        </div>
     </div>
+
+    {# 非表示オーディオ要素 #}
+    <audio
+        x-ref="audioEl"
+        preload="none"
+        src="/api/transcripts/{{ transcript.id }}/audio"
+        @timeupdate="onTimeUpdate()"
+        @durationchange="onDurationChange()"
+        @loadedmetadata="onDurationChange()"
+        @ended="paused = true"
+        @play="paused = false"
+        @pause="paused = true"
+    ></audio>
 </section>
 {% else %}
 {# v1.1: 音声ファイルが既に削除されている場合のインフォメッセージ。
@@ -424,6 +457,10 @@
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
                     {# 編集モード + この segment を編集中: textarea が表示される #}
+                    {# 再生位置バー: 編集中もどこを再生中か一目でわかる #}
+                    <div class="segment-edit-progress-wrap" x-show="shouldShowTextarea({{ seg.id }})" x-cloak>
+                        <div class="segment-edit-progress-bar"></div>
+                    </div>
                     <textarea
                         class="segment-text-edit"
                         x-show="shouldShowTextarea({{ seg.id }})"
@@ -432,6 +469,7 @@
                         @blur="onSegmentBlur($event)"
                         @input="onSegmentInput($event)"
                         @keydown="onSegmentKeydown($event)"
+                        @dblclick="seekFromTextareaDblClick($event)"
                     >{{ seg.text_content }}</textarea>
                     {# v1.0.3: 「ここで分割」ボタン。textarea にフォーカスがあるときだけ
                        表示 (CSS の :focus + 兄弟セレクタ)。 #}
@@ -701,23 +739,68 @@
 <script>
 function audioPlayer(transcriptId) {
     return {
-        // v1.1: 再生速度。LocalStorage に保存して次回も同じ速度で再生する。
         playbackRate: '1',
+        currentTime: 0,
+        duration: 0,
+        paused: true,
+
+        get progressPercent() {
+            return this.duration > 0 ? Math.min(100, (this.currentTime / this.duration) * 100) : 0;
+        },
+
+        formatTime(secs) {
+            if (!secs || isNaN(secs) || secs < 0) return '0:00';
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            const s = Math.floor(secs % 60);
+            if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            return `${m}:${String(s).padStart(2,'0')}`;
+        },
 
         init() {
-            // LocalStorage から前回設定を読み込む (なければ 1x)
             try {
                 const saved = localStorage.getItem('transcription-playback-rate');
                 if (saved && /^(0\.5|0\.75|1|1\.25|1\.5|1\.75|2)$/.test(saved)) {
                     this.playbackRate = saved;
                 }
-            } catch (_) { /* localStorage 不可環境では default 1x */ }
+            } catch (_) {}
 
-            // audio 要素に反映
             this.$nextTick(() => {
                 const audio = this.$refs.audioEl;
                 if (audio) audio.playbackRate = parseFloat(this.playbackRate);
             });
+        },
+
+        onTimeUpdate() {
+            const audio = this.$refs.audioEl;
+            if (audio) this.currentTime = audio.currentTime;
+        },
+
+        onDurationChange() {
+            const audio = this.$refs.audioEl;
+            if (audio && !isNaN(audio.duration) && isFinite(audio.duration)) {
+                this.duration = audio.duration;
+            }
+        },
+
+        seekFromClick(e) {
+            const track = e.currentTarget;
+            const rect = track.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const audio = this.$refs.audioEl;
+            if (audio && this.duration > 0) {
+                audio.currentTime = ratio * this.duration;
+            }
+        },
+
+        togglePlay() {
+            const audio = this.$refs.audioEl;
+            if (!audio) return;
+            if (audio.paused) {
+                audio.play().catch(() => {});
+            } else {
+                audio.pause();
+            }
         },
 
         onSpeedChange() {
@@ -725,10 +808,9 @@ function audioPlayer(transcriptId) {
             if (audio) audio.playbackRate = parseFloat(this.playbackRate);
             try {
                 localStorage.setItem('transcription-playback-rate', this.playbackRate);
-            } catch (_) { /* 保存失敗は無視 */ }
+            } catch (_) {}
         },
 
-        // ±3 秒スキップ。クランプを忘れずに (0 未満や duration 超過を防ぐ)
         skipBackward() {
             const audio = this.$refs.audioEl;
             if (!audio) return;
@@ -739,9 +821,7 @@ function audioPlayer(transcriptId) {
             const audio = this.$refs.audioEl;
             if (!audio) return;
             const dur = audio.duration || 0;
-            audio.currentTime = dur > 0
-                ? Math.min(dur, audio.currentTime + 3)
-                : audio.currentTime + 3;
+            audio.currentTime = dur > 0 ? Math.min(dur, audio.currentTime + 3) : audio.currentTime + 3;
         },
 
         async confirmDelete() {
@@ -751,14 +831,8 @@ function audioPlayer(transcriptId) {
             );
             if (!ok) return;
             try {
-                const res = await fetch(`/api/transcripts/${transcriptId}/audio`, {
-                    method: 'DELETE',
-                });
-                if (!res.ok) {
-                    window.showToast('音声の削除に失敗しました', 'error');
-                    return;
-                }
-                // 再生中なら停止し、セクションごと非表示にする
+                const res = await fetch(`/api/transcripts/${transcriptId}/audio`, { method: 'DELETE' });
+                if (!res.ok) { window.showToast('音声の削除に失敗しました', 'error'); return; }
                 const audio = this.$refs.audioEl;
                 if (audio) audio.pause();
                 this.$root.style.display = 'none';
@@ -980,18 +1054,18 @@ function segmentsApp(transcriptId, historyNames) {
         // sticky な音声プレイヤーの高さ分はオフセット (重ねない)
         isCardInViewport(card) {
             const rect = card.getBoundingClientRect();
-            // sticky な audio-player-section の bottom を「可視エリアの上端」とする
-            const audioSection = document.querySelector('.audio-player-sticky');
-            const topGuard = audioSection ? audioSection.getBoundingClientRect().bottom : 0;
-            // ビューポートの下端 - 余裕 (24px) を「可視エリアの下端」とする
-            return rect.top >= topGuard && rect.top <= window.innerHeight - 24;
+            // v1.2: プレイヤーが下部固定になったため、上端ガードは不要。
+            // 下端ガード: 固定プレイヤーの高さ (~64px) + 余裕 (16px)
+            const playerSection = document.querySelector('.audio-player-fixed');
+            const bottomGuard = playerSection ? playerSection.offsetHeight + 16 : 80;
+            return rect.top >= 16 && rect.top <= window.innerHeight - bottomGuard;
         },
 
         // v1.1: 該当カードまで smooth scroll する。scroll-margin-top を CSS で
         // 設定済みなので、sticky プレイヤーに隠れない位置に止まる。
         doAutoScroll(card) {
             this.isAutoScrolling = true;
-            card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             // smooth scroll 完了の callback は browser API になく、500ms 経過で
             // 「完了とみなす」素朴な実装。途中でユーザーがホイール/タッチで
             // 介入したらそれが優先される。
@@ -1195,21 +1269,43 @@ function segmentsApp(transcriptId, historyNames) {
         // テキストを更新する。文字数 × ratio の位置で分割。
         applyProgressToCard(card, ratio) {
             const div = card.querySelector('.segment-text');
-            if (!div) return;
-            const progressSpan = div.querySelector('.segment-text-progress');
-            const remainSpan = div.querySelector('.segment-text-remaining');
-            if (!progressSpan || !remainSpan) return;
-            const fullText = (progressSpan.textContent || '') + (remainSpan.textContent || '');
-            const n = Math.floor(fullText.length * ratio);
-            const progressText = fullText.substring(0, n);
-            const remainText = fullText.substring(n);
-            // 値が変わったときだけ DOM 更新 (timeupdate ごとの無駄な書き換えを抑える)
-            if (progressSpan.textContent !== progressText) {
-                progressSpan.textContent = progressText;
+            if (div) {
+                const progressSpan = div.querySelector('.segment-text-progress');
+                const remainSpan = div.querySelector('.segment-text-remaining');
+                if (progressSpan && remainSpan) {
+                    const fullText = (progressSpan.textContent || '') + (remainSpan.textContent || '');
+                    const n = Math.floor(fullText.length * ratio);
+                    const progressText = fullText.substring(0, n);
+                    const remainText = fullText.substring(n);
+                    if (progressSpan.textContent !== progressText) progressSpan.textContent = progressText;
+                    if (remainSpan.textContent !== remainText) remainSpan.textContent = remainText;
+                }
             }
-            if (remainSpan.textContent !== remainText) {
-                remainSpan.textContent = remainText;
+            // 編集中セグメントにも進行バーを反映（編集中でも再生位置がわかる）
+            const editBar = card.querySelector('.segment-edit-progress-bar');
+            if (editBar) {
+                const pct = Math.round(ratio * 1000) / 10;
+                editBar.style.width = pct + '%';
             }
+        },
+
+        // ダブルクリックで該当テキスト位置付近から再生
+        seekFromTextareaDblClick(e) {
+            const ta = e.currentTarget;
+            const card = ta.closest('.segment-card');
+            if (!card) return;
+            const start = parseFloat(card.dataset.startSeconds) || 0;
+            const end = parseFloat(card.dataset.endSeconds) || (start + 5);
+            const dur = Math.max(0, end - start);
+            // dblclick 後はブラウザがカーソルを単語先頭に置くので selectionStart を使う
+            const charPos = ta.selectionStart || 0;
+            const totalLen = ta.value.length || 1;
+            const ratio = Math.max(0, Math.min(1, charPos / totalLen));
+            const seekTo = start + ratio * dur;
+            const audio = document.querySelector('.audio-player-section audio');
+            if (!audio) return;
+            audio.currentTime = seekTo;
+            if (audio.paused) audio.play().catch(() => {});
         },
 
         // v1.1 Option C: 各カードの segment-text div / textarea / 分割ボタンの
