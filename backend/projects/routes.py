@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, User
+from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -85,6 +85,12 @@ class MemberUpdate(BaseModel):
 
 class VocabularyAdd(BaseModel):
     word: str
+    meaning: str | None = None
+    reading: str | None = None
+
+
+class VocabularyUpdate(BaseModel):
+    word: str | None = None
     meaning: str | None = None
     reading: str | None = None
 
@@ -427,16 +433,25 @@ async def update_member(
     if not member or member.project_id != project_id:
         raise HTTPException(status_code=404, detail="メンバーが見つかりません")
 
-    if body.name is not None:
+    fields = body.model_fields_set
+    if 'name' in fields:
         member.name = body.name
-    if body.company is not None:
+    if 'company' in fields:
         member.company = body.company
-    if body.job_title is not None:
+    if 'job_title' in fields:
         member.job_title = body.job_title
-    if body.project_role is not None:
+    if 'project_role' in fields:
         member.project_role = body.project_role
     db.commit()
-    return JSONResponse({"id": member.id, "project_role": member.project_role})
+    display = _member_display_name(member)
+    return JSONResponse({
+        "id": member.id,
+        "display_name": display,
+        "company": member.company,
+        "job_title": member.job_title,
+        "project_role": member.project_role,
+        "is_internal": member.user_id is not None,
+    })
 
 
 @router.delete("/api/projects/{project_id}/members/{member_id}")
@@ -494,6 +509,34 @@ async def delete_vocabulary(
     db.delete(vocab)
     db.commit()
     return JSONResponse({"ok": True})
+
+
+@router.patch("/api/projects/{project_id}/vocabulary/{vocab_id}")
+async def update_vocabulary(
+    project_id: int,
+    vocab_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: VocabularyUpdate,
+) -> JSONResponse:
+    """固有名詞を更新する。"""
+    _get_project_or_404(project_id, user["id"], db)
+    vocab = db.get(ProjectVocabulary, vocab_id)
+    if not vocab or vocab.project_id != project_id:
+        raise HTTPException(status_code=404, detail="単語が見つかりません")
+    fields = body.model_fields_set
+    if 'word' in fields:
+        word = (body.word or "").strip()
+        if not word:
+            raise HTTPException(status_code=400, detail="単語は必須です")
+        vocab.word = word
+    if 'reading' in fields:
+        vocab.reading = body.reading.strip() if body.reading else None
+    if 'meaning' in fields:
+        vocab.meaning = body.meaning.strip() if body.meaning else None
+    db.commit()
+    db.refresh(vocab)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
 
 
 @router.get("/api/projects/{project_id}/available-transcripts")
@@ -755,16 +798,41 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
     if transcript.meeting_date:
         meeting_date_str = transcript.meeting_date.strftime("%Y年%m月%d日 %H:%M")
 
+    # PJT添付資料のサマリーを収集
+    project_attachment_summaries: list[str] | None = None
+    if project:
+        pjt_attachments = list(db.scalars(
+            select(Attachment)
+            .where(Attachment.project_id == project.id, Attachment.processed_summary.isnot(None))
+        ))
+        if pjt_attachments:
+            project_attachment_summaries = [
+                f"[{a.title}]\n{a.processed_summary}" for a in pjt_attachments
+            ]
+
+    # MTG添付資料のサマリーを収集
+    mtg_attachment_summaries: list[str] | None = None
+    mtg_attachments = list(db.scalars(
+        select(Attachment)
+        .where(Attachment.transcript_id == transcript.id, Attachment.processed_summary.isnot(None))
+    ))
+    if mtg_attachments:
+        mtg_attachment_summaries = [
+            f"[{a.title}]\n{a.processed_summary}" for a in mtg_attachments
+        ]
+
     return build_context_text(
         project_name=project.name if project else None,
         project_description=project.description if project else None,
         members=members or None,
         vocabulary=vocabulary or None,
+        project_attachments_summaries=project_attachment_summaries,
         meeting_date=meeting_date_str,
         meeting_location=transcript.meeting_location,
         meeting_overview=transcript.overview,
         meeting_purpose=transcript.meeting_purpose,
         meeting_agenda=transcript.meeting_agenda,
+        mtg_attachments_summaries=mtg_attachment_summaries,
     )
 
 
@@ -897,7 +965,20 @@ async def polish_run(
         if extra_lines:
             context_text += f"\n【追加固有名詞（今回登録）】\n{extra_lines}"
 
-    seg_dicts = [{"id": s.id, "text": s.text_content} for s in segments]
+    # 話者名マップを構築して整文コンテキストに渡す
+    speakers_for_map = list(db.scalars(
+        select(Speaker).where(Speaker.transcript_id == transcript_id)
+    ))
+    speaker_name_map = {s.speaker_label: (s.display_name or s.speaker_label) for s in speakers_for_map}
+
+    seg_dicts = [
+        {
+            "id": s.id,
+            "speaker": s.display_name or speaker_name_map.get(s.speaker_label, s.speaker_label),
+            "text": s.text_content,
+        }
+        for s in segments
+    ]
 
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)

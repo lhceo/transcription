@@ -238,8 +238,10 @@
     <div class="history-header">
         <h3 class="section-title">これまでの文字起こし</h3>
         <span class="history-count">{{ transcripts|length }} 件</span>
-        {# 完了通知の許可ボタン。Notification API が使えて未決定のときのみ表示。
+        {# 完了通知の許可ボタン。過去に 1 件以上アップロード履歴がある場合のみ表示。
+           Notification API が使えて未決定のときのみ表示 (JS 側でさらに制御)。
            クリックイベントの直接ハンドラでないと Chrome が許可ダイアログを出さない。 #}
+        {% if transcripts and transcripts|length > 0 %}
         <button
             type="button"
             class="notify-opt-in-btn"
@@ -252,6 +254,7 @@
                 });
             })(this)"
         >🔔 完了時に通知</button>
+        {% endif %}
         {# ソートドロップダウン: 履歴が 2 件以上ある時のみ表示 #}
         {% if transcripts and transcripts|length > 1 %}
         <label class="history-sort">
@@ -269,6 +272,19 @@
         </label>
         {% endif %}
     </div>
+    {# クライアントサイド検索ボックス #}
+    {% if transcripts %}
+    <div class="history-search-wrap">
+        <input
+            type="search"
+            class="history-search-input"
+            x-model="searchQuery"
+            @input="applyFilter()"
+            placeholder="タイトルや話者名で検索…"
+            aria-label="文字起こし履歴を検索"
+        >
+    </div>
+    {% endif %}
     <ul id="history-list" class="history-list">
         {% if transcripts %}
             {% for transcript in transcripts %}
@@ -606,9 +622,27 @@ function rowEditor(transcriptId) {
 // v1.0.2: 履歴一覧のクライアント側ソート。4 モード (日付昇降・名前昇降)。
 // アップロードフォームからの cleanup-request カスタムイベントにも反応し、
 // 「古い順」に切り替えるショートカットとして機能する。
+// 検索: タイトル (data-sort-name) または話者名 (data-speakers) を対象に
+// リアルタイムフィルタリング。動的追加行は MutationObserver で対応。
 function historyList() {
     return {
         sortMode: 'date-desc',
+        searchQuery: '',
+        _observer: null,
+
+        init() {
+            // MutationObserver: HTMX で動的に追加された行にも検索フィルタを適用する
+            const list = document.getElementById('history-list');
+            if (!list) return;
+            this._observer = new MutationObserver(() => {
+                this.applyFilter();
+            });
+            this._observer.observe(list, { childList: true });
+        },
+
+        destroy() {
+            if (this._observer) this._observer.disconnect();
+        },
 
         applySort() {
             const list = document.getElementById('history-list');
@@ -631,6 +665,22 @@ function historyList() {
             });
             // DOM 上で並び替え
             items.forEach(item => list.appendChild(item));
+        },
+
+        applyFilter() {
+            const list = document.getElementById('history-list');
+            if (!list) return;
+            const q = (this.searchQuery || '').trim().toLowerCase();
+            const items = Array.from(list.querySelectorAll('.history-item'));
+            items.forEach(item => {
+                if (!q) {
+                    item.style.display = '';
+                    return;
+                }
+                const name = (item.dataset.sortName || '').toLowerCase();
+                const speakers = (item.dataset.speakers || '').toLowerCase();
+                item.style.display = (name.includes(q) || speakers.includes(q)) ? '' : 'none';
+            });
         },
 
         // アップロードフォームからの「整理リンク」イベントで呼ばれる

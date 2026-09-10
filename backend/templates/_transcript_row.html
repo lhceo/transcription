@@ -4,6 +4,7 @@
 {% set is_pending = transcript.status in ('uploaded', 'processing') %}
 {% set audio_available = transcript.status == 'completed' and has_audio(transcript) %}
 {% set display_label = display_name(transcript) %}
+{% set speakers_str = transcript.speakers | map(attribute='display_name') | join(' ') %}
 <li
     class="history-item"
     id="transcript-{{ transcript.id }}"
@@ -12,6 +13,7 @@
     data-sort-name="{{ display_label }}"
     data-initial-name="{{ display_label }}"
     data-original-filename="{{ transcript.original_filename }}"
+    data-speakers="{{ speakers_str }}"
     {% if is_pending %}
     hx-get="/api/transcripts/{{ transcript.id }}/row"
     hx-trigger="every 5s"
@@ -23,7 +25,7 @@
             <span class="history-item-icon">🎵</span>
             {# 通常表示: ファイル名 (リンク or 静的テキスト) + 鉛筆ボタン #}
             <div class="history-item-name-display" x-show="!editing">
-                {% if transcript.status == 'completed' %}
+                {% if transcript.status in ('completed', 'processing') %}
                     <a href="/transcripts/{{ transcript.id }}" class="history-item-filename" x-text="currentName"></a>
                 {% else %}
                     <span class="history-item-filename" x-text="currentName"></span>

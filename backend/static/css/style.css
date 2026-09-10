@@ -963,6 +963,22 @@ body:has(.audio-player-fixed) {
     border-color: var(--color-primary);
 }
 
+/* 音声削除ボタンラッパー（ボタン + 「音声のみ削除」ラベル） */
+.audio-delete-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.audio-delete-label {
+    font-size: 9px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    line-height: 1;
+    pointer-events: none;
+}
+
 /* 音声削除ボタン */
 .audio-delete-btn {
     display: inline-flex;
@@ -1471,6 +1487,39 @@ body:has(.audio-player-fixed) {
     border-color: var(--color-primary);
 }
 
+/* 履歴クライアントサイド検索ボックス */
+.history-search-wrap {
+    margin-bottom: 12px;
+}
+
+.history-search-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-sizing: border-box;
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.history-search-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+.history-search-input:hover {
+    border-color: var(--color-primary);
+}
+
+.history-search-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
 /* v1.0.2: アップロード時の「古いものから整理する」リンク */
 .upload-cleanup-link {
     display: inline-block;
@@ -1973,16 +2022,7 @@ a.history-item-filename:hover {
 
 .export-menu {
     position: relative;
-}
-
-.export-menu summary {
-    list-style: none;
-    cursor: pointer;
     display: inline-block;
-}
-
-.export-menu summary::-webkit-details-marker {
-    display: none;
 }
 
 .export-options {
@@ -4253,6 +4293,43 @@ a.history-item-filename:hover {
     color: var(--color-text-muted);
     font-weight: 400;
     margin-left: 6px;
+}
+
+/* MTG 情報ヘッダー: タイトルとサブテキストを縦並びにするラッパー */
+.detail-section-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* 「入力すると整文の精度が上がります」サブテキスト */
+.mtg-info-polish-hint {
+    font-size: 12px;
+    color: var(--color-primary, #3b82f6);
+    opacity: 0.8;
+    font-weight: 400;
+    padding-left: 22px; /* カレンダーアイコン幅分インデント */
+}
+
+/* 編集モード開始ヒント（2秒で自動消滅） */
+.edit-mode-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px 0;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--color-primary, #3b82f6);
+    background: rgba(59, 130, 246, 0.07);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 6px;
+    pointer-events: none;
+    animation: edit-hint-fade 0.25s ease;
+}
+@keyframes edit-hint-fade {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* MTG 情報セクション */

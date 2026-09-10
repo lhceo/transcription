@@ -149,11 +149,23 @@ async def pickup_proper_nouns(
 ) -> list[str]:
     """文字起こしテキストから未登録の固有名詞候補を抽出する。"""
     registered_str = "、".join(registered_words) if registered_words else "（なし）"
+    # 長い音声でも後半の用語を取りこぼさないよう先頭・中間・末尾からサンプリング
+    n = len(transcript_text)
+    if n <= 3000:
+        sample = transcript_text
+    else:
+        chunk = 1000
+        mid = n // 2
+        sample = (
+            transcript_text[:chunk] + "\n…\n" +
+            transcript_text[mid - chunk // 2: mid + chunk // 2] + "\n…\n" +
+            transcript_text[-chunk:]
+        )
     prompt = f"""以下の文字起こしテキストから固有名詞・専門用語を抽出してください。
 登録済みの語句は除外してください: {registered_str}
 
 【文字起こし】
-{transcript_text[:3000]}"""  # 先頭3000文字で十分
+{sample}"""
 
     try:
         message = await client.messages.create(
@@ -174,21 +186,23 @@ async def pickup_proper_nouns(
 
 POLISH_SYSTEM = """あなたは日本語の文字起こし校正アシスタントです。
 粗い音声認識テキストを正確に整えてください。
+整形後のテキストは議事録や要件定義書への貼り付けを想定しています。
 
 ルール:
 1. フィラー（えー、あのー、うーん、まあ、えっと 等）を除去する
 2. 固有名詞辞書・添付資料の情報をもとに、誤認識と思われる箇所を修正する
-3. 話者ラベルと発言順序は絶対に変えない
+3. 話者情報は参考にして判断に活かすが、発言順序は絶対に変えない
 4. 内容の要約・省略・補完・追記は一切しない
-5. 判断できない箇所は原文のままにする
-6. 各セグメントを必ず同じJSON形式で返す"""
+5. 句読点・敬語・体言止めのブレを統一する
+6. 判断できない箇所は原文のままにする
+7. 各セグメントを必ず同じJSON形式で返す"""
 
 POLISH_USER_TEMPLATE = """{context}
 
 【文字起こし（JSON形式）】
 {segments_json}
 
-上記の文字起こしを整えてください。
+上記の文字起こしを整えてください。speakerフィールドは参考情報です。
 必ず以下のJSON形式で返してください（セグメント数・id は変えないこと）:
 {{"segments": [{{"id": <id>, "text": "<整文後のテキスト>"}}]}}"""
 
@@ -218,7 +232,7 @@ async def run_polish(
     model_id = MODELS.get(model_key, MODELS["haiku"])["id"]
 
     segments_json = json.dumps(
-        [{"id": s["id"], "text": s["text"]} for s in segments],
+        [{"id": s["id"], "speaker": s.get("speaker", ""), "text": s["text"]} for s in segments],
         ensure_ascii=False,
         indent=2,
     )

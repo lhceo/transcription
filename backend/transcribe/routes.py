@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -630,6 +630,13 @@ async def update_transcript_project(
     transcript = db.get(Transcript, transcript_id)
     if transcript is None or transcript.user_id != user["id"] or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # プロジェクトの所有権を確認する
+    if body.project_id is not None:
+        project = db.get(Project, body.project_id)
+        if project is None or project.created_by_user_id != user["id"]:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
     transcript.project_id = body.project_id
 
     # プロジェクトに追加する場合、話者→People リンクからメンバーを自動取り込み
@@ -747,6 +754,11 @@ async def transcript_detail(
     except (ValueError, TypeError):
         meeting_participants = []
 
+    # パンくず用プロジェクト情報
+    breadcrumb_project = None
+    if transcript.project_id:
+        breadcrumb_project = db.get(Project, transcript.project_id)
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -764,6 +776,7 @@ async def transcript_detail(
             "people_registry": people_registry,
             "meeting_participants": meeting_participants,
             "is_owner": is_owner,
+            "breadcrumb_project": breadcrumb_project,
         },
     )
 
@@ -829,7 +842,7 @@ async def get_transcript_status(
 ) -> JSONResponse:
     """軽量なステータス確認用 JSON エンドポイント。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _can_access(transcript, user["id"], db):
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     return JSONResponse(
@@ -1086,6 +1099,12 @@ async def split_segment(
 
     full_text = segment.text_content or ""
     position = max(0, min(position, len(full_text)))
+
+    if position == 0 or position >= len(full_text):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_POSITION", "message": "先頭または末尾では分割できません"},
+        )
 
     before = full_text[:position].rstrip()
     after = full_text[position:].lstrip()

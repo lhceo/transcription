@@ -29,7 +29,7 @@ from backend.db import get_db
 from backend.db.models import SpeakerHistory, Transcript, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from typing import Annotated
@@ -501,14 +501,16 @@ async def clear_speaker_history(
         target = db.get(User, user_id)
         if target is None:
             raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-        count = db.query(SpeakerHistory).filter(SpeakerHistory.user_id == user_id).delete()
+        result = db.execute(delete(SpeakerHistory).where(SpeakerHistory.user_id == user_id))
+        count = result.rowcount
     else:
         # 管理者ユーザーの ID を除外
         admin_ids = [u.id for u in db.scalars(select(User).where(User.email == settings.admin_email))]
-        q = db.query(SpeakerHistory)
+        stmt = delete(SpeakerHistory)
         if admin_ids:
-            q = q.filter(SpeakerHistory.user_id.notin_(admin_ids))
-        count = q.delete()
+            stmt = stmt.where(SpeakerHistory.user_id.notin_(admin_ids))
+        result = db.execute(stmt)
+        count = result.rowcount
     db.commit()
     logger.info("話者履歴クリア by %s: %d 件削除 (target_user_id=%s)", user["email"], count, user_id)
     return JSONResponse({"deleted": count})
@@ -565,12 +567,10 @@ async def admin_user_transcripts(
         )
     )
 
-    def audio_exists(tid: int) -> bool:
-        if _AUDIO_DIR.exists():
-            for f in _AUDIO_DIR.iterdir():
-                if f.stem == str(tid):
-                    return True
-        return False
+    # O(1)検索のためにstemの辞書を事前構築
+    audio_stems: set[str] = set()
+    if _AUDIO_DIR.exists():
+        audio_stems = {f.stem for f in _AUDIO_DIR.iterdir()}
 
     result = []
     for t in rows:
@@ -582,7 +582,7 @@ async def admin_user_transcripts(
             "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
             "duration_sec": t.audio_duration_seconds,
             "file_size_bytes": t.file_size_bytes,
-            "has_audio": audio_exists(t.id),
+            "has_audio": str(t.id) in audio_stems,
         })
 
     return JSONResponse({"transcripts": result, "user": {"name": target.name, "email": target.email}})
