@@ -1890,15 +1890,51 @@ a.history-item-filename:hover {
     gap: 12px;
 }
 
-/* 編集中トグルボタン */
-.btn-edit-active {
-    background: var(--color-primary);
-    color: #fff;
-    border: 1px solid var(--color-primary);
+/* 編集スイッチトグル */
+.edit-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    cursor: pointer;
+    font-family: inherit;
 }
-.btn-edit-active:hover {
-    background: #2d5ec4;
-    border-color: #2d5ec4;
+
+.edit-toggle-track {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: #cbd5e1;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+.edit-toggle-track.is-on {
+    background: var(--color-primary);
+}
+
+.edit-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    transition: transform 0.2s ease;
+}
+.edit-toggle-track.is-on .edit-toggle-thumb {
+    transform: translateX(20px);
+}
+
+.edit-toggle-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
 }
 
 /* 自動保存チップ（色付きバッジ） */
@@ -2056,6 +2092,43 @@ a.history-item-filename:hover {
     align-items: center;
     gap: 10px;
     margin-bottom: 8px;
+}
+
+/* ホバーアクション（削除など） */
+.segment-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+.segment-card:hover .segment-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.segment-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: background 0.1s, color 0.1s;
+}
+.segment-action-btn:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+.segment-action-btn svg {
+    width: 15px;
+    height: 15px;
 }
 
 .speaker-badge {

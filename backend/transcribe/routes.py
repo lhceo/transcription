@@ -995,6 +995,29 @@ async def update_segment(
     )
 
 
+# ── セグメント削除 ────────────────────────────────────────────────────
+
+
+@router.delete("/api/segments/{segment_id}", status_code=200)
+async def delete_segment(
+    segment_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメント1件を削除する。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    db.delete(segment)
+    db.commit()
+    return JSONResponse({"deleted": segment_id})
+
+
 # ── セグメント保存確認（自動保存の自己検証用） ─────────────────────
 
 
