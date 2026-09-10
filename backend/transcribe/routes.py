@@ -551,11 +551,10 @@ async def get_audio(
     Range リクエストは FileResponse が自動で扱う（シーク・部分再生に対応）。
     """
     transcript = db.get(Transcript, transcript_id)
-    if (
-        transcript is None
-        or not _can_access(transcript, user["id"], db)
-        or transcript.deleted_at is not None
-    ):
+    is_admin = user["email"].lower() == settings.admin_email
+    if transcript is None or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    if not is_admin and not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     path = find_stored_audio(transcript_id)
@@ -1209,7 +1208,10 @@ async def export_transcript(
 ) -> Response:
     """文字起こしを TXT / SRT / JSON でダウンロード。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
+    is_admin = user["email"].lower() == settings.admin_email
+    if transcript is None or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    if not is_admin and not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     segments = list(
