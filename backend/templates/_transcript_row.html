@@ -117,7 +117,7 @@
         <div class="history-item-project-wrap"
              x-data="projectAssigner({{ transcript.id }}, {{ transcript.project_id or 'null' }})"
              @click.outside="open = false">
-            <span class="history-item-project-tag" x-show="projectId && projectName" x-text="projectName" x-cloak></span>
+            <a class="history-item-project-tag" x-show="projectId && projectName" x-text="projectName" :href="'/projects/' + projectId" x-cloak></a>
             <button type="button"
                     class="history-item-project-btn"
                     :class="{ 'has-project': projectId }"

@@ -4907,6 +4907,13 @@ a.history-item-filename:hover {
     max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-decoration: none;
+    cursor: pointer;
+}
+.history-item-project-tag:hover {
+    background: rgba(59,130,246,0.16);
+    border-color: rgba(59,130,246,0.4);
+    text-decoration: underline;
 }
 .history-item-project-btn {
     display: flex;
