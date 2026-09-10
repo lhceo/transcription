@@ -495,6 +495,37 @@ async def delete_vocabulary(
     return JSONResponse({"ok": True})
 
 
+@router.get("/api/projects/{project_id}/available-transcripts")
+async def available_transcripts_for_project(
+    project_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """このプロジェクトにまだ追加されていない完了済み文字起こし一覧を返す。"""
+    _get_project_or_404(project_id, user["id"], db)
+    rows = list(db.scalars(
+        select(Transcript)
+        .where(
+            Transcript.user_id == user["id"],
+            Transcript.status == "completed",
+            Transcript.deleted_at.is_(None),
+            (Transcript.project_id != project_id) | Transcript.project_id.is_(None),
+        )
+        .order_by(Transcript.created_at.desc())
+        .limit(200)
+    ))
+    return JSONResponse([
+        {
+            "id": t.id,
+            "name": transcript_display_name(t),
+            "created_at": t.created_at.strftime("%Y/%m/%d"),
+            "duration_seconds": t.audio_duration_seconds,
+            "project_id": t.project_id,
+        }
+        for t in rows
+    ])
+
+
 # ── アップロードフォーム用 API ───────────────────────────────────────────────
 
 @router.get("/api/themes-list")

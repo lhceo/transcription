@@ -4296,6 +4296,68 @@ a.history-item-filename:hover {
 .pjt-empty { padding: 24px 0; text-align: center; }
 .pjt-empty p { margin: 4px 0; }
 
+/* 既存データ追加ドロップダウン */
+.pjt-add-existing-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 200;
+    width: 340px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    padding: 8px 0;
+}
+.pjt-add-existing-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: 4px 14px 8px;
+}
+.pjt-add-existing-empty {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    padding: 8px 14px 12px;
+}
+.pjt-add-existing-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.pjt-add-existing-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+}
+.pjt-add-existing-item:hover { background: var(--color-hover); }
+.pjt-add-existing-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.pjt-add-existing-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+.pjt-add-existing-meta {
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
 /* メンバーリスト（サイドバー用コンパクト） */
 .pjt-inline-form { margin-bottom: 14px; }
 .pjt-member-list {

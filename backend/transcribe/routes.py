@@ -18,12 +18,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import Person, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -631,8 +631,39 @@ async def update_transcript_project(
     if transcript is None or transcript.user_id != user["id"] or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     transcript.project_id = body.project_id
+
+    # プロジェクトに追加する場合、話者→People リンクからメンバーを自動取り込み
+    imported = 0
+    if body.project_id:
+        speakers = list(db.scalars(
+            select(Speaker)
+            .options(selectinload(Speaker.person))
+            .where(Speaker.transcript_id == transcript_id, Speaker.person_id.isnot(None))
+        ))
+        existing_names = {
+            (m.name or "").lower()
+            for m in db.scalars(
+                select(ProjectMember).where(ProjectMember.project_id == body.project_id)
+            )
+        }
+        for s in speakers:
+            p = s.person
+            if p is None:
+                continue
+            if p.name.lower() in existing_names:
+                continue
+            db.add(ProjectMember(
+                project_id=body.project_id,
+                name=p.name,
+                company=p.company,
+                job_title=p.job_title,
+                project_role=p.role,
+            ))
+            existing_names.add(p.name.lower())
+            imported += 1
+
     db.commit()
-    return JSONResponse({"ok": True, "project_id": body.project_id})
+    return JSONResponse({"ok": True, "project_id": body.project_id, "members_imported": imported})
 
 
 @router.get("/api/transcripts/{transcript_id}/row", response_class=HTMLResponse)

@@ -50,7 +50,33 @@
         <section class="pjt-main">
             <div class="pjt-section-header">
                 <h2 class="pjt-section-title">音声データ</h2>
-                <a href="/" class="btn btn-outline btn-sm">＋ アップロード</a>
+                <div style="display:flex;gap:8px;align-items:center;position:relative">
+                    <a href="/" class="btn btn-outline btn-sm">＋ アップロード</a>
+                    <div x-data="transcriptAdder({{ project.id }})">
+                        <button class="btn btn-outline btn-sm" @click="toggle()" type="button">既存データを追加</button>
+                        <div class="pjt-add-existing-dropdown" x-show="open" x-cloak @click.outside="open=false">
+                            <p class="pjt-add-existing-label">追加するデータを選択</p>
+                            <template x-if="loading">
+                                <p class="pjt-add-existing-empty">読み込み中…</p>
+                            </template>
+                            <template x-if="!loading && items.length === 0">
+                                <p class="pjt-add-existing-empty">追加できるデータがありません</p>
+                            </template>
+                            <template x-if="!loading && items.length > 0">
+                                <ul class="pjt-add-existing-list">
+                                    <template x-for="t in items" :key="t.id">
+                                        <li>
+                                            <button class="pjt-add-existing-item" type="button" @click="add(t.id)" :disabled="adding">
+                                                <span class="pjt-add-existing-name" x-text="t.name"></span>
+                                                <span class="pjt-add-existing-meta" x-text="t.created_at + (t.duration_seconds ? ' · ' + formatDuration(t.duration_seconds) : '')"></span>
+                                            </button>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </template>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {% if related_transcripts %}
@@ -92,7 +118,7 @@
             {% else %}
             <div class="pjt-empty">
                 <p class="text-muted">まだ音声データがありません。</p>
-                <p class="text-muted" style="font-size:13px;">アップロード時にこのプロジェクトを選択すると、ここに表示されます。</p>
+                <p class="text-muted" style="font-size:13px;">アップロード時にこのプロジェクトを選択するか、「既存データを追加」で登録済みデータを追加できます。</p>
             </div>
             {% endif %}
         </section>
@@ -391,6 +417,64 @@ function projectDetail() {
             } catch (e) {
                 window.showToast('削除に失敗しました', 'error');
             }
+        },
+    };
+}
+
+function transcriptAdder(projectId) {
+    return {
+        open: false,
+        loading: false,
+        adding: false,
+        items: [],
+
+        async toggle() {
+            if (!this.open && this.items.length === 0) {
+                await this.load();
+            }
+            this.open = !this.open;
+        },
+
+        async load() {
+            this.loading = true;
+            try {
+                const res = await fetch(`/api/projects/${projectId}/available-transcripts`);
+                if (res.ok) this.items = await res.json();
+            } catch (e) {
+                window.showToast('読み込みに失敗しました', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async add(transcriptId) {
+            this.adding = true;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/project`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: projectId }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const data = await res.json();
+                const msg = data.members_imported > 0
+                    ? `追加しました（メンバー ${data.members_imported} 人を自動登録）`
+                    : '追加しました';
+                window.showToast(msg, 'success');
+                location.reload();
+            } catch (e) {
+                window.showToast('追加に失敗しました', 'error');
+            } finally {
+                this.adding = false;
+            }
+        },
+
+        formatDuration(seconds) {
+            if (!seconds) return '';
+            const m = Math.floor(seconds / 60);
+            const h = Math.floor(m / 60);
+            const rm = m % 60;
+            return h > 0 ? `${h}時間${rm > 0 ? rm + '分' : ''}` : `${rm}分`;
         },
     };
 }
