@@ -151,8 +151,10 @@
     <div class="player-inner">
     {# タイムライン #}
     <div class="player-timeline" @click="seekFromClick($event)" title="クリックでシーク">
-        <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
-        <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'"></div>
+        <div class="player-timeline-track">
+            <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
+            <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'"></div>
+        </div>
     </div>
 
     {# コントロール行 #}
@@ -459,8 +461,10 @@
                     <div class="segment-progress-wrap"
                          @click="seekFromSegmentBar($event)"
                          title="クリックでこの位置から再生">
-                        <div class="segment-progress-bar"></div>
-                        <div class="segment-progress-thumb"></div>
+                        <div class="segment-progress-track">
+                            <div class="segment-progress-bar"></div>
+                            <div class="segment-progress-thumb"></div>
+                        </div>
                     </div>
 
                     {# v1.1 Option C インラインエディタ #}
@@ -797,7 +801,7 @@ function audioPlayer(transcriptId) {
         },
 
         seekFromClick(e) {
-            const track = e.currentTarget;
+            const track = e.currentTarget.querySelector('.player-timeline-track') || e.currentTarget;
             const rect = track.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             const audio = this.$refs.audioEl;
@@ -1307,12 +1311,13 @@ function segmentsApp(transcriptId, historyNames) {
         // セグメント内タイムラインバーのクリックでシーク
         seekFromSegmentBar(e) {
             const wrap = e.currentTarget;
+            const track = wrap.querySelector('.segment-progress-track') || wrap;
             const card = wrap.closest('.segment-card');
             if (!card) return;
             const start = parseFloat(card.dataset.startSeconds) || 0;
             const end = parseFloat(card.dataset.endSeconds) || (start + 5);
             const dur = Math.max(0, end - start);
-            const rect = wrap.getBoundingClientRect();
+            const rect = track.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             const seekTo = start + ratio * dur;
             const audio = document.querySelector('.audio-player-section audio');
