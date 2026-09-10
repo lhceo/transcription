@@ -801,6 +801,7 @@ html, body {
 /* 数字を円弧の中央に重ねる */
 .audio-skip-btn-num {
     position: absolute;
+    z-index: 1;
     font-size: 9px;
     font-weight: 800;
     line-height: 1;
@@ -808,6 +809,7 @@ html, body {
     left: 50%;
     transform: translate(-50%, -46%);
     pointer-events: none;
+    color: currentColor;
 }
 
 /* v1.1: 再生速度ドロップダウン (LocalStorage に保存) */
