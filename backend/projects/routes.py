@@ -704,6 +704,19 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
                 "project_role": " / ".join(filter(None, [p.job_title, p.role])),
             })
 
+    # meeting_participants を members に補完する（PJTメンバー・話者と重複する名前は除外）
+    if transcript.meeting_participants:
+        try:
+            import json as _json2
+            participant_names = _json2.loads(transcript.meeting_participants)
+            existing_names = {m["display_name"].lower() for m in members}
+            for name in participant_names:
+                if name and name.strip() and name.lower() not in existing_names:
+                    members.append({"display_name": name.strip(), "company": "", "project_role": ""})
+                    existing_names.add(name.lower())
+        except Exception:
+            pass
+
     meeting_date_str = None
     if transcript.meeting_date:
         meeting_date_str = transcript.meeting_date.strftime("%Y年%m月%d日 %H:%M")
