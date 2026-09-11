@@ -1511,8 +1511,8 @@ function segmentsApp(transcriptId, historyNames) {
                     splitBtn.style.display = isEditingThis ? 'flex' : 'none';
                     if (isEditingThis) this._updateSplitBtnPos(card);
                 }
-                // タイムラインバー: 編集中のみ表示（view modeはカラオケハイライトで代替）
-                if (progressWrap) progressWrap.style.display = isEditingThis ? 'block' : 'none';
+                // タイムラインバー: 編集中はオーバーレイカラオケで代替するため常に非表示
+                if (progressWrap) progressWrap.style.display = 'none';
             });
         },
 
