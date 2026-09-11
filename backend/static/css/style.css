@@ -5850,6 +5850,17 @@ a.history-item-filename:hover {
     border-color: var(--color-primary);
     background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
 }
+
+@keyframes file-added-flash {
+    0%   { background: color-mix(in srgb, var(--color-primary) 20%, var(--color-bg));
+           border-color: var(--color-primary); }
+    60%  { background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+           border-color: var(--color-primary); }
+    100% { background: var(--color-bg); border-color: var(--color-border); }
+}
+.multi-file-item--new {
+    animation: file-added-flash 0.9s ease-out forwards;
+}
 .multi-drag-handle {
     color: var(--color-text-muted);
     flex-shrink: 0;
@@ -5933,13 +5944,13 @@ a.history-item-filename:hover {
 .multi-file-count { margin-left: auto; }
 
 .multi-note {
-    font-size: 12px;
-    color: var(--color-text-muted);
+    font-size: 13px;
+    color: var(--color-text);
     margin: 8px 0 0 0;
-    padding: 8px 10px;
-    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
     border-left: 3px solid var(--color-primary);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 6px 6px 0;
 }
 
 .multi-submit-row {
@@ -5947,8 +5958,56 @@ a.history-item-filename:hover {
     gap: 10px;
     align-items: center;
 }
-.multi-submit-row .btn-secondary {
+/* 「ファイルを選び直す」— アウトライン・リセット系 */
+.btn-multi-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     flex-shrink: 0;
+    padding: 10px 18px;
+    background: transparent;
+    color: var(--color-text-muted, #64748b);
+    border: 1.5px solid var(--color-border, #cbd5e1);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn-multi-reset:hover {
+    background: var(--color-bg, #f8fafc);
+    border-color: var(--color-text-muted, #94a3b8);
+    color: var(--color-text, #1e293b);
+}
+
+/* 「この順番でアップロード」— 主アクション・緑系 */
+.btn-multi-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 24px;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, opacity 0.12s;
+}
+.btn-multi-upload:hover:not(:disabled) {
+    background: #15803d;
+}
+.btn-multi-upload:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+[data-theme="dark"] .btn-multi-reset {
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+}
+[data-theme="dark"] .btn-multi-reset:hover {
+    background: var(--color-surface-elevated);
 }
 
 @media (max-width: 480px) {
