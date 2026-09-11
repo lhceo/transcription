@@ -137,6 +137,18 @@
                 <span class="multi-file-count" x-text="fileList.length + ' ファイル'"></span>
             </div>
 
+            <div class="multi-title-row">
+                <label class="multi-title-label" for="multi-title-input">文字起こし名</label>
+                <input
+                    type="text"
+                    id="multi-title-input"
+                    class="multi-title-input"
+                    x-model="multiTitle"
+                    placeholder="例: 2026-09-12 営業定例（空白のままでも可）"
+                    maxlength="500"
+                >
+            </div>
+
             <p class="multi-note">※ 結合後のファイルのみ保存されます。元のファイルはサーバーに保存されません。</p>
         </div>
 
@@ -295,7 +307,7 @@
                 </svg>
                 <div class="upload-success-text">
                     <strong>アップロード完了</strong>
-                    <p>文字起こしを開始しました。完了まで履歴から進捗を確認できます。</p>
+                    <p>文字起こしを開始しました。下の履歴に進捗が表示されます。</p>
                 </div>
             </div>
             {# エラー時: 従来通り赤テキスト #}
@@ -412,6 +424,7 @@ function uploadForm() {
         uploadingMulti: false,
         _fileIdSeq: 0,
         newlyAddedIds: [],  // flash アニメーション対象の id 一覧
+        multiTitle: '',
 
         get maxUploadBytes() {
             const form = document.getElementById('upload-form');
@@ -576,6 +589,7 @@ function uploadForm() {
             this.dragSrcIdx = null;
             this.dragOverIdx = null;
             this.uploadingMulti = false;
+            this.multiTitle = '';
             this.reset();
         },
 
@@ -771,6 +785,7 @@ function uploadForm() {
             if (meetingLocation) fd.append('meeting_location', meetingLocation);
             if (meetingPurpose) fd.append('meeting_purpose', meetingPurpose);
             if (meetingAgenda) fd.append('meeting_agenda', meetingAgenda);
+            if (this.multiTitle.trim()) fd.append('title', this.multiTitle.trim());
 
             // 合計音声長をクライアント側で読み取って渡す（任意）
             const totalDurInput = document.getElementById('audio-duration-input');

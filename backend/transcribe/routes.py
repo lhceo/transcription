@@ -474,6 +474,7 @@ async def create_transcript_multi(
     meeting_location: str | None = Form(None),
     meeting_purpose: str | None = Form(None),
     meeting_agenda: str | None = Form(None),
+    title: str | None = Form(None),
 ) -> HTMLResponse:
     """複数の音声ファイルを受け取り、ffmpeg で結合してから 1 件として処理する。
 
@@ -614,10 +615,15 @@ async def create_transcript_multi(
             except ValueError:
                 pass
 
+        parsed_title: str | None = None
+        if title and title.strip():
+            parsed_title = title.strip()[:500]
+
         try:
             transcript = Transcript(
                 user_id=user["id"],
                 original_filename=combined_name,
+                title=parsed_title,
                 file_size_bytes=merged_size,
                 audio_duration_seconds=parsed_duration,
                 status=initial_status,

@@ -5943,6 +5943,39 @@ a.history-item-filename:hover {
 .multi-total-size { color: var(--color-text); font-weight: 600; }
 .multi-file-count { margin-left: auto; }
 
+.multi-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0 0 0;
+}
+.multi-title-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-muted, #64748b);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.multi-title-input {
+    flex: 1;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 14px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 6px;
+    background: var(--color-surface, #fff);
+    color: var(--color-text);
+    outline: none;
+    transition: border-color 0.15s;
+}
+.multi-title-input:focus {
+    border-color: var(--color-primary, #6366f1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.multi-title-input::placeholder {
+    color: var(--color-text-muted, #94a3b8);
+}
+
 .multi-note {
     font-size: 13px;
     color: var(--color-text);
