@@ -241,19 +241,28 @@
                 <span x-show="!uploading">アップロード開始</span>
                 <span x-show="uploading" x-cloak>アップロード中…</span>
             </button>
-            {# 複数ファイル: JS で /api/transcripts/multi へ送信 #}
-            <div x-show="mode === 'multi'" x-cloak class="multi-submit-row">
+        </div>
+
+        {# 複数ファイル: 画面下部固定フローティングバー #}
+        <div x-show="mode === 'multi'" x-cloak class="multi-float-bar">
+            <div class="multi-float-summary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                <span x-text="fileList.length + 'ファイル'"></span>
+                <span class="multi-float-sep">·</span>
+                <span x-text="prettyTotalSize"></span>
+            </div>
+            <div class="multi-float-actions">
                 <button type="button" class="btn btn-multi-reset" @click="resetAll()">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.87"/></svg>
-                    ファイルを選び直す
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.87"/></svg>
+                    選び直す
                 </button>
-                <button type="button" class="btn btn-multi-upload btn-large"
+                <button type="button" class="btn btn-multi-upload"
                     :disabled="uploadingMulti || fileList.length < 2"
                     @click="uploadMulti()">
-                    <svg x-show="!uploadingMulti" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                    <svg x-show="!uploadingMulti" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
                     <span x-show="!uploadingMulti">この順番でアップロード</span>
                     <span x-show="uploadingMulti" x-cloak>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                         処理中…
                     </span>
                 </button>

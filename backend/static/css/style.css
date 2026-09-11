@@ -5958,6 +5958,60 @@ a.history-item-filename:hover {
     gap: 10px;
     align-items: center;
 }
+/* 複数ファイル: 画面下部固定フローティングバー */
+.multi-float-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--color-surface, #fff);
+    border-top: 1px solid var(--color-border, #e2e8f0);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.multi-float-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    color: var(--color-text-muted, #64748b);
+    flex-shrink: 0;
+}
+.multi-float-sep { opacity: 0.5; }
+.multi-float-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+[data-theme="dark"] .multi-float-bar {
+    background: var(--color-surface-elevated, #1e293b);
+    border-color: var(--color-border, #334155);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+}
+/* フローティングバー表示中はページ下部に余白を追加 */
+body:has(.multi-float-bar[style*="display"]:not([style*="none"])) .main-content,
+body:has(.multi-float-bar:not([style*="none"])) {
+    padding-bottom: 80px;
+}
+@media (max-width: 480px) {
+    .multi-float-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 16px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+    .multi-float-actions { justify-content: stretch; }
+    .multi-float-actions .btn-multi-upload { flex: 1; justify-content: center; }
+}
+
 /* 「ファイルを選び直す」— アウトライン・リセット系 */
 .btn-multi-reset {
     display: inline-flex;
