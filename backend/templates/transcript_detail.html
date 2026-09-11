@@ -1033,6 +1033,7 @@ function segmentsApp(transcriptId, historyNames) {
         // ── 自動保存 ──────────────────────────────────────────────────
         saveStatus: 'saved',   // 'saved' | 'pending' | 'saving' | 'error'
         pendingSegments: new Map(),  // segmentId → text
+        undoStack: [],         // [{segmentId, oldText, newText}] 最大20件
         _saveTimer: null,
 
         editor: {
@@ -1110,6 +1111,16 @@ function segmentsApp(transcriptId, historyNames) {
                 );
                 if (card) this._updateSplitBtnPos(card);
             });
+            // Ctrl+Z でセグメント保存の取り消し（テキストエリア以外でのみ発動）
+            window.addEventListener('keydown', async (e) => {
+                if (!(e.key === 'z' && (e.ctrlKey || e.metaKey)) || e.shiftKey) return;
+                const tag = document.activeElement?.tagName?.toLowerCase();
+                if (tag === 'textarea' || tag === 'input' || document.activeElement?.isContentEditable) return;
+                if (this.undoStack.length === 0) return;
+                e.preventDefault();
+                await this._undoLastSave();
+            });
+
             // 未保存変更がある状態でページ離脱しようとした時に警告
             window.addEventListener('beforeunload', (e) => {
                 if (this.pendingSegments.size > 0 || this.saveStatus === 'saving') {
@@ -1747,6 +1758,37 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         // 1セグメントを保存する共通処理
+        async _undoLastSave() {
+            const entry = this.undoStack.pop();
+            if (!entry) return;
+            const { segmentId, oldText } = entry;
+            try {
+                const res = await fetch(`/api/segments/${segmentId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: oldText }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                // DOM 更新
+                const card = document.querySelector(`.segment-card[data-segment-id="${segmentId}"]`);
+                if (card) {
+                    const ta = card.querySelector('.segment-text-edit');
+                    const viewDiv = card.querySelector('.segment-text');
+                    if (ta) {
+                        ta.value = oldText;
+                        ta.dataset.originalText = oldText;
+                        this.fitToContent(ta);
+                    }
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, oldText);
+                }
+                window.showToast('取り消しました');
+            } catch (e) {
+                // 失敗したらスタックに戻す
+                this.undoStack.push(entry);
+                window.showToast('取り消しに失敗しました', 'error');
+            }
+        },
+
         async _saveSegment(segmentId, ta) {
             if (!ta) ta = document.querySelector(`.segment-text-edit[data-segment-id="${segmentId}"]`);
             if (!ta) return;
@@ -1769,6 +1811,9 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({text: newText}),
                 });
                 if (!res.ok) throw new Error(await res.text());
+                // undo スタックに積む（保存成功時のみ）
+                this.undoStack.push({ segmentId, oldText: original, newText });
+                if (this.undoStack.length > 20) this.undoStack.shift();
                 ta.dataset.originalText = newText;
                 this.pendingSegments.delete(segmentId);
                 // 表示用 div も同期
