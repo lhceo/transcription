@@ -1872,14 +1872,58 @@ function segmentsApp(transcriptId, historyNames) {
                 this.splitSegmentAtCursor(event.currentTarget);
                 return;
             }
+
+            if (event.isComposing) return; // IME変換中はキー処理をスキップ
+
+            const ta = event.currentTarget;
+
             // Backspace でカーソルが先頭（選択なし）のとき前のセグメントと結合
-            if (event.key === 'Backspace' && !event.isComposing) {
-                const ta = event.currentTarget;
+            if (event.key === 'Backspace') {
                 if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
                     event.preventDefault();
                     this.mergeWithPrevSegment(ta);
                 }
+                return;
             }
+
+            // ArrowRight: テキスト末尾 → 次のセグメント先頭へ
+            if (event.key === 'ArrowRight' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                if (ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length) {
+                    event.preventDefault();
+                    this._moveToAdjacentSegment(ta, 'next', 'start');
+                }
+                return;
+            }
+
+            // ArrowLeft: テキスト先頭 → 前のセグメント末尾へ
+            if (event.key === 'ArrowLeft' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                    event.preventDefault();
+                    this._moveToAdjacentSegment(ta, 'prev', 'end');
+                }
+                return;
+            }
+        },
+
+        // 隣のセグメントのtextareaにフォーカス移動する
+        _moveToAdjacentSegment(ta, direction, cursorPos) {
+            const card = ta.closest('.segment-card');
+            if (!card) return;
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            const idx = cards.indexOf(card);
+            const targetCard = direction === 'next' ? cards[idx + 1] : cards[idx - 1];
+            if (!targetCard) return;
+
+            const targetId = parseInt(targetCard.dataset.segmentId, 10);
+            // 編集モードで対象カードを開く
+            this.focusedEditingSegmentId = targetId;
+            this.$nextTick(() => {
+                const targetTa = targetCard.querySelector('.segment-text-edit');
+                if (!targetTa) return;
+                targetTa.focus();
+                const pos = cursorPos === 'end' ? targetTa.value.length : 0;
+                targetTa.setSelectionRange(pos, pos);
+            });
         },
 
         // v1.0.3: 「ここで分割」ボタンのクリックハンドラ。
