@@ -332,8 +332,11 @@
                 <div class="participant-editor">
                     <div class="participant-tags" x-show="participants.length > 0">
                         <template x-for="name in participants" :key="name">
-                            <span class="participant-tag">
+                            <span class="participant-tag" style="position:relative">
                                 <span x-text="name"></span>
+                                <button type="button" class="participant-edit-btn"
+                                        @click.stop="openPersonEdit(name, $el.closest('.participant-tag'))"
+                                        title="詳細を編集">✎</button>
                                 <button x-show="projectId && !projectMemberNames.includes(name)"
                                         type="button" class="participant-add-member-btn"
                                         @click.stop="addToProjectMember(name)"
@@ -344,20 +347,63 @@
                             </span>
                         </template>
                     </div>
-                    <div class="participant-input-row">
+
+                    {# 参加者詳細インライン編集ポップオーバー #}
+                    <div class="person-edit-popover" id="person-edit-popover"
+                         x-show="personEdit.open" x-cloak
+                         @click.outside="closePersonEdit()"
+                         @keydown.escape.window="closePersonEdit()">
+                        <div class="person-edit-popover-name" x-text="personEdit.name"></div>
+                        <div class="person-edit-field">
+                            <label>会社名</label>
+                            <input type="text" x-model="personEdit.company" maxlength="200" placeholder="例: 株式会社〇〇">
+                        </div>
+                        <div class="person-edit-field">
+                            <label>役職</label>
+                            <input type="text" x-model="personEdit.job_title" maxlength="200" placeholder="例: 代表取締役">
+                        </div>
+                        <div class="person-edit-field">
+                            <label>役割</label>
+                            <input type="text" x-model="personEdit.role" maxlength="200" placeholder="例: 意思決定者">
+                        </div>
+                        <div class="person-edit-actions">
+                            <button type="button" class="btn btn-primary btn-sm"
+                                    @click="savePersonEdit()" :disabled="personEdit.saving">
+                                <span x-show="!personEdit.saving">保存</span>
+                                <span x-show="personEdit.saving" x-cloak>保存中…</span>
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm" @click="closePersonEdit()">キャンセル</button>
+                        </div>
+                    </div>
+                    <div class="participant-input-row" style="position:relative">
                         <input type="text" class="form-input participant-input"
                                x-model="participantInput"
                                placeholder="名前を入力して Enter"
-                               @keydown.enter.prevent="if (!$event.isComposing) addParticipant()"
-                               list="mtg-people-datalist"
+                               autocomplete="off"
+                               @keydown.enter.prevent="if (!$event.isComposing) { selectOrAddParticipant(); }"
+                               @keydown.arrow-down.prevent="suggestIdx = Math.min(suggestIdx + 1, filteredPeople().length - 1)"
+                               @keydown.arrow-up.prevent="suggestIdx = Math.max(suggestIdx - 1, -1)"
+                               @keydown.escape="showSuggest = false"
+                               @input="showSuggest = true; suggestIdx = -1"
+                               @focus="showSuggest = true; suggestIdx = -1"
+                               @blur="setTimeout(() => { showSuggest = false }, 150)"
                                maxlength="100">
                         <button type="button" class="btn btn-outline btn-sm" @click="addParticipant()" :disabled="!participantInput.trim()">追加</button>
+
+                        {# カスタムサジェストドロップダウン #}
+                        <div class="participant-suggest-drop" x-show="showSuggest && filteredPeople().length > 0" x-cloak>
+                            <template x-for="(p, idx) in filteredPeople()" :key="p.name">
+                                <div class="participant-suggest-item"
+                                     :class="{ 'is-active': idx === suggestIdx }"
+                                     @mousedown.prevent="pickSuggest(p)">
+                                    <span class="psi-name" x-text="p.name"></span>
+                                    <span class="psi-meta"
+                                          x-show="p.company || p.job_title || p.role"
+                                          x-text="[p.company, p.job_title, p.role].filter(Boolean).join(' · ')"></span>
+                                </div>
+                            </template>
+                        </div>
                     </div>
-                    <datalist id="mtg-people-datalist">
-                        <template x-for="name in peopleSuggestions" :key="name">
-                            <option :value="name"></option>
-                        </template>
-                    </datalist>
                     <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます。</p>
                 </div>
             </div>
@@ -1459,21 +1505,12 @@ function segmentsApp(transcriptId, historyNames) {
             });
         },
 
-        // 再生位置 n の前後の単語境界を返す [wordStart, wordEnd]
+        // 再生位置 n を中心に1〜2文字ハイライト範囲を返す [start, end]
         _wordBoundaries(text, n) {
             if (!text.length) return [0, 0];
             n = Math.max(0, Math.min(text.length - 1, n));
-            // スペース・句読点を単語境界とみなす
-            const boundary = /[\s　。、！？,.!?「」『』【】]/;
-            let start = n;
-            let end = n + 1;
-            while (start > 0 && !boundary.test(text[start - 1])) start--;
-            while (end < text.length && !boundary.test(text[end])) end++;
-            // 日本語などスペースなしで20文字超になる場合はウィンドウで丸める
-            if (end - start > 20) {
-                start = Math.max(0, n - 4);
-                end = Math.min(text.length, n + 6);
-            }
+            const start = n;
+            const end = Math.min(text.length, n + 2);
             return [start, end];
         },
 
@@ -1788,6 +1825,15 @@ function segmentsApp(transcriptId, historyNames) {
             if (event.key === 'Enter' && event.shiftKey) {
                 event.preventDefault();
                 this.splitSegmentAtCursor(event.currentTarget);
+                return;
+            }
+            // Backspace でカーソルが先頭（選択なし）のとき前のセグメントと結合
+            if (event.key === 'Backspace' && !event.isComposing) {
+                const ta = event.currentTarget;
+                if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                    event.preventDefault();
+                    this.mergeWithPrevSegment(ta);
+                }
             }
         },
 
@@ -1802,6 +1848,59 @@ function segmentsApp(transcriptId, historyNames) {
             const textarea = card.querySelector('.segment-text-edit');
             if (!textarea) return;
             this.splitSegmentAtCursor(textarea);
+        },
+
+        // ── セグメント結合（Backspace 先頭）─────────────────────────────
+        async mergeWithPrevSegment(textarea) {
+            const segmentId = parseInt(textarea.dataset.segmentId, 10);
+            const currentText = textarea.value || '';
+
+            try {
+                const res = await fetch(`/api/segments/${segmentId}/merge-prev`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ current_text: currentText }),
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    if (body.detail?.code === 'NO_PREV') return; // 先頭セグメントは無視
+                    throw new Error(body.detail?.message || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+
+                // 前カードのテキスト更新
+                const prevCard = document.querySelector(`.segment-card[data-segment-id="${data.prev_id}"]`);
+                if (prevCard) {
+                    const prevViewDiv = prevCard.querySelector('.segment-text');
+                    const prevTextarea = prevCard.querySelector('.segment-text-edit');
+                    if (prevViewDiv) this.setSegmentTextContent(prevViewDiv, data.prev_text);
+                    if (prevTextarea) {
+                        prevTextarea.value = data.prev_text;
+                        prevTextarea.dataset.originalText = data.prev_text;
+                        this.fitToContent(prevTextarea);
+                    }
+                    prevCard.dataset.endSeconds = data.prev_end_seconds;
+                }
+
+                // 現カードを DOM から削除
+                const currentCard = textarea.closest('.segment-card');
+                if (currentCard) currentCard.remove();
+
+                // 前カードの末尾にフォーカス移動
+                if (prevCard) {
+                    this.focusedEditingSegmentId = data.prev_id;
+                    this.$nextTick(() => {
+                        const prevTa = prevCard.querySelector('.segment-text-edit');
+                        if (prevTa) {
+                            prevTa.focus();
+                            const len = prevTa.value.length - currentText.length;
+                            prevTa.setSelectionRange(Math.max(0, len), Math.max(0, len));
+                        }
+                    });
+                }
+            } catch (e) {
+                window.showToast('結合に失敗しました', 'error');
+            }
         },
 
         // ── セグメント分割 ─────────────────────────────────────────
@@ -2435,6 +2534,13 @@ function mtgInfo() {
         saving: false,
         saved: false,
         peopleSuggestions: [],
+        peopleFull: [],
+        showSuggest: false,
+        suggestIdx: -1,
+        personEdit: {
+            open: false, name: '', id: null,
+            company: '', job_title: '', role: '', saving: false,
+        },
         form: {
             meeting_date: init.meetingDate || '',
             meeting_location: init.meetingLocation || '',
@@ -2467,6 +2573,29 @@ function mtgInfo() {
             }
         },
 
+        filteredPeople() {
+            const q = this.participantInput.trim().toLowerCase();
+            return this.peopleFull.filter(p =>
+                !this.participants.includes(p.name) &&
+                (q === '' || p.name.toLowerCase().includes(q))
+            );
+        },
+
+        pickSuggest(p) {
+            this.participantInput = p.name;
+            this.addParticipant();
+            this.showSuggest = false;
+        },
+
+        selectOrAddParticipant() {
+            const list = this.filteredPeople();
+            if (this.suggestIdx >= 0 && list[this.suggestIdx]) {
+                this.pickSuggest(list[this.suggestIdx]);
+            } else {
+                this.addParticipant();
+            }
+        },
+
         addParticipant() {
             const name = this.participantInput.trim();
             if (!name || this.participants.includes(name)) {
@@ -2475,6 +2604,7 @@ function mtgInfo() {
             }
             this.participants.push(name);
             this.participantInput = '';
+            this.showSuggest = false;
             this._syncParticipants();
         },
 
@@ -2515,12 +2645,79 @@ function mtgInfo() {
             }
         },
 
+        openPersonEdit(name, anchorEl) {
+            const reg = window.__PEOPLE_REGISTRY || {};
+            const p = reg[name] || {};
+            this.personEdit = {
+                open: true, name,
+                id: p.id || null,
+                company: p.company || '',
+                job_title: p.job_title || '',
+                role: p.role || '',
+                saving: false,
+            };
+            // ポップオーバーをタグ直下に位置合わせ
+            this.$nextTick(() => {
+                const pop = document.getElementById('person-edit-popover');
+                if (!pop || !anchorEl) return;
+                const rect = anchorEl.getBoundingClientRect();
+                const wrap = anchorEl.closest('.participant-editor');
+                const wRect = wrap ? wrap.getBoundingClientRect() : rect;
+                pop.style.left = (rect.left - wRect.left) + 'px';
+                pop.style.top  = (rect.bottom - wRect.top + 4) + 'px';
+            });
+        },
+
+        closePersonEdit() {
+            this.personEdit.open = false;
+        },
+
+        async savePersonEdit() {
+            this.personEdit.saving = true;
+            const { name, company, job_title, role } = this.personEdit;
+            try {
+                let personId = this.personEdit.id;
+                if (!personId) {
+                    // People台帳に未登録なら新規作成
+                    const cr = await fetch('/api/people', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name }),
+                    });
+                    if (cr.ok) {
+                        const cd = await cr.json();
+                        personId = cd.id;
+                    }
+                }
+                if (personId) {
+                    const res = await fetch('/api/people/' + personId, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, company, job_title, role }),
+                    });
+                    if (!res.ok) throw new Error(res.status);
+                    // ローカルレジストリ更新
+                    if (!window.__PEOPLE_REGISTRY) window.__PEOPLE_REGISTRY = {};
+                    window.__PEOPLE_REGISTRY[name] = { id: personId, name, company, job_title, role };
+                }
+                window.showToast('保存しました');
+                this.closePersonEdit();
+            } catch (e) {
+                window.showToast('保存に失敗しました', 'error');
+            } finally {
+                this.personEdit.saving = false;
+            }
+        },
+
         async fetchPeople() {
             try {
                 const res = await fetch('/api/people');
                 if (res.ok) {
                     const data = await res.json();
+                    this.peopleFull = data;
                     this.peopleSuggestions = data.map(p => p.name);
+                    if (!window.__PEOPLE_REGISTRY) window.__PEOPLE_REGISTRY = {};
+                    data.forEach(p => { window.__PEOPLE_REGISTRY[p.name] = p; });
                 }
             } catch (e) {}
         },

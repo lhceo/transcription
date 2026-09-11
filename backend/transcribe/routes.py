@@ -1407,6 +1407,78 @@ async def split_segment(
     )
 
 
+@router.post("/api/segments/{segment_id}/merge-prev")
+async def merge_segment_with_prev(
+    segment_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """現セグメントを直前セグメントに結合する。
+
+    request body: {"current_text": str}  (現在 textarea に入力されているテキスト)
+
+    挙動:
+    - prev.text_content += " " + current_text（末尾に連結）
+    - current セグメントを削除
+    - prev の end_seconds を current の end_seconds に拡張
+
+    レスポンス:
+    {
+        "prev_id": int,
+        "prev_text": str,
+        "prev_end_seconds": float,
+        "deleted_id": int
+    }
+    """
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # 直前のセグメントを取得（order_index が 1 つ小さいもの）
+    prev = db.scalars(
+        select(Segment)
+        .where(
+            Segment.transcript_id == segment.transcript_id,
+            Segment.order_index < segment.order_index,
+        )
+        .order_by(Segment.order_index.desc())
+        .limit(1)
+    ).first()
+
+    if prev is None:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "NO_PREV", "message": "先頭セグメントは結合できません"},
+        )
+
+    current_text = str(payload.get("current_text", "") or "").strip()
+    prev_text = (prev.text_content or "").rstrip()
+    merged_text = (prev_text + current_text) if not prev_text.endswith(("。", "、", "！", "？", ".", "!")) else (prev_text + current_text)
+    merged_text = merged_text.strip()
+
+    prev.text_content = merged_text
+    prev.end_seconds = segment.end_seconds
+    prev.is_edited = True
+
+    db.delete(segment)
+    db.commit()
+    db.refresh(prev)
+
+    return JSONResponse(
+        {
+            "prev_id": prev.id,
+            "prev_text": prev.text_content,
+            "prev_end_seconds": prev.end_seconds,
+            "deleted_id": segment_id,
+        }
+    )
+
+
 # ── 話者一括リネーム ───────────────────────────────────────────────────
 
 
