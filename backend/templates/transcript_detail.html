@@ -24,6 +24,8 @@
         meetingPurpose: {{ (transcript.meeting_purpose or '') | tojson }},
         meetingAgenda: {{ (transcript.meeting_agenda or '') | tojson }},
         meetingParticipants: {{ meeting_participants | tojson }},
+        projectId: {{ transcript.project_id | tojson }},
+        projectMemberNames: {{ project_member_names | tojson }},
     };
 </script>
 
@@ -332,6 +334,12 @@
                         <template x-for="name in participants" :key="name">
                             <span class="participant-tag">
                                 <span x-text="name"></span>
+                                <button x-show="projectId && !projectMemberNames.includes(name)"
+                                        type="button" class="participant-add-member-btn"
+                                        @click.stop="addToProjectMember(name)"
+                                        title="プロジェクトメンバーに追加">＋</button>
+                                <span x-show="projectId && projectMemberNames.includes(name)"
+                                      class="participant-already-member" title="登録済み">✓</span>
                                 <button type="button" class="participant-tag-remove" @click="removeParticipant(name)" aria-label="削除">×</button>
                             </span>
                         </template>
@@ -350,7 +358,7 @@
                             <option :value="name"></option>
                         </template>
                     </datalist>
-                    <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます。<a href="/people" class="form-link">People台帳を管理</a></p>
+                    <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます。</p>
                 </div>
             </div>
             <div class="form-actions">
@@ -511,40 +519,43 @@
                         @dblclick="enterEditModeForSegment($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
-                    {# 編集中カラオケカーソル：再生位置の文字をハイライト表示 #}
-                    <div class="segment-edit-cursor"></div>
-
-                    {# 編集モード + この segment を編集中: textarea が表示される #}
-                    <textarea
-                        class="segment-text-edit"
-                        x-show="shouldShowTextarea({{ seg.id }})"
-                        x-cloak
-                        data-segment-id="{{ seg.id }}"
-                        @blur="onSegmentBlur($event)"
-                        @input="onSegmentInput($event)"
-                        @keydown="onSegmentKeydown($event)"
-                        @dblclick="seekFromTextareaDblClick($event)"
-                    >{{ seg.text_content }}</textarea>
+                    {# 編集中オーバーレイカラオケ：textareaに背景ハイライトで再生位置を表示 #}
+                    <div class="segment-text-overlay-wrap">
+                        <div class="segment-text-overlay" aria-hidden="true"><span class="overlay-played"></span><span class="overlay-current"></span><span class="overlay-remaining"></span></div>
+                        <textarea
+                            class="segment-text-edit"
+                            x-show="shouldShowTextarea({{ seg.id }})"
+                            x-cloak
+                            data-segment-id="{{ seg.id }}"
+                            @blur="onSegmentBlur($event)"
+                            @input="onSegmentInput($event)"
+                            @keydown="onSegmentKeydown($event)"
+                            @dblclick="seekFromTextareaDblClick($event)"
+                            @compositionstart="$event.target._composing = true"
+                            @compositionend="$event.target._composing = false"
+                        >{{ seg.text_content }}</textarea>
+                    </div>
                     {# v1.0.3: 「ここで分割」ボタン。textarea にフォーカスがあるときだけ
                        表示 (CSS の :focus + 兄弟セレクタ)。 #}
                     <button
                         type="button"
                         class="segment-split-btn"
-                        x-show="shouldShowTextarea({{ seg.id }})"
-                        x-cloak
                         @pointerdown="$event.preventDefault()"
                         @click="onSplitButtonClick($event)"
                         aria-label="カーソル位置でセグメントを分割"
                         title="カーソル位置でセグメントを分割します"
                     >
-                        <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="6" cy="6" r="3"></circle>
-                            <circle cx="6" cy="18" r="3"></circle>
-                            <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-                            <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-                            <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-                        </svg>
-                        <span>ここで分割</span>
+                        <span class="segment-split-btn-label">
+                            <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="6" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                            </svg>
+                            ここで分割
+                        </span>
+                        <small class="segment-split-btn-hint">Shift+Enter</small>
                     </button>
                 </li>
             {% endfor %}
@@ -1045,6 +1056,14 @@ function segmentsApp(transcriptId, historyNames) {
             this.setupKeyboardShortcuts();
             // v1.1: 手動スクロール検知 (auto-scroll の中断条件)
             this.setupManualScrollDetection();
+            // 分割ボタン: カーソル移動（矢印キー・クリック）に追従
+            document.addEventListener('selectionchange', () => {
+                if (!this.editMode || !this.focusedEditingSegmentId) return;
+                const card = document.querySelector(
+                    '#segment-list .segment-card[data-segment-id="' + this.focusedEditingSegmentId + '"]'
+                );
+                if (card) this._updateSplitBtnPos(card);
+            });
             // 未保存変更がある状態でページ離脱しようとした時に警告
             window.addEventListener('beforeunload', (e) => {
                 if (this.pendingSegments.size > 0 || this.saveStatus === 'saving') {
@@ -1326,7 +1345,6 @@ function segmentsApp(transcriptId, historyNames) {
         applyProgressToCard(card, ratio) {
             const textDiv = card.querySelector('.segment-text');
             const textarea = card.querySelector('.segment-text-edit');
-            const cursorDiv = card.querySelector('.segment-edit-cursor');
             const isEditing = textarea && textarea.style.display !== 'none';
 
             if (!isEditing && textDiv) {
@@ -1343,27 +1361,20 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             }
 
-            // 編集中カーソルインジケーター
-            if (cursorDiv) {
-                if (isEditing) {
+            // 編集中オーバーレイカラオケ：IME変換中は更新しない
+            if (isEditing && !textarea._composing) {
+                const overlay = card.querySelector('.segment-text-overlay');
+                if (overlay) {
                     const text = textarea.value || '';
                     const n = Math.floor(text.length * ratio);
-                    const CONTEXT = 12;
-                    const s = Math.max(0, n - CONTEXT);
-                    const e = Math.min(text.length, n + CONTEXT + 1);
-                    const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                    const before = esc(text.substring(s, n));
-                    const cur    = esc(text.substring(n, n + 1)) || '|';
-                    const after  = esc(text.substring(n + 1, e));
-                    cursorDiv.innerHTML =
-                        (s > 0 ? '<span class="ec-ellipsis">…</span>' : '') +
-                        '<span class="ec-before">' + before + '</span>' +
-                        '<span class="ec-current">' + cur + '</span>' +
-                        '<span class="ec-after">' + after + '</span>' +
-                        (e < text.length ? '<span class="ec-ellipsis">…</span>' : '');
-                    cursorDiv.style.display = 'block';
-                } else {
-                    cursorDiv.style.display = 'none';
+                    const [ws, we] = this._wordBoundaries(text, n);
+                    const played = overlay.querySelector('.overlay-played');
+                    const current = overlay.querySelector('.overlay-current');
+                    const remaining = overlay.querySelector('.overlay-remaining');
+                    if (played) played.textContent = text.substring(0, ws);
+                    if (current) current.textContent = text.substring(ws, we);
+                    if (remaining) remaining.textContent = text.substring(we);
+                    overlay.scrollTop = textarea.scrollTop;
                 }
             }
 
@@ -1424,11 +1435,101 @@ function segmentsApp(transcriptId, historyNames) {
                 const isEditingThis = this.editMode && cardId === this.focusedEditingSegmentId;
                 const textDiv = card.querySelector('.segment-text');
                 const textarea = card.querySelector('.segment-text-edit');
+                const overlayWrap = card.querySelector('.segment-text-overlay-wrap');
+                const overlay = card.querySelector('.segment-text-overlay');
                 const splitBtn = card.querySelector('.segment-split-btn');
+                const progressWrap = card.querySelector('.segment-progress-wrap');
                 if (textDiv) textDiv.style.display = isEditingThis ? 'none' : '';
                 if (textarea) textarea.style.display = isEditingThis ? '' : 'none';
-                if (splitBtn) splitBtn.style.display = isEditingThis ? '' : 'none';
+                // オーバーレイ: 編集中のみ有効。非編集時はリセット
+                if (overlay) {
+                    if (isEditingThis && textarea) {
+                        this._resetOverlay(card, textarea.value);
+                    } else {
+                        this._resetOverlay(card, '');
+                    }
+                }
+                // 分割ボタン: 編集中のカードのみ表示、カーソル位置も更新
+                if (splitBtn) {
+                    splitBtn.style.display = isEditingThis ? 'flex' : 'none';
+                    if (isEditingThis) this._updateSplitBtnPos(card);
+                }
+                // タイムラインバー: 編集中のみ表示（view modeはカラオケハイライトで代替）
+                if (progressWrap) progressWrap.style.display = isEditingThis ? 'block' : 'none';
             });
+        },
+
+        // 再生位置 n の前後の単語境界を返す [wordStart, wordEnd]
+        _wordBoundaries(text, n) {
+            if (!text.length) return [0, 0];
+            n = Math.max(0, Math.min(text.length - 1, n));
+            // スペース・句読点を単語境界とみなす
+            const boundary = /[\s　。、！？,.!?「」『』【】]/;
+            let start = n;
+            let end = n + 1;
+            while (start > 0 && !boundary.test(text[start - 1])) start--;
+            while (end < text.length && !boundary.test(text[end])) end++;
+            // 日本語などスペースなしで20文字超になる場合はウィンドウで丸める
+            if (end - start > 20) {
+                start = Math.max(0, n - 4);
+                end = Math.min(text.length, n + 6);
+            }
+            return [start, end];
+        },
+
+        // オーバーレイをリセット（playing中でない時 or 非編集時）
+        _resetOverlay(card, text) {
+            const overlay = card.querySelector('.segment-text-overlay');
+            if (!overlay) return;
+            const played = overlay.querySelector('.overlay-played');
+            const current = overlay.querySelector('.overlay-current');
+            const remaining = overlay.querySelector('.overlay-remaining');
+            if (played) played.textContent = '';
+            if (current) current.textContent = '';
+            if (remaining) remaining.textContent = text || '';
+        },
+
+        // 分割ボタンをカーソルのY位置に追従させる
+        _updateSplitBtnPos(card) {
+            if (!card) return;
+            const textarea = card.querySelector('.segment-text-edit');
+            const splitBtn = card.querySelector('.segment-split-btn');
+            if (!textarea || !splitBtn || textarea.style.display === 'none') return;
+
+            const computed = window.getComputedStyle(textarea);
+            const mirror = document.createElement('div');
+            mirror.style.position = 'absolute';
+            mirror.style.top = '-9999px';
+            mirror.style.left = '-9999px';
+            mirror.style.visibility = 'hidden';
+            mirror.style.width = textarea.offsetWidth + 'px';
+            mirror.style.fontFamily = computed.fontFamily;
+            mirror.style.fontSize = computed.fontSize;
+            mirror.style.fontWeight = computed.fontWeight;
+            mirror.style.lineHeight = computed.lineHeight;
+            mirror.style.letterSpacing = computed.letterSpacing;
+            mirror.style.paddingTop = computed.paddingTop;
+            mirror.style.paddingBottom = computed.paddingBottom;
+            mirror.style.paddingLeft = computed.paddingLeft;
+            mirror.style.paddingRight = computed.paddingRight;
+            mirror.style.whiteSpace = 'pre-wrap';
+            mirror.style.wordBreak = 'break-word';
+            mirror.style.overflowWrap = 'break-word';
+            mirror.style.boxSizing = 'border-box';
+
+            const cursorPos = textarea.selectionStart || 0;
+            mirror.textContent = textarea.value.substring(0, cursorPos);
+            const marker = document.createElement('span');
+            marker.textContent = '​';
+            mirror.appendChild(marker);
+            document.body.appendChild(mirror);
+            const markerTop = marker.offsetTop;
+            document.body.removeChild(mirror);
+
+            const lineH = parseFloat(computed.lineHeight) || 22;
+            const btnH = splitBtn.offsetHeight || 52;
+            const top = textarea.offsetTop + markerTop - textarea.scrollTop + (lineH / 2) - (btnH / 2);
+            card.style.setProperty('--split-cursor-top', Math.max(textarea.offsetTop, top) + 'px');
         },
 
         recolorByName() {
@@ -1581,6 +1682,14 @@ function segmentsApp(transcriptId, historyNames) {
             this.saveStatus = 'pending';
             clearTimeout(this._saveTimer);
             this._saveTimer = setTimeout(() => this._flushPending(), 2000);
+            // 分割ボタンのY位置を更新 + オーバーレイ同期
+            const card = ta.closest('.segment-card');
+            if (card) {
+                this._updateSplitBtnPos(card);
+                // 音声停止中は打鍵のたびにオーバーレイをリセット（ハイライト残像を消す）
+                const audio = document.querySelector('.audio-player-section audio');
+                if (!audio || audio.paused) this._resetOverlay(card, ta.value);
+            }
         },
 
         async onSegmentBlur(event) {
@@ -1824,6 +1933,15 @@ function segmentsApp(transcriptId, historyNames) {
             // 要素には効かないので addEventListener で直接バインド。
             viewDiv.addEventListener('click', (ev) => this.seekToSegmentFromEvent(ev));
 
+            // オーバーレイカラオケ用 wrap + overlay
+            const overlayWrap = document.createElement('div');
+            overlayWrap.className = 'segment-text-overlay-wrap';
+            const overlay = document.createElement('div');
+            overlay.className = 'segment-text-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = '<span class="overlay-played"></span><span class="overlay-current"></span><span class="overlay-remaining"></span>';
+            overlayWrap.appendChild(overlay);
+
             const textarea = document.createElement('textarea');
             textarea.className = 'segment-text-edit';
             textarea.dataset.segmentId = String(newSeg.id);
@@ -1833,6 +1951,9 @@ function segmentsApp(transcriptId, historyNames) {
             textarea.addEventListener('blur', (e) => this.onSegmentBlur(e));
             textarea.addEventListener('input', (e) => this.onSegmentInput(e));
             textarea.addEventListener('keydown', (e) => this.onSegmentKeydown(e));
+            textarea.addEventListener('compositionstart', () => { textarea._composing = true; });
+            textarea.addEventListener('compositionend', () => { textarea._composing = false; });
+            overlayWrap.appendChild(textarea);
 
             // v1.0.3: 動的に作られた新カードにも「ここで分割」ボタンを付ける。
             // Alpine の @click / @pointerdown は動的挿入では効かないので
@@ -1842,23 +1963,26 @@ function segmentsApp(transcriptId, historyNames) {
             splitBtn.className = 'segment-split-btn';
             splitBtn.title = 'カーソル位置でセグメントを分割します';
             splitBtn.setAttribute('aria-label', 'カーソル位置でセグメントを分割');
-            splitBtn.style.display = this.editMode ? '' : 'none';
+            splitBtn.style.display = 'none'; /* syncSegmentDisplay で flex に切替 */
             splitBtn.innerHTML = `
-                <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="6" cy="6" r="3"></circle>
-                    <circle cx="6" cy="18" r="3"></circle>
-                    <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-                    <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-                    <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-                </svg>
-                <span>ここで分割</span>
+                <span class="segment-split-btn-label">
+                    <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="6" cy="6" r="3"></circle>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                        <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                        <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                    </svg>
+                    ここで分割
+                </span>
+                <small class="segment-split-btn-hint">Shift+Enter</small>
             `;
             splitBtn.addEventListener('pointerdown', (e) => e.preventDefault());
             splitBtn.addEventListener('click', (e) => this.onSplitButtonClick(e));
 
             li.appendChild(header);
             li.appendChild(viewDiv);
-            li.appendChild(textarea);
+            li.appendChild(overlayWrap);
             li.appendChild(splitBtn);
 
             return li;
@@ -2149,9 +2273,23 @@ function polishModal() {
                 if (!res.ok) throw new Error((await res.json()).detail || res.status);
                 const data = await res.json();
 
-                // segmentsApp から現在のセグメントを取得してdiffを構築
-                const segsEl = document.querySelector('[x-data^="segmentsApp"]');
-                const segsData = segsEl ? Alpine.evaluate(segsEl, 'segments') : [];
+                // DOMからセグメントデータを直接構築（Alpine.evaluateはsegments配列を持たない）
+                const segsData = Array.from(
+                    document.querySelectorAll('#segment-list .segment-card')
+                ).map(card => {
+                    const id = parseInt(card.dataset.segmentId, 10);
+                    const textDiv = card.querySelector('.segment-text');
+                    const textarea = card.querySelector('.segment-text-edit');
+                    const isEditing = textarea && textarea.style.display !== 'none';
+                    const text = isEditing ? (textarea.value || '') : (textDiv ? textDiv.textContent : '');
+                    const badgeText = card.querySelector('.speaker-badge-text');
+                    return {
+                        id,
+                        text_content: text.trim(),
+                        display_name: badgeText ? badgeText.textContent.trim() : '',
+                        speaker_label: card.dataset.speakerLabel || '',
+                    };
+                });
                 this.diffSegments = segsData.map(s => {
                     const suggestion = data.suggestions[s.id] ?? null;
                     const changed = suggestion !== null && suggestion !== s.text_content;
@@ -2306,6 +2444,28 @@ function mtgInfo() {
         },
         participants: (init.meetingParticipants || []).slice(),
         participantInput: '',
+        projectId: init.projectId || null,
+        projectMemberNames: (init.projectMemberNames || []).slice(),
+
+        async addToProjectMember(name) {
+            if (!this.projectId) return;
+            try {
+                const res = await fetch('/api/projects/' + this.projectId + '/members/from-participant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name }),
+                });
+                const data = await res.json();
+                if (data.ok && data.added) {
+                    this.projectMemberNames = [...this.projectMemberNames, name];
+                    window.showToast(name + ' をメンバーに追加しました');
+                } else if (data.ok && !data.added) {
+                    this.projectMemberNames = [...this.projectMemberNames, name];
+                }
+            } catch (e) {
+                window.showToast('追加に失敗しました', 'error');
+            }
+        },
 
         addParticipant() {
             const name = this.participantInput.trim();

@@ -573,9 +573,11 @@ v1.0 リリース時点で以下は全て確定：
 
 ## 近い将来の優先候補
 
+- **添付資料UI**（MTG情報セクションと プロジェクト詳細に添付資料を追加するUI。URLまたはテキスト貼り付けで登録し、整文時のClaudeコンテキストに自動反映。Attachmentモデルとbuild_context_textへの接続は実装済み、UIのみ未実装）
 - **Google Docs エクスポート**（エクスポートメニューに「Google ドキュメントとして保存」を追加。lionheart は Google Workspace 利用のため需要あり）
   - 必要な実装: OAuth スコープ追加（`documents` + `drive.file`）、アクセストークン保存（User テーブル拡張 + マイグレーション）、Google Docs API でドキュメント新規作成 + テキスト書き込み
   - 注意: 既存ユーザーが次回ログイン時に追加権限の承認画面が表示される（5〜8 名なので事前説明で対応可）
+- **編集中のカラオケハイライト（contenteditable 方式）**（編集中のセグメントでも再生位置を textarea 内にインラインでハイライト表示する Notta 互換の仕様。`<textarea>` では内部に HTML を差し込めないため `<div contenteditable="true">` への置き換えが必要。applyProgressToCard() が DOM テキストノードを分割して `<span class="ec-current">` を差し込む。編集モードのイベントハンドラ全般の書き直しが伴うため工数 1〜2 時間規模のリファクタリング）
 
 ---
 

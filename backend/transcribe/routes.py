@@ -35,6 +35,7 @@ from backend.transcribe.display import has_stored_audio, transcript_display_name
 from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage import (
     UploadTooLargeError,
+    _UPLOADS_DIR,
     delete_stored_audio,
     find_stored_audio,
     save_upload_to_tmp,
@@ -44,6 +45,7 @@ from backend.transcribe.storage_usage import (
     would_exceed_hard_limit,
 )
 from backend.transcribe.tasks import process_transcript
+from backend.transcribe.audio_merge import merge_audio_files
 
 logger = logging.getLogger(__name__)
 
@@ -457,6 +459,231 @@ async def create_transcript(
         )
 
 
+@router.post("/api/transcripts/multi", response_class=HTMLResponse)
+async def create_transcript_multi(
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    files: list[UploadFile] = File(...),
+    model_tier: str = Form("best"),
+    audio_duration_seconds: str | None = Form(None),
+    speakers_expected: str | None = Form(None),
+    word_boost: str | None = Form(None),
+    project_id: str | None = Form(None),
+    meeting_date: str | None = Form(None),
+    meeting_location: str | None = Form(None),
+    meeting_purpose: str | None = Form(None),
+    meeting_agenda: str | None = Form(None),
+) -> HTMLResponse:
+    """複数の音声ファイルを受け取り、ffmpeg で結合してから 1 件として処理する。
+
+    ※ 元ファイルはサーバーに保存されません。結合後のファイルのみ保存されます。
+    """
+    import shutil
+
+    if not files or len(files) < 1:
+        raise HTTPException(status_code=400, detail={"code": "NO_FILES", "message": "ファイルがありません"})
+
+    if model_tier not in {"best", "nano"}:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_MODEL_TIER", "message": "モデル指定が不正です"})
+
+    # 各ファイルの拡張子チェック
+    for f in files:
+        if not f.filename:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_FILE", "message": "ファイル名がありません"})
+        suffix = Path(f.filename).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=415,
+                detail={"code": "INVALID_FILE_FORMAT", "message": f"{f.filename}: 対応していないファイル形式です。mp3 / mp4 / m4a / wav / mov をご利用ください。"},
+            )
+
+    parsed_duration: float | None = None
+    if audio_duration_seconds:
+        try:
+            d = float(audio_duration_seconds)
+            if 0 < d <= 6 * 3600:
+                parsed_duration = d
+        except (TypeError, ValueError):
+            pass
+
+    parsed_speakers: int | None = None
+    if speakers_expected:
+        try:
+            n = int(speakers_expected)
+            if 2 <= n <= 10:
+                parsed_speakers = n
+        except (TypeError, ValueError):
+            pass
+
+    user_word_boost: list[str] = []
+    if word_boost and word_boost.strip():
+        user_word_boost = [w.strip() for w in word_boost.splitlines() if w.strip()]
+
+    parsed_project_id: int | None = None
+    if project_id:
+        try:
+            parsed_project_id = int(project_id)
+        except (TypeError, ValueError):
+            pass
+
+    settings = load_settings()
+
+    # コスト上限チェック
+    if settings.monthly_cost_limit_yen > 0:
+        exceeded, _estimate, current = will_exceed_limit(db, parsed_duration, model_tier, settings.monthly_cost_limit_yen)
+        if exceeded:
+            reset_text = next_month_start_jst_text()
+            raise HTTPException(
+                status_code=402,
+                detail={"code": "MONTHLY_BUDGET_EXCEEDED", "message": f"今月の文字起こし予算 (¥{settings.monthly_cost_limit_yen:,}) に達したため新規アップロードを停止しています。{reset_text}にリセットされます。（今月の利用額: ¥{current:,}）"},
+            )
+
+    # ──── 各ファイルを一時保存 ────────────────────────────────────────────
+    tmp_paths: list[Path] = []
+    try:
+        for upload in files:
+            try:
+                save_path, _ = await save_upload_to_tmp(upload, max_bytes=MAX_UPLOAD_BYTES)
+                tmp_paths.append(save_path)
+            except UploadTooLargeError:
+                raise HTTPException(
+                    status_code=413,
+                    detail={"code": "FILE_TOO_LARGE", "message": f"{upload.filename}: ファイルサイズが 2GB を超えています。"},
+                )
+
+        total_size = sum(p.stat().st_size for p in tmp_paths)
+
+        # ストレージ容量チェック
+        if would_exceed_hard_limit(total_size):
+            usage = get_storage_summary()
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "code": "STORAGE_HARD_LIMIT_EXCEEDED",
+                    "message": f"ストレージが満杯です ({usage.used_pretty} / {usage.limit_pretty})。古い文字起こしを削除してから再度アップロードしてください。",
+                    "usage": {"used_bytes": usage.used_bytes, "limit_bytes": usage.limit_bytes, "percent": usage.percent},
+                },
+            )
+
+        # ──── ffmpeg で結合 ───────────────────────────────────────────────
+        import uuid as _uuid
+        merge_dir = _UPLOADS_DIR / str(_uuid.uuid4())
+        merge_dir.mkdir(parents=True, exist_ok=True)
+        merged_path = merge_dir / "merged.m4a"
+
+        try:
+            await merge_audio_files(tmp_paths, merged_path)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "FFMPEG_NOT_FOUND", "message": "ffmpeg が見つかりません。サーバー管理者に連絡してください。"},
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "MERGE_ERROR", "message": str(exc)},
+            )
+
+        # 元ファイルの一時ディレクトリを削除（結合済みのみ保存）
+        for p in tmp_paths:
+            try:
+                shutil.rmtree(p.parent, ignore_errors=True)
+            except Exception:
+                pass
+        tmp_paths.clear()
+
+        merged_size = merged_path.stat().st_size
+
+        # ──── DB レコード作成 ──────────────────────────────────────────────
+        initial_status = "processing" if settings.has_assemblyai else "uploaded"
+
+        filenames = [f.filename for f in files]
+        if len(filenames) == 1:
+            combined_name = filenames[0]
+        elif len(filenames) == 2:
+            combined_name = f"{filenames[0]} + {filenames[1]}"
+        else:
+            combined_name = f"{filenames[0]} ほか{len(filenames) - 1}ファイル"
+
+        from datetime import datetime as _dt
+        parsed_meeting_date: datetime | None = None
+        if meeting_date and meeting_date.strip():
+            try:
+                parsed_meeting_date = _dt.fromisoformat(meeting_date.strip())
+            except ValueError:
+                pass
+
+        try:
+            transcript = Transcript(
+                user_id=user["id"],
+                original_filename=combined_name,
+                file_size_bytes=merged_size,
+                audio_duration_seconds=parsed_duration,
+                status=initial_status,
+                model_tier=model_tier,
+                language="ja",
+                created_at=datetime.now(timezone.utc),
+                project_id=parsed_project_id,
+                meeting_date=parsed_meeting_date,
+                meeting_location=meeting_location.strip() if meeting_location else None,
+                meeting_purpose=meeting_purpose.strip() if meeting_purpose else None,
+                meeting_agenda=meeting_agenda.strip() if meeting_agenda else None,
+            )
+            db.add(transcript)
+            db.commit()
+            db.refresh(transcript)
+        except Exception as exc:
+            logger.exception("DB レコード作成に失敗 (multi): %s", exc)
+            raise HTTPException(status_code=500, detail={"code": "DB_ERROR", "message": f"データベースエラーが発生しました: {exc}"})
+
+        logger.info("Transcript(multi) 作成: id=%s files=%d merged_size=%s", transcript.id, len(files), merged_size)
+
+        # word_boost 収集
+        auto_boost: list[str] = []
+        auto_custom_spelling: list[dict] = []
+        if parsed_project_id:
+            vocab_rows = list(db.scalars(select(ProjectVocabulary).where(ProjectVocabulary.project_id == parsed_project_id)))
+            for v in vocab_rows:
+                if v.word:
+                    auto_boost.append(v.word)
+                if v.reading and v.word:
+                    auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+        people_names = list(db.scalars(select(Person.name).where(Person.owner_user_id == user["id"])))
+        auto_boost.extend(people_names)
+        merged_boost = list(dict.fromkeys(user_word_boost + auto_boost))[:50] or None
+        parsed_custom_spelling = auto_custom_spelling or None
+
+        if settings.has_assemblyai:
+            asyncio.create_task(process_transcript(
+                transcript.id, merged_path,
+                speakers_expected=parsed_speakers,
+                word_boost=merged_boost,
+                custom_spelling=parsed_custom_spelling,
+            ))
+        else:
+            logger.warning("ASSEMBLYAI_API_KEY 未設定のため、ジョブ %s は uploaded 状態のままです", transcript.id)
+
+        return templates.TemplateResponse(request, "_transcript_row.html", {"transcript": transcript})
+
+    except HTTPException:
+        # tmp ファイルをクリーンアップしてから再送出
+        for p in tmp_paths:
+            try:
+                shutil.rmtree(p.parent, ignore_errors=True)
+            except Exception:
+                pass
+        raise
+    except Exception as exc:
+        for p in tmp_paths:
+            try:
+                shutil.rmtree(p.parent, ignore_errors=True)
+            except Exception:
+                pass
+        logger.exception("create_transcript_multi 予期しないエラー: %s", exc)
+        raise HTTPException(status_code=500, detail={"code": "UNEXPECTED_ERROR", "message": f"予期しないエラーが発生しました: {exc}"})
+
+
 @router.get("/api/transcripts", response_class=HTMLResponse)
 async def list_transcripts(
     request: Request,
@@ -754,10 +981,20 @@ async def transcript_detail(
     except (ValueError, TypeError):
         meeting_participants = []
 
-    # パンくず用プロジェクト情報
+    # パンくず用プロジェクト情報 & メンバー名一覧（参加者→メンバー追加ボタン用）
     breadcrumb_project = None
+    project_member_names: list[str] = []
     if transcript.project_id:
         breadcrumb_project = db.get(Project, transcript.project_id)
+        members_q = db.scalars(
+            select(ProjectMember)
+            .options(selectinload(ProjectMember.user))
+            .where(ProjectMember.project_id == transcript.project_id)
+        )
+        for m in members_q:
+            display = m.user.name if m.user else (m.name or "")
+            if display:
+                project_member_names.append(display)
 
     return templates.TemplateResponse(
         request,
@@ -775,6 +1012,7 @@ async def transcript_detail(
             "history_names": history_names,
             "people_registry": people_registry,
             "meeting_participants": meeting_participants,
+            "project_member_names": project_member_names,
             "is_owner": is_owner,
             "breadcrumb_project": breadcrumb_project,
         },
@@ -1099,12 +1337,6 @@ async def split_segment(
 
     full_text = segment.text_content or ""
     position = max(0, min(position, len(full_text)))
-
-    if position == 0 or position >= len(full_text):
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "INVALID_POSITION", "message": "先頭または末尾では分割できません"},
-        )
 
     before = full_text[:position].rstrip()
     after = full_text[position:].lstrip()

@@ -76,6 +76,10 @@ class MemberAdd(BaseModel):
     project_role: str | None = None
 
 
+class ParticipantMemberAdd(BaseModel):
+    name: str
+
+
 class MemberUpdate(BaseModel):
     name: str | None = None
     company: str | None = None
@@ -320,32 +324,12 @@ async def project_detail_page(
     # 社内ユーザー一覧（メンバー追加用）
     all_users = list(db.scalars(select(User).order_by(User.name)))
 
-    # このPJTの音声に登場した人物（Speaker→People リンク済み、重複排除）
-    transcript_ids = [t.id for t in related_transcripts]
-    project_people: list[Person] = []
-    if transcript_ids:
-        seen_ids: set[int] = set()
-        speakers_with_person = db.scalars(
-            select(Speaker)
-            .options(selectinload(Speaker.person))
-            .where(
-                Speaker.transcript_id.in_(transcript_ids),
-                Speaker.person_id.isnot(None),
-            )
-        )
-        for s in speakers_with_person:
-            if s.person and s.person.id not in seen_ids:
-                seen_ids.add(s.person.id)
-                project_people.append(s.person)
-        project_people.sort(key=lambda p: p.name)
-
     ctx = _common_ctx(user, db)
     ctx.update({
         "project": proj,
         "related_transcripts": related_transcripts,
         "all_users": all_users,
         "member_display_name": _member_display_name,
-        "project_people": project_people,
     })
     return templates.TemplateResponse(request, "project_detail.html", ctx)
 
@@ -417,6 +401,36 @@ async def add_member(
         "project_role": member.project_role,
         "is_internal": member.user_id is not None,
     }, status_code=201)
+
+
+@router.post("/api/projects/{project_id}/members/from-participant")
+async def add_member_from_participant(
+    project_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: ParticipantMemberAdd,
+) -> JSONResponse:
+    """MTG参加者名からプロジェクトメンバーを追加する（名前重複チェックあり）。"""
+    _get_project_or_404(project_id, user["id"], db)
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    existing = db.scalars(
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .where(ProjectMember.project_id == project_id)
+    )
+    for m in existing:
+        display = m.user.name if m.user else (m.name or "")
+        if display.strip().lower() == name.lower():
+            return JSONResponse({"ok": True, "added": False})
+
+    member = ProjectMember(project_id=project_id, name=name)
+    db.add(member)
+    db.commit()
+    return JSONResponse({"ok": True, "added": True})
 
 
 @router.post("/api/projects/{project_id}/members/{member_id}")

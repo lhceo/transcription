@@ -2265,9 +2265,8 @@ a.history-item-filename:hover {
     margin: 0 2px;
 }
 
-.segment-card-active .segment-progress-wrap {
-    display: block;
-}
+/* タイムラインバーは編集中のみ表示。view mode はカラオケハイライトで代替。
+   JS の syncSegmentDisplay() が inline style で制御する。 */
 
 /* 編集中カラオケカーソル */
 .segment-edit-cursor {
@@ -3082,44 +3081,39 @@ a.history-item-filename:hover {
    - スマホでは Shift キーがないのでボタンが唯一の分割手段
    ─────────────────────────────────────────────────────────────── */
 
+/* ── 分割ボタン: カード右側にfloatしてカーソルY位置を追従 ── */
+.segment-card {
+    position: relative;
+    overflow: visible; /* 右外側へのボタン表示を許可 */
+}
+
 .segment-split-btn {
-    /* 画面下部右側に fixed で配置する FAB (Floating Action Button) スタイル。
-       カードの末尾に inline 配置すると、長文セグメントを編集中はボタンが
-       スクロール下に隠れて見つけにくい問題があった (2026-05-13 検証で
-       スマホで顕著)。fixed + bottom で常に同じ位置に表示する。
-       --keyboard-height は JS (visualViewport API) でソフトキーボードの
-       高さを書き込む。env(safe-area-inset-bottom) は iOS のホーム
-       インジケーター領域を避ける。max() でどちらか大きい方を採用 (キーボード
-       が出ているときは --keyboard-height が勝つ、出ていないときは
-       safe-area-inset-bottom が効く)。 */
-    position: fixed;
-    right: 16px;
-    bottom: calc(
-        16px
-        + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
-    );
+    /* カードの右外側に絶対配置。--split-cursor-top は JS が書き込む。 */
+    position: absolute;
+    right: -130px;
+    top: var(--split-cursor-top, 40px);
+    width: 112px;
     z-index: 50;
-    display: inline-flex;
+    display: none; /* JS (syncSegmentDisplay) が flex で表示 */
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 10px 16px;
+    gap: 3px;
+    padding: 8px 14px;
     font-size: 13px;
     font-weight: 600;
     line-height: 1.4;
     color: var(--color-surface);
     background: var(--color-primary);
-    border: 1px solid var(--color-primary);
-    border-radius: 999px;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
     cursor: pointer;
-    /* 通常は隠す。フォーカス時のみ visible に */
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(8px);
-    transition:
-        opacity 0.18s ease,
-        transform 0.18s ease,
-        background 0.12s ease;
+    transition: background 0.12s ease, top 0.08s ease;
+    text-align: center;
+}
+
+.segment-split-btn:hover {
+    background: var(--color-primary-hover);
 }
 
 .segment-split-btn-icon {
@@ -3128,35 +3122,43 @@ a.history-item-filename:hover {
     flex-shrink: 0;
 }
 
-/* textarea にフォーカスがあるとき、同じ card 内のボタンを表示 */
-.segment-text-edit:focus ~ .segment-split-btn {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateY(0);
+.segment-split-btn-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
-/* ボタン自体への hover (フォーカスが外れた瞬間に消えてクリックできない
-   のを防ぐ。pointerdown.prevent で focus は textarea に残るが、念のため) */
-.segment-split-btn:hover {
-    background: var(--color-primary-hover);
+.segment-split-btn-hint {
+    font-size: 10px;
+    font-weight: 400;
+    opacity: 0.72;
+    letter-spacing: 0.03em;
 }
 
-.segment-split-btn:focus {
-    outline: 2px solid rgba(59, 130, 246, 0.4);
-    outline-offset: 2px;
+/* 幅が狭い画面: カード内部右端にオーバーレイ */
+@media (max-width: 1100px) {
+    .segment-split-btn {
+        right: 8px;
+        border-radius: 6px;
+        opacity: 0.92;
+    }
 }
 
-/* スマホでは少し小さめに収めつつ、タップしやすいサイズを維持 */
+/* スマホ: 画面下固定に戻す（カード右外は画面外になるため） */
 @media (max-width: 640px) {
     .segment-split-btn {
+        position: fixed;
         right: 12px;
-        bottom: calc(
-            12px
-            + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px))
-        );
+        top: auto;
+        bottom: calc(12px + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px)));
+        width: auto;
+        flex-direction: row;
+        gap: 6px;
         padding: 10px 14px;
-        font-size: 13px;
+        border-radius: 999px;
+        transition: background 0.12s ease;
     }
+    .segment-split-btn-hint { display: none; }
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -4388,6 +4390,27 @@ a.history-item-filename:hover {
 }
 .participant-tag-remove:hover {
     opacity: 1;
+}
+
+.participant-add-member-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-primary);
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0 2px;
+    opacity: 0.6;
+    font-weight: bold;
+}
+.participant-add-member-btn:hover {
+    opacity: 1;
+}
+.participant-already-member {
+    font-size: 0.75rem;
+    color: #16a34a;
+    font-weight: bold;
+    padding: 0 1px;
 }
 
 .participant-input-row {
@@ -5675,4 +5698,207 @@ a.history-item-filename:hover {
     .people-add-sub-row { grid-template-columns: 1fr; }
     .people-edit-fields { grid-template-columns: 1fr; }
     .people-row-view { flex-wrap: wrap; }
+}
+
+/* ─── 複数ファイル並べ替えUI ─────────────────────────────────── */
+.multi-reorder {
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 12px;
+}
+.multi-reorder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.multi-reorder-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text);
+}
+.btn-sm { font-size: 12px; padding: 5px 10px; }
+
+.multi-file-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.multi-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: grab;
+    transition: background 0.1s, border-color 0.1s;
+}
+.multi-file-item:active { cursor: grabbing; }
+.multi-file-item--drag-over {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+}
+.multi-drag-handle {
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+.multi-file-idx {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    min-width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.multi-file-name {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.multi-file-size {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+.multi-file-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.multi-arrow-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 0;
+}
+.multi-arrow-btn:hover:not(:disabled) { background: var(--color-bg); border-color: var(--color-primary); color: var(--color-primary); }
+.multi-arrow-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.multi-remove-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0;
+}
+.multi-remove-btn:hover { color: #dc2626; background: #fef2f2; }
+
+.multi-drop-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    padding: 10px;
+    border: 1.5px dashed var(--color-border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.multi-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--color-text-muted);
+    padding: 4px 0;
+}
+.multi-total-label { font-weight: 600; }
+.multi-total-size { color: var(--color-text); font-weight: 600; }
+.multi-file-count { margin-left: auto; }
+
+.multi-note {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin: 8px 0 0 0;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+    border-left: 3px solid var(--color-primary);
+    border-radius: 0 4px 4px 0;
+}
+
+.multi-submit-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.multi-submit-row .btn-secondary {
+    flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+    .multi-reorder-header { flex-direction: column; align-items: flex-start; }
+    .multi-file-name { max-width: 120px; }
+    .multi-submit-row { flex-direction: column-reverse; }
+    .multi-submit-row .btn-large { width: 100%; }
+}
+
+/* ─── 編集中オーバーレイカラオケ ─────────────────────────────── */
+.segment-text-overlay-wrap {
+    position: relative;
+}
+
+/* textareaと同じ書式で絶対配置。pointer-events: none で入力はtextareaに通す */
+.segment-text-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 2;
+
+    /* textareaと完全一致させる（style.css の .segment-text-edit と合わせる）*/
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 10px 12px;
+    border: 1px solid transparent; /* textarea の border 1px 分のオフセット確保 */
+    border-radius: 6px;
+    box-sizing: border-box;
+
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    overflow: hidden;
+
+    /* テキストは透明。背景ハイライトだけを見せる */
+    color: transparent;
+}
+
+/* 再生済み部分・未再生部分は透明のまま（textarea テキストが透けて見える） */
+.overlay-played  { color: transparent; }
+.overlay-remaining { color: transparent; }
+
+/* 現在再生中の単語だけ黄色背景でハイライト */
+.overlay-current {
+    background: rgba(254, 240, 138, 0.75);
+    color: transparent;
+    border-radius: 2px;
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .overlay-current {
+    background: rgba(234, 179, 8, 0.35);
 }

@@ -37,7 +37,17 @@
             id="file-input"
             accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
             class="hidden-file-input"
+            multiple
             @change="onFileChange($event)"
+        >
+        {# 複数ファイルモード専用: 並べ替え画面から「さらに追加」 #}
+        <input
+            type="file"
+            id="file-input-add"
+            accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
+            class="hidden-file-input"
+            multiple
+            @change="onFileAdd($event)"
         >
         {# 処理時間目安のためにクライアントで読み取った音声長 (秒)。
            ブラウザが metadata を読めなかった場合は空のまま送られる。 #}
@@ -77,7 +87,60 @@
             </template>
         </div>
 
-        <div class="upload-controls" x-show="fileName" x-cloak>
+        {# ── 複数ファイル並べ替え画面 ────────────────────────────────────── #}
+        <div class="multi-reorder" x-show="mode === 'multi'" x-cloak
+            @dragover.prevent="multiDragOver($event)"
+            @drop.prevent="onMultiZoneDrop($event)"
+        >
+            <div class="multi-reorder-header">
+                <span class="multi-reorder-title">複数ファイルを順番に結合します</span>
+                <label class="btn btn-secondary btn-sm" for="file-input-add">＋ ファイルを追加</label>
+            </div>
+
+            <ul class="multi-file-list">
+                <template x-for="(item, idx) in fileList" :key="item.id">
+                    <li class="multi-file-item"
+                        draggable="true"
+                        :class="{ 'multi-file-item--drag-over': dragOverIdx === idx }"
+                        @dragstart="onItemDragStart($event, idx)"
+                        @dragover.prevent="dragOverIdx = idx"
+                        @dragleave="dragOverIdx = null"
+                        @drop.prevent="onItemDrop($event, idx)"
+                        @dragend="dragSrcIdx = null; dragOverIdx = null"
+                    >
+                        <span class="multi-drag-handle" aria-hidden="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="21" y2="16"/></svg>
+                        </span>
+                        <span class="multi-file-idx" x-text="idx + 1"></span>
+                        <span class="multi-file-name" x-text="item.name" :title="item.name"></span>
+                        <span class="multi-file-size" x-text="prettyFileSize(item.size)"></span>
+                        <div class="multi-file-actions">
+                            <button type="button" class="multi-arrow-btn" :disabled="idx === 0" @click="moveUp(idx)" title="上へ">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+                            </button>
+                            <button type="button" class="multi-arrow-btn" :disabled="idx === fileList.length - 1" @click="moveDown(idx)" title="下へ">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <button type="button" class="multi-remove-btn" @click="removeFile(idx)" title="削除">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+
+            <div class="multi-drop-hint">ここにファイルをドロップして追加</div>
+
+            <div class="multi-summary">
+                <span class="multi-total-label">合計</span>
+                <span class="multi-total-size" x-text="prettyTotalSize"></span>
+                <span class="multi-file-count" x-text="fileList.length + ' ファイル'"></span>
+            </div>
+
+            <p class="multi-note">※ 結合後のファイルのみ保存されます。元のファイルはサーバーに保存されません。</p>
+        </div>
+
+        <div class="upload-controls" x-show="(mode === 'single' && fileName) || mode === 'multi'" x-cloak>
 
             {# ── MTG情報（OKF）────────────────────────────────────── #}
             <div class="okf-section">
@@ -173,17 +236,30 @@
                 </select>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-large" :disabled="uploading">
+            {# 単一ファイル: HTMX で送信 #}
+            <button type="submit" class="btn btn-primary btn-large" x-show="mode !== 'multi'" :disabled="uploading">
                 <span x-show="!uploading">アップロード開始</span>
                 <span x-show="uploading" x-cloak>アップロード中…</span>
             </button>
+            {# 複数ファイル: JS で /api/transcripts/multi へ送信 #}
+            <div x-show="mode === 'multi'" x-cloak class="multi-submit-row">
+                <button type="button" class="btn btn-secondary" @click="resetAll()">
+                    ファイルを選び直す
+                </button>
+                <button type="button" class="btn btn-primary btn-large"
+                    :disabled="uploadingMulti || fileList.length < 2"
+                    @click="uploadMulti()">
+                    <span x-show="!uploadingMulti">この順番でアップロード</span>
+                    <span x-show="uploadingMulti" x-cloak>処理中…</span>
+                </button>
+            </div>
         </div>
 
         {# v1.0.3: アップロード進捗バー (#6)
            HTMX の htmx:xhr:progress イベントで loaded/total を取得し、
            ユーザーに「いまどれだけ送信したか」を可視化する。
            モバイル回線で数分かかるケースの体感品質を改善する。 #}
-        <div class="upload-progress" x-show="uploading" x-cloak>
+        <div class="upload-progress" x-show="uploading || uploadingMulti" x-cloak>
             <div class="upload-progress-header">
                 <span class="upload-progress-label">アップロード中</span>
                 <span class="upload-progress-percent" x-text="`${progress}%`"></span>
@@ -196,7 +272,7 @@
 
         {# v1.0.3: 成功・エラー時の表示。成功時は明示的な完了確認、
            エラー時はメッセージ + (必要なら) 整理リンク。 #}
-        <div class="upload-status" x-show="statusMessage && !uploading" x-cloak>
+        <div class="upload-status" x-show="statusMessage && !uploading && !uploadingMulti" x-cloak>
             {# 成功時: アイコン + 完了文言 #}
             <div class="upload-success" x-show="statusClass === 'status-success'" x-cloak>
                 <svg class="upload-success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -307,14 +383,20 @@ function uploadForm() {
         uploading: false,
         statusMessage: '',
         statusClass: '',
-        // v1.0.2: ストレージ上限超過時に「古いものから整理する」リンクを併設
         showCleanupAction: false,
-        // v1.0.3: アップロード進捗 (htmx:xhr:progress イベントから更新)
         progress: 0,
         progressDetail: '',
         mtgDate: '',
         mtgHour: '10',
         mtgMinute: '00',
+
+        // 複数ファイルモード
+        mode: 'idle',  // 'idle' | 'single' | 'multi'
+        fileList: [],  // [{id, file, name, size}]
+        dragSrcIdx: null,
+        dragOverIdx: null,
+        uploadingMulti: false,
+        _fileIdSeq: 0,
 
         get maxUploadBytes() {
             const form = document.getElementById('upload-form');
@@ -330,33 +412,149 @@ function uploadForm() {
             } else {
                 sizeStr = Math.floor(mb) + ' MB';
             }
-            return `対応形式: mp3 / mp4 / m4a / wav / mov — 最大 ${sizeStr}`;
+            return `対応形式: mp3 / mp4 / m4a / wav / mov — 最大 ${sizeStr} (複数可)`;
         },
 
         get prettySize() {
             if (!this.fileSize) return '';
-            const mb = this.fileSize / (1024 * 1024);
+            return this.prettyFileSize(this.fileSize);
+        },
+
+        get prettyTotalSize() {
+            const total = this.fileList.reduce((s, f) => s + f.size, 0);
+            return this.prettyFileSize(total);
+        },
+
+        prettyFileSize(bytes) {
+            const mb = bytes / (1024 * 1024);
             if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
             return mb.toFixed(1) + ' MB';
         },
 
         onFileChange(e) {
-            const f = e.target.files[0];
-            if (f) this.setFile(f);
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            if (files.length === 1) {
+                this.mode = 'single';
+                this.setFile(files[0]);
+                // ファイル input は HTMX フォームにそのまま乗るので input.files はいじらない
+            } else {
+                this.mode = 'multi';
+                this.fileList = [];
+                this._addFilesToList(files);
+            }
+            // input をリセット（同じファイルを再選択できるように）しておく
+            // ただし single モードでは HTMX 送信に必要なので mode 確定後に
+            // ここでは触らない。reset() で行う。
         },
 
         onDrop(e) {
             this.dragOver = false;
-            const f = e.dataTransfer.files[0];
-            if (!f) return;
-            // input にファイルをセット（フォーム送信用）
-            const input = document.getElementById('file-input');
-            if (input) {
-                const dt = new DataTransfer();
-                dt.items.add(f);
-                input.files = dt.files;
+            const files = Array.from(e.dataTransfer.files || []);
+            if (!files.length) return;
+
+            if (this.mode === 'multi') {
+                // multi モード中のドロップは追加扱い
+                this._addFilesToList(files);
+                return;
             }
-            this.setFile(f);
+
+            if (files.length === 1) {
+                this.mode = 'single';
+                const input = document.getElementById('file-input');
+                if (input) {
+                    const dt = new DataTransfer();
+                    dt.items.add(files[0]);
+                    input.files = dt.files;
+                }
+                this.setFile(files[0]);
+            } else {
+                this.mode = 'multi';
+                this.fileList = [];
+                this._addFilesToList(files);
+            }
+        },
+
+        onFileAdd(e) {
+            // 「ファイルを追加」ボタン経由
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            this._addFilesToList(files);
+            e.target.value = '';
+        },
+
+        onMultiZoneDrop(e) {
+            const files = Array.from(e.dataTransfer.files || []);
+            if (!files.length) return;
+            this._addFilesToList(files);
+        },
+
+        multiDragOver(e) {
+            // ファイルドラッグのときだけ許可（リストアイテムのドラッグは子で処理）
+            if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+            }
+        },
+
+        _addFilesToList(files) {
+            const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'mov'];
+            for (const f of files) {
+                const ext = f.name.toLowerCase().split('.').pop();
+                if (!allowedExts.includes(ext)) {
+                    window.showToast(`${f.name}: 対応していない形式です`, 'error');
+                    continue;
+                }
+                this.fileList = [...this.fileList, { id: ++this._fileIdSeq, file: f, name: f.name, size: f.size }];
+            }
+        },
+
+        // 並べ替えドラッグ
+        onItemDragStart(e, idx) {
+            this.dragSrcIdx = idx;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(idx));
+        },
+
+        onItemDrop(e, targetIdx) {
+            this.dragOverIdx = null;
+            if (this.dragSrcIdx === null || this.dragSrcIdx === targetIdx) return;
+            const list = [...this.fileList];
+            const [moved] = list.splice(this.dragSrcIdx, 1);
+            list.splice(targetIdx, 0, moved);
+            this.fileList = list;
+            this.dragSrcIdx = null;
+        },
+
+        moveUp(idx) {
+            if (idx === 0) return;
+            const list = [...this.fileList];
+            [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+            this.fileList = list;
+        },
+
+        moveDown(idx) {
+            if (idx >= this.fileList.length - 1) return;
+            const list = [...this.fileList];
+            [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
+            this.fileList = list;
+        },
+
+        removeFile(idx) {
+            this.fileList = this.fileList.filter((_, i) => i !== idx);
+            if (this.fileList.length === 0) {
+                this.resetAll();
+            } else if (this.fileList.length === 1) {
+                // 1 ファイルに減っても multi モードのまま（ユーザーが追加するかもしれない）
+            }
+        },
+
+        resetAll() {
+            this.mode = 'idle';
+            this.fileList = [];
+            this.dragSrcIdx = null;
+            this.dragOverIdx = null;
+            this.uploadingMulti = false;
+            this.reset();
         },
 
         setFile(f) {
@@ -365,8 +563,6 @@ function uploadForm() {
             this.statusMessage = '';
             this.statusClass = '';
             this.showCleanupAction = false;
-            // 拡張子チェック（クライアント側、UX 向上のみ。サーバー側でも検証する）
-            // v1.0.3 で mp3/mp4 に加え m4a/wav/mov を追加 (iPhone ボイスメモ等対応)
             const ext = f.name.toLowerCase().split('.').pop();
             const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'mov'];
             if (!allowedExts.includes(ext)) {
@@ -383,10 +579,6 @@ function uploadForm() {
                 this.reset();
                 return;
             }
-            // v1.0.2: ストレージ上限の予防警告。サーバーレンダ時点の使用量
-            // (data-storage-used) + 今のファイルサイズが 95% を超えるなら
-            // 送信前に止める。同時利用のレースで失敗するケースもあるが、
-            // 明らかにダメなケースをここで弾けるだけ十分な親切設計。
             const form = document.getElementById('upload-form');
             const usedBytes = parseInt(form.dataset.storageUsed || '0', 10);
             const limitBytes = parseInt(form.dataset.storageLimit || '0', 10);
@@ -400,14 +592,9 @@ function uploadForm() {
                 this.reset();
                 return;
             }
-            // 音声長を読み取ってフォームに格納（処理時間目安の表示に使う）。
-            // 失敗しても送信はそのまま続行する。
             this.readDuration(f);
         },
 
-        // v1.0.2: 「古いものから整理する」リンクの動作。
-        // 履歴セクションへスクロールしつつ、Alpine カスタムイベントで
-        // ソート切替を依頼する (履歴側 historyList() で受信)。
         triggerCleanup() {
             window.dispatchEvent(new CustomEvent('cleanup-request'));
             const section = document.getElementById('history-section');
@@ -417,9 +604,6 @@ function uploadForm() {
         },
 
         readDuration(file) {
-            // v1.0.3: mp4 / mov は動画コンテナとして <video> で読み込む。
-            // m4a / wav / mp3 は音声のみなので <audio> で読み込む。
-            // file.type が空でも拡張子で判定できるようにフォールバック。
             const lower = file.name.toLowerCase();
             const isVideo = (file.type || '').startsWith('video/')
                 || lower.endsWith('.mp4')
@@ -462,10 +646,6 @@ function uploadForm() {
             this.showCleanupAction = false;
         },
 
-        // v1.0.3: HTMX の htmx:xhr:progress イベントハンドラ。
-        // event.detail.loaded / total が利用可能なら % とバイト数を更新する。
-        // lengthComputable が false のサーバー応答ではバーは進まないが、
-        // 通常のアップロードは Content-Length を持つので問題ない。
         onProgress(e) {
             const d = e.detail;
             if (!d || !d.lengthComputable) return;
@@ -473,9 +653,6 @@ function uploadForm() {
             const total = d.total;
             if (total > 0) {
                 this.progress = Math.min(99, Math.round((loaded / total) * 100));
-                // 99% で頭打ち: 送信完了 → サーバー処理開始の間に「100% だけど待たされる」
-                // 体感を避ける。レスポンスが返った瞬間に完了 UI に切り替わるので、
-                // 直前まで「もう少し」を演出する意図。
                 this.progressDetail = `${this._prettyBytes(loaded)} / ${this._prettyBytes(total)}`;
             }
         },
@@ -496,16 +673,10 @@ function uploadForm() {
                 this.statusClass = 'status-success';
                 this.showCleanupAction = false;
                 this.reset();
-                // 履歴の空メッセージを消す
                 const empty = document.querySelector('.history-empty');
                 if (empty) empty.remove();
                 return;
             }
-            // サーバー側のエラーメッセージを取り出す。
-            // レスポンス形式は状況によって異なる:
-            //   通常エラー: {"detail": {"code": "...", "message": "..."}}
-            //   401 未認証: {"code": "UNAUTHENTICATED", "message": "..."}
-            //   422 バリデーション: {"detail": [...]}
             let serverMessage = '';
             let errorCode = '';
             const httpStatus = e.detail.xhr ? e.detail.xhr.status : 0;
@@ -521,18 +692,131 @@ function uploadForm() {
                     errorCode = body.code || '';
                 }
             } catch (_) { /* fallthrough */ }
-            // 401 は必ず「セッション切れ」を案内する
             if (httpStatus === 401 && !serverMessage) {
                 serverMessage = 'セッションが切れました。ページを再読み込みしてログインしてください。';
             }
-            // 0 はネットワーク切断 / タイムアウト
             if (httpStatus === 0 && !serverMessage) {
                 serverMessage = 'ネットワークエラーが発生しました。接続を確認して再度お試しください。';
             }
             this.statusMessage = serverMessage || 'アップロードに失敗しました。再度お試しください。';
             this.statusClass = 'status-error';
-            // v1.0.2: サーバー側がストレージ上限超過を返した場合は整理リンクを併設
             this.showCleanupAction = (errorCode === 'STORAGE_HARD_LIMIT_EXCEEDED');
+        },
+
+        async uploadMulti() {
+            if (this.uploadingMulti || this.fileList.length < 1) return;
+
+            // ストレージ容量のクライアント側チェック
+            const totalSize = this.fileList.reduce((s, f) => s + f.size, 0);
+            const form = document.getElementById('upload-form');
+            const usedBytes = parseInt(form.dataset.storageUsed || '0', 10);
+            const limitBytes = parseInt(form.dataset.storageLimit || '0', 10);
+            const hardPct = parseInt(form.dataset.storageHardLimitPercent || '95', 10);
+            if (limitBytes > 0 && usedBytes + totalSize > limitBytes * hardPct / 100) {
+                const usedGB = (usedBytes / 1_000_000_000).toFixed(1);
+                const limitGB = (limitBytes / 1_000_000_000).toFixed(1);
+                this.statusMessage = `ストレージが満杯です (${usedGB} GB / ${limitGB} GB)。古いデータを削除してから再度アップロードしてください。`;
+                this.statusClass = 'status-error';
+                this.showCleanupAction = true;
+                return;
+            }
+
+            this.uploadingMulti = true;
+            this.statusMessage = '';
+            this.statusClass = '';
+            this.progress = 0;
+            this.progressDetail = 'ファイルをアップロード中…';
+
+            const fd = new FormData();
+            for (const item of this.fileList) {
+                fd.append('files', item.file, item.name);
+            }
+            // フォームの他フィールドを収集
+            const modelTier = form.querySelector('[name="model_tier"]')?.value || 'best';
+            const speakersExpected = form.querySelector('[name="speakers_expected"]')?.value || '';
+            const wordBoost = form.querySelector('[name="word_boost"]')?.value || '';
+            const projectIdVal = form.querySelector('[name="project_id"]')?.value || '';
+            const meetingDate = form.querySelector('[name="meeting_date"]')?.value || '';
+            const meetingLocation = form.querySelector('[name="meeting_location"]')?.value || '';
+            const meetingPurpose = form.querySelector('[name="meeting_purpose"]')?.value || '';
+            const meetingAgenda = form.querySelector('[name="meeting_agenda"]')?.value || '';
+
+            fd.append('model_tier', modelTier);
+            if (speakersExpected) fd.append('speakers_expected', speakersExpected);
+            if (wordBoost) fd.append('word_boost', wordBoost);
+            if (projectIdVal) fd.append('project_id', projectIdVal);
+            if (meetingDate) fd.append('meeting_date', meetingDate);
+            if (meetingLocation) fd.append('meeting_location', meetingLocation);
+            if (meetingPurpose) fd.append('meeting_purpose', meetingPurpose);
+            if (meetingAgenda) fd.append('meeting_agenda', meetingAgenda);
+
+            // 合計音声長をクライアント側で読み取って渡す（任意）
+            const totalDurInput = document.getElementById('audio-duration-input');
+            if (totalDurInput && totalDurInput.value) {
+                fd.append('audio_duration_seconds', totalDurInput.value);
+            }
+
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/transcripts/multi');
+                xhr.upload.onprogress = (ev) => {
+                    if (!ev.lengthComputable) return;
+                    this.progress = Math.min(90, Math.round(ev.loaded / ev.total * 100));
+                    this.progressDetail = `${this._prettyBytes(ev.loaded)} / ${this._prettyBytes(ev.total)}`;
+                };
+
+                const result = await new Promise((resolve, reject) => {
+                    xhr.onload = () => resolve(xhr);
+                    xhr.onerror = () => reject(new Error('ネットワークエラー'));
+                    xhr.ontimeout = () => reject(new Error('タイムアウト'));
+                    xhr.timeout = 30 * 60 * 1000; // 30分（ffmpeg 結合含む）
+                    xhr.send(fd);
+                });
+
+                this.uploadingMulti = false;
+                this.progress = 100;
+
+                if (result.status >= 200 && result.status < 300) {
+                    // HTML 断片を履歴リストに追加
+                    const html = result.responseText;
+                    const list = document.getElementById('history-list');
+                    if (list && html.trim().startsWith('<')) {
+                        const tmp = document.createElement('div');
+                        tmp.innerHTML = html;
+                        const newItem = tmp.firstElementChild;
+                        if (newItem) list.insertBefore(newItem, list.firstChild);
+                        const empty = list.querySelector('.history-empty');
+                        if (empty) empty.remove();
+                        setTimeout(syncHistoryCount, 0);
+                    }
+                    this.statusMessage = 'アップロード完了（結合処理中）';
+                    this.statusClass = 'status-success';
+                    this.resetAll();
+                } else {
+                    let serverMessage = '';
+                    let errorCode = '';
+                    try {
+                        const body = JSON.parse(result.responseText || '{}');
+                        if (body && body.detail && typeof body.detail === 'object') {
+                            serverMessage = body.detail.message || '';
+                            errorCode = body.detail.code || '';
+                        }
+                    } catch (_) { /* fallthrough */ }
+                    if (result.status === 401 && !serverMessage) {
+                        serverMessage = 'セッションが切れました。ページを再読み込みしてログインしてください。';
+                    }
+                    this.statusMessage = serverMessage || 'アップロードに失敗しました。再度お試しください。';
+                    this.statusClass = 'status-error';
+                    this.showCleanupAction = (errorCode === 'STORAGE_HARD_LIMIT_EXCEEDED');
+                    console.error('[upload multi] failed', { status: result.status, body: result.responseText });
+                }
+            } catch (err) {
+                this.uploadingMulti = false;
+                this.progress = 0;
+                this.statusMessage = err.message || 'アップロードに失敗しました。';
+                this.statusClass = 'status-error';
+                console.error('[upload multi] exception', err);
+            }
         },
     };
 }

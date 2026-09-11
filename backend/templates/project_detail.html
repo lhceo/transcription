@@ -258,34 +258,6 @@
                 </template>
             </section>
 
-            {# ── 登場した人物 ── #}
-            {% if project_people %}
-            <section class="pjt-sidebar-section">
-                <div class="pjt-section-header">
-                    <h2 class="pjt-section-title">登場した人物</h2>
-                </div>
-                <p class="pjt-sidebar-hint">この PJT の音声に登場した話者（リネーム済み）。詳細は各音声から編集できます。</p>
-                <ul class="pjt-people-list">
-                    {% for p in project_people %}
-                    <li class="pjt-people-item">
-                        <div class="pjt-people-name">{{ p.name }}</div>
-                        <div class="pjt-people-meta">
-                            {% if p.company %}
-                            <span>{{ p.company }}</span>
-                            {% endif %}
-                            {% if p.job_title %}
-                            <span class="pjt-people-sep">·</span>
-                            <span>{{ p.job_title }}</span>
-                            {% endif %}
-                            {% if p.role %}
-                            <span class="pjt-people-role">{{ p.role }}</span>
-                            {% endif %}
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </section>
-            {% endif %}
 
         </aside>
     </div>{# /pjt-layout #}

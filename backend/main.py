@@ -132,7 +132,36 @@ async def lifespan(app: FastAPI):
                 _cu.execute("ALTER TABLE transcripts ADD COLUMN overview TEXT")
             except Exception:
                 pass
-            _cu.execute("UPDATE alembic_version SET version_num='f5a7b9c1d3e4'")
+            # ── alembic_version の安全な更新 ──────────────────────────────
+            # 【重要】新マイグレーション追加時は必ず以下を更新する:
+            #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
+            #   2. _MIGRATION_CHAIN の末尾に新IDを追加
+            #   3. 上の try ブロックにスキーマ変更を追記
+            # 【なぜこの順序比較が必要か】
+            #   無条件に UPDATE すると、新マイグレーションが追加されても
+            #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
+            #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
+            #   display_name 等が消えた 2026-09-08/09 の教訓。
+            _REPAIR_HEAD = 'f5a7b9c1d3e4'
+            _MIGRATION_CHAIN = [
+                '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
+                'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
+                'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
+            ]
+            def _ver_idx(v):
+                if not v:
+                    return -1
+                for _i, _m in enumerate(_MIGRATION_CHAIN):
+                    if v.startswith(_m) or _m.startswith(v[:12]):
+                        return _i
+                return -1
+            _row = _cu.execute("SELECT version_num FROM alembic_version").fetchone()
+            _cur_ver = _row[0] if _row else None
+            if _ver_idx(_cur_ver) < _ver_idx(_REPAIR_HEAD):
+                _cu.execute("UPDATE alembic_version SET version_num=?", (_REPAIR_HEAD,))
+                logger.info("alembic_version 更新: %s → %s", _cur_ver, _REPAIR_HEAD)
+            else:
+                logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
             _co.commit()
             _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
             _co.close()
