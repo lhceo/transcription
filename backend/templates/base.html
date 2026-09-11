@@ -22,6 +22,12 @@
                 {# v1.0.2: ヘッダーにストレージ + コスト使用量インジケーター。
                    通常時はグレー、警告域で黄色、危険域で赤になる。
                    クリックで詳細ポップオーバーが開く。 #}
+                <a href="/themes" class="nav-link nav-projects-link nav-link-with-icon">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span>プロジェクト</span>
+                </a>
                 {% set _su = storage_usage() %}
                 {% set _cu = cost_usage() %}
                 <div class="header-indicator" x-data="{ open: false }">
@@ -134,19 +140,12 @@
                         </svg>
                     </button>
                     <div class="nav-collapsible-items" :class="{ 'is-open': menuOpen }">
-                        <a href="/themes" class="nav-link nav-link-with-icon">
+                        {# スマホ: プロジェクトリンク（PC では nav-projects-link で表示済み） #}
+                        <a href="/themes" class="nav-link nav-link-with-icon nav-projects-mobile">
                             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                             </svg>
                             <span>プロジェクト</span>
-                        </a>
-                        <a href="/help" class="nav-link nav-link-with-icon">
-                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                            </svg>
-                            <span>ヘルプ</span>
                         </a>
                         {% if is_admin %}
                         <div class="admin-menu" x-data="adminMenu()" x-init="checkMaintenance()" @click.outside="close()" @keydown.escape.window="close()">
@@ -235,14 +234,46 @@
                             </div>
                         </div>
                         {% endif %}
-                        <div class="user-menu">
-                            {% if user.picture %}
-                            <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
-                            {% endif %}
-                            <span class="user-name">{{ user.name }}</span>
-                            <form method="post" action="/auth/logout" class="logout-form">
-                                <button type="submit" class="btn-link">ログアウト</button>
-                            </form>
+                        <div class="user-menu" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+                            {# PC: クリックでドロップダウン #}
+                            <button type="button" class="user-menu-trigger" @click="open = !open" :aria-expanded="open.toString()">
+                                {% if user.picture %}
+                                <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+                                {% endif %}
+                                <span class="user-name">{{ user.name }}</span>
+                                <svg class="user-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div class="user-menu-dropdown" x-show="open" x-cloak x-transition>
+                                <a href="/help" class="user-menu-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                    ヘルプ
+                                </a>
+                                <form method="post" action="/auth/logout">
+                                    <button type="submit" class="user-menu-item user-menu-logout">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                                        ログアウト
+                                    </button>
+                                </form>
+                            </div>
+                            {# スマホ: ハンバーガー内でフラット表示 #}
+                            <div class="user-menu-mobile">
+                                <div class="user-menu-mobile-profile">
+                                    {% if user.picture %}
+                                    <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+                                    {% endif %}
+                                    <span class="user-name">{{ user.name }}</span>
+                                </div>
+                                <a href="/help" class="nav-link nav-link-with-icon">
+                                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                    <span>ヘルプ</span>
+                                </a>
+                                <form method="post" action="/auth/logout" style="display:contents;">
+                                    <button type="submit" class="nav-link nav-link-with-icon user-menu-mobile-logout">
+                                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                                        <span>ログアウト</span>
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </div>
