@@ -821,7 +821,12 @@ function uploadForm() {
                         const tmp = document.createElement('div');
                         tmp.innerHTML = html;
                         const newItem = tmp.firstElementChild;
-                        if (newItem) list.insertBefore(newItem, list.firstChild);
+                        if (newItem) {
+                            list.insertBefore(newItem, list.firstChild);
+                            // HTMXが手動挿入の要素を認識できないため明示的に登録し、
+                            // hx-trigger="every 5s" のポーリングを起動させる
+                            if (window.htmx) htmx.process(newItem);
+                        }
                         const empty = list.querySelector('.history-empty');
                         if (empty) empty.remove();
                         setTimeout(syncHistoryCount, 0);
