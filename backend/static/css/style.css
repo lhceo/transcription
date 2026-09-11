@@ -5958,21 +5958,24 @@ a.history-item-filename:hover {
     gap: 10px;
     align-items: center;
 }
-/* 複数ファイル: 画面下部固定フローティングバー */
+/* 複数ファイル: 画面下部固定フローティングバー（アップロードフォームと同幅） */
 .multi-float-bar {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 48px);
+    max-width: 960px;
     z-index: 300;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 24px;
+    padding: 12px 20px;
     background: var(--color-surface, #fff);
-    border-top: 1px solid var(--color-border, #e2e8f0);
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
     padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 .multi-float-summary {
