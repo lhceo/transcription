@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -253,12 +254,13 @@ async def run_polish(
     input_tokens = message.usage.input_tokens
     output_tokens = message.usage.output_tokens
 
-    # JSONパース
+    # JSONパース（Claudeが前後に説明文を付けることがあるため正規表現で抽出）
     try:
-        data = json.loads(raw)
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        json_str = m.group(0) if m else raw
+        data = json.loads(json_str)
         suggestions = {s["id"]: s["text"] for s in data.get("segments", [])}
     except Exception:
-        # JSONパース失敗時は提案なし（整文失敗として扱う）
         logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
         suggestions = {}
 
