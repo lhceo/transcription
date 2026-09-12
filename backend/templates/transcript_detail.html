@@ -508,8 +508,41 @@
             </span>
         </div>
 
-        {# 右グループ: 整文する + エクスポート（常に右端固定） #}
+        {# 右グループ: プロジェクト選択 + 整文する + エクスポート（常に右端固定） #}
         <div class="toolbar-right">
+            {# プロジェクト選択ボタン #}
+            <div class="history-item-project-wrap"
+                 x-data="projectAssigner({{ transcript.id }}, {{ transcript.project_id or 'null' }})"
+                 @click.outside="open = false">
+                <span class="history-item-project-tag" x-show="projectId && projectName" x-text="projectName" x-cloak style="cursor:default"></span>
+                <button type="button"
+                        class="history-item-project-btn"
+                        :class="{ 'has-project': projectId }"
+                        @click="toggle()"
+                        :title="projectId ? 'プロジェクトを変更' : 'プロジェクトに追加'"
+                        aria-label="プロジェクトに追加">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </button>
+                <div class="history-item-project-dropdown" x-show="open" x-cloak>
+                    <p class="project-dropdown-label">プロジェクトに追加</p>
+                    <template x-if="projects.length === 0">
+                        <p class="project-dropdown-empty"><a href="/themes">プロジェクトを作成する →</a></p>
+                    </template>
+                    <template x-for="p in projects" :key="p.id">
+                        <button type="button"
+                                class="project-dropdown-item"
+                                :class="{ 'is-selected': projectId === p.id }"
+                                @click="assign(p.id)"
+                                x-text="p.name"></button>
+                    </template>
+                    <template x-if="projectId">
+                        <button type="button" class="project-dropdown-item project-dropdown-remove" @click="assign(null)">プロジェクトから外す</button>
+                    </template>
+                </div>
+            </div>
+
             <button type="button" class="btn btn-polish" @click="openPolish()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
                     <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -3438,5 +3471,47 @@ function mtgInfo() {
     // 初期化時にも実行 (キーボードが既に上がっている場合)
     updateKeyboardHeight();
 })();
+
+// ── プロジェクト選択（ダッシュボードと共通ロジック） ──
+function projectAssigner(transcriptId, initialProjectId) {
+    return {
+        transcriptId,
+        projectId: initialProjectId,
+        open: false,
+        projects: [],
+
+        async init() {
+            try {
+                const res = await fetch('/api/projects-list');
+                if (res.ok) this.projects = await res.json();
+            } catch (_) {}
+        },
+
+        get projectName() {
+            if (!this.projectId || !this.projects.length) return null;
+            return this.projects.find(p => p.id === this.projectId)?.name || null;
+        },
+
+        toggle() { this.open = !this.open; },
+
+        async assign(pid) {
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/project`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: pid }),
+                });
+                if (res.ok) {
+                    this.projectId = pid;
+                    const p = this.projects.find(p => p.id === pid);
+                    window.showToast(pid ? `「${p?.name}」に追加しました` : 'プロジェクトから外しました', 'success');
+                }
+            } catch (_) {
+                window.showToast('変更に失敗しました', 'error');
+            }
+            this.open = false;
+        },
+    };
+}
 </script>
 {% endblock %}
