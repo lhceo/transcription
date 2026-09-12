@@ -547,32 +547,9 @@
         発言をクリックして編集できます
     </div>
 
-    {# ──── ブックマークパネル ──── #}
-    <div class="bookmark-panel" id="bookmark-panel" x-show="bookmarks.length > 0" x-cloak>
-        <div class="bookmark-panel-header">
-            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-            <span>ブックマーク</span>
-            <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
-        </div>
-        <ul class="bookmark-list">
-            <template x-for="bm in bookmarks" :key="bm.segId">
-                <li class="bookmark-item">
-                    <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
-                    <input type="text"
-                        class="bookmark-item-memo"
-                        :value="bm.memo"
-                        placeholder="メモ（任意）"
-                        @change="saveBookmarkMemo(bm, $event.target.value)"
-                        @keydown.enter.prevent="$event.target.blur()"
-                        @compositionstart="$event.target._composing = true"
-                        @compositionend="$event.target._composing = false">
-                    <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                </li>
-            </template>
-        </ul>
-    </div>
+    {# ──── 本文レイアウト（セグメント一覧 + ブックマークサイドバー） ──── #}
+    <div class="transcript-body-layout">
+    <div class="transcript-main-col">
 
     {# ──── セグメント一覧 ──── #}
     {% if not segments %}
@@ -727,6 +704,39 @@
             {% endfor %}
         </ol>
     {% endif %}
+
+    </div>{# /transcript-main-col #}
+
+    {# ──── ブックマークサイドバー ──── #}
+    <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0" x-cloak>
+        <div class="bookmark-panel" id="bookmark-panel">
+            <div class="bookmark-panel-header">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                <span>ブックマーク</span>
+                <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+            </div>
+            <ul class="bookmark-list">
+                <template x-for="bm in bookmarks" :key="bm.segId">
+                    <li class="bookmark-item">
+                        <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                        <input type="text"
+                            class="bookmark-item-memo"
+                            :value="bm.memo"
+                            placeholder="メモ（任意）"
+                            @change="saveBookmarkMemo(bm, $event.target.value)"
+                            @keydown.enter.prevent="$event.target.blur()"
+                            @compositionstart="$event.target._composing = true"
+                            @compositionend="$event.target._composing = false">
+                        <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </aside>
+
+    </div>{# /transcript-body-layout #}
 
     {# v1.1: 「現在の発言に戻る」FAB
        手動スクロールで autoScrollPaused = true になっている時のみ表示。

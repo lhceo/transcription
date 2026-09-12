@@ -2604,12 +2604,34 @@ a.history-item-filename:hover {
 }
 .player-bookmark-tick:hover { opacity: 1; width: 5px; }
 
-/* ブックマークパネル（セグメントリストの上） */
+/* ── 本文2カラムレイアウト ── */
+.transcript-body-layout {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.transcript-main-col {
+    flex: 1;
+    min-width: 0;
+}
+.transcript-sidebar-col {
+    width: 220px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+}
+@media (max-width: 640px) {
+    .transcript-body-layout { flex-direction: column; }
+    .transcript-sidebar-col { width: 100%; position: static; max-height: none; }
+}
+
+/* ブックマークパネル（右サイドバー） */
 .bookmark-panel {
     background: var(--color-surface);
     border: 1px solid #bfdbfe;
     border-radius: var(--radius);
-    margin-bottom: 16px;
     overflow: hidden;
 }
 .bookmark-panel-header {
