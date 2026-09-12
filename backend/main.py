@@ -203,6 +203,12 @@ async def lifespan(app: FastAPI):
     retention_task = asyncio.create_task(retention_loop())
     logger.info("自動削除バックグラウンドタスク起動")
 
+    # 2b. B2 自動バックアップ (Tier 2)
+    from backend.transcribe.b2_backup import backup_loop as b2_backup_loop
+    from backend.db.session import _DB_PATH as _B2_DB_PATH
+    b2_task = asyncio.create_task(b2_backup_loop(_B2_DB_PATH))
+    logger.info("B2バックアップタスク起動")
+
     # 3. WAL チェックポイント (10分ごと)
     # SQLite WAL を main DB に書き込み済みにすることで、
     # 万一のプロセスクラッシュ時のデータ損失ゼロを目指す。
@@ -228,7 +234,8 @@ async def lifespan(app: FastAPI):
     finally:
         retention_task.cancel()
         wal_task.cancel()
-        for task in (retention_task, wal_task):
+        b2_task.cancel()
+        for task in (retention_task, wal_task, b2_task):
             try:
                 await task
             except asyncio.CancelledError:
