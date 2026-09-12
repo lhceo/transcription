@@ -846,12 +846,12 @@
         </svg>
         <span class="back-btn-label">ダッシュボードへ</span>
     </a>
-    <a href="{{ '/projects/' ~ breadcrumb_project.id if breadcrumb_project else '/projects' }}"
+    <a href="{{ '/projects/' ~ breadcrumb_project.id if breadcrumb_project else '/' }}"
        class="back-icon-btn back-icon-btn-project">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
-        <span class="back-btn-label">{{ breadcrumb_project.name ~ 'へ' if breadcrumb_project else 'プロジェクト一覧' }}</span>
+        <span class="back-btn-label">{{ breadcrumb_project.name ~ 'へ' if breadcrumb_project else 'ダッシュボードへ' }}</span>
     </a>
 
     {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
