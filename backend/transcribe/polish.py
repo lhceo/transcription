@@ -256,6 +256,7 @@ speakerに含まれる会社・役職・役割の情報を推察の補強に使�
 POLISH_USER_TEMPLATE = """{context}
 
 【文字起こし（JSON形式）】
+※ commentフィールドがある場合、それはユーザーが記録した補足メモです。整文の文脈理解に活用してください。
 {segments_json}
 
 上記の文字起こしを整文してください。
@@ -291,7 +292,15 @@ async def _run_polish_batch(
 ) -> tuple[dict[int, str], int, int]:
     """セグメントのリストを1回のAPI呼び出しで整文し、(suggestions, input_tokens, output_tokens) を返す。"""
     segments_json = json.dumps(
-        [{"id": s["id"], "speaker": s.get("speaker", ""), "text": s["text"]} for s in segments],
+        [
+            {
+                "id": s["id"],
+                "speaker": s.get("speaker", ""),
+                "text": s["text"],
+                **({"comment": s["comment"]} if s.get("comment") else {}),
+            }
+            for s in segments
+        ],
         ensure_ascii=False,
         indent=2,
     )

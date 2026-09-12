@@ -617,6 +617,21 @@
     <div class="transcript-body-layout">
     <div class="transcript-main-col">
 
+    {# ── 整文インラインレビュー プログレスバー ── #}
+    <div class="review-progress-bar" x-show="reviewMode" x-cloak
+         :class="pendingReviewCount() === 0 ? 'review-done' : ''">
+        <span class="review-progress-label" x-text="pendingReviewCount() === 0 ? '✓ レビュー完了' : '整文レビュー中'"></span>
+        <span class="review-progress-count" x-text="pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件 / ' + reviewTotalCount() + ' 件' : ''"></span>
+        <div class="review-progress-track">
+            <div class="review-progress-fill"
+                 :style="'width:' + (reviewTotalCount() ? Math.round((reviewTotalCount()-pendingReviewCount())/reviewTotalCount()*100) : 100) + '%'"></div>
+        </div>
+        <button class="btn btn-outline btn-sm" x-show="pendingReviewCount() > 0" @click="acceptAllReview()" style="white-space:nowrap">全採用</button>
+        <button class="btn btn-primary btn-sm" @click="applyReview()"
+                x-text="pendingReviewCount() === 0 ? '完了・保存' : '残りをスキップして保存'"></button>
+        <button class="btn btn-outline btn-sm" @click="cancelReview()" style="color:#64748b">キャンセル</button>
+    </div>
+
     {# ──── セグメント一覧 ──── #}
     {% if not segments %}
         <div class="segments-empty">
@@ -643,7 +658,14 @@
                     data-end-seconds="{{ seg.end_seconds }}"
                     data-original-asr-text="{{ seg.original_asr_text or '' }}"
                     data-bookmarked="{{ '1' if seg.is_bookmarked else '0' }}"
-                    style="margin-top: {{ mt }}">
+                    data-comment="{{ seg.comment or '' }}"
+                    style="margin-top: {{ mt }}"
+                    :class="{
+                        'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
+                        'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
+                        'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,
+                        'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done
+                    }">
                     <header class="segment-header">
                         <button
                             type="button"
@@ -673,9 +695,35 @@
                             {% set tsec = ts % 60 %}
                             {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
                         </span>
-                        {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
-                        {# ホバーアクション（ブックマーク・原文に戻す・ゴミ箱） #}
-                        <div class="segment-actions">
+                        {% if seg.is_edited %}
+                        <span class="seg-badge seg-badge-edited seg-badge-revertable"
+                              data-edited="1"
+                              x-show="!reviewMode"
+                              @click.stop="openRevertConfirm({{ seg.id }}, 'edited')"
+                              title="クリックで元に戻す">編集済み ↩</span>
+                        {% endif %}
+                        {% if seg.is_polished %}
+                        <span class="seg-badge seg-badge-polished seg-badge-revertable"
+                              x-show="!reviewMode"
+                              @click.stop="openRevertConfirm({{ seg.id }}, 'polished')"
+                              title="クリックで整文前に戻す">整文済み ↩</span>
+                        {% endif %}
+                        {% if '（？）' in seg.text_content %}
+                        <span class="seg-badge seg-badge-unresolved" x-show="!reviewMode">
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            未解決あり
+                        </span>
+                        {% endif %}
+                        {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
+                        <div class="segment-actions" x-show="!reviewMode">
+                            <button type="button"
+                                class="segment-action-btn segment-comment-btn {{ 'has-comment' if seg.comment else '' }}"
+                                data-segment-id="{{ seg.id }}"
+                                @click.stop="toggleCommentEdit({{ seg.id }})"
+                                title="{{ 'コメントを編集' if seg.comment else 'コメントを追加' }}"
+                                aria-label="{{ 'コメントを編集' if seg.comment else 'コメントを追加' }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </button>
                             <button type="button"
                                 class="segment-action-btn segment-bookmark-btn {{ 'is-bookmarked' if seg.is_bookmarked else '' }}"
                                 @click.stop="toggleBookmark({{ seg.id }}, $el.closest('.segment-card'))"
@@ -728,7 +776,7 @@
                     {# v1.1 Option C インラインエディタ #}
                     <div
                         class="segment-text"
-                        x-show="!shouldShowTextarea({{ seg.id }})"
+                        x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}])"
                         @click="seekToSegmentFromEvent($event)"
                         @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
@@ -738,7 +786,7 @@
                         <div class="segment-text-overlay" aria-hidden="true"><span class="overlay-played"></span><span class="overlay-current"></span><span class="overlay-remaining"></span></div>
                         <textarea
                             class="segment-text-edit"
-                            x-show="shouldShowTextarea({{ seg.id }})"
+                            x-show="shouldShowTextarea({{ seg.id }}) && !reviewMode"
                             x-cloak
                             data-segment-id="{{ seg.id }}"
                             @blur="onSegmentBlur($event)"
@@ -754,6 +802,7 @@
                     <button
                         type="button"
                         class="segment-split-btn"
+                        x-show="!reviewMode"
                         @pointerdown="$event.preventDefault()"
                         @click="onSplitButtonClick($event)"
                         aria-label="カーソル位置でセグメントを分割"
@@ -771,6 +820,135 @@
                         </span>
                         <small class="segment-split-btn-hint">Shift+Enter</small>
                     </button>
+
+                    {# ── 原文に戻す確認バー ── #}
+                    <div class="revert-confirm-bar"
+                         x-show="revertConfirmSegId === {{ seg.id }}" x-cloak @click.stop>
+                        <div style="width:100%">
+                            <div style="font-weight:600;margin-bottom:6px"
+                                 x-text="revertConfirmType === 'polished' ? '整文前の文字起こしに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
+                            <div style="font-size:11px;color:#b91c1c;margin-bottom:4px">戻し先：</div>
+                            <div style="font-size:13px;color:#7f1d1d;background:#fff1f2;border:1px solid #fecaca;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px">{{ seg.original_asr_text or seg.text_content }}</div>
+                            <div class="revert-confirm-actions">
+                                <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null">キャンセル</button>
+                                <button class="btn-revert" @click.stop="doRevert({{ seg.id }}, $el.closest('.segment-card'))">元に戻す</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# ── コメント表示 / 編集エリア ── #}
+                    {% if seg.comment %}
+                    <div class="segment-comment-wrap" x-show="!commentEditId || commentEditId !== {{ seg.id }}">
+                        <div class="segment-comment-text">{{ seg.comment }}</div>
+                    </div>
+                    {% endif %}
+                    <div class="segment-comment-edit-wrap"
+                         x-show="commentEditId === {{ seg.id }}" x-cloak
+                         @click.stop>
+                        <textarea class="segment-comment-textarea"
+                                  id="comment-ta-{{ seg.id }}"
+                                  rows="2"
+                                  placeholder="補足メモ（整文・エクスポートに反映されます）"
+                                  @keydown.escape.stop="cancelCommentEdit()"
+                                  @compositionstart="$event.target._composing = true"
+                                  @compositionend="$event.target._composing = false"
+                                  @keydown.enter.prevent="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) saveComment({{ seg.id }}, $el)"
+                        >{{ seg.comment or '' }}</textarea>
+                        <div class="segment-comment-actions">
+                            <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
+                            <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
+                            {% if seg.comment %}
+                            <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
+                            {% endif %}
+                            <p class="segment-comment-hint">Shift+Enterで改行 / Enterで保存</p>
+                        </div>
+                    </div>
+
+                    {# ── 整文インラインレビュー UI ── #}
+                    {# 採用済み #}
+                    <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        採用済み
+                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                    </div>
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
+
+                    {# スキップ済み #}
+                    <div class="review-skipped-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        スキップ（元の文字起こしを使用）
+                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                    </div>
+
+                    {# diff 未対応 #}
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done">
+                        <div class="review-pending-header">
+                            <span class="review-pending-badge diff-badge">整文あり</span>
+                            <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
+                        </div>
+                        <div class="review-original-box">
+                            <span class="review-original-label">元の文字起こし</span>
+                            {{ seg.text_content }}
+                        </div>
+                        <span class="review-edit-label">整文後（編集可）</span>
+                        <textarea class="review-edit-textarea" x-model="reviewData[{{ seg.id }}].polishedText" rows="3" @click.stop></textarea>
+                        <div class="review-inline-actions">
+                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">スキップ</button>
+                            <button class="btn btn-sm btn-primary" @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
+                        </div>
+                    </div>
+
+                    {# unknown（？）補完 未対応 #}
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done">
+                        <div class="review-pending-header">
+                            <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
+                            <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
+                        </div>
+                        <div class="fill-in-area">
+                            <template x-for="(part, idx) in reviewData[{{ seg.id }}]?.parts || []" :key="'p-{{ seg.id }}-' + idx">
+                                <span>
+                                    <span x-text="part"></span>
+                                    <template x-if="idx < (reviewData[{{ seg.id }}]?.fills?.length || 0)">
+                                        <span>
+                                            <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx !== idx">
+                                                <button class="fill-chip"
+                                                        :class="reviewData[{{ seg.id }}]?.fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                        @click.stop="startFillEdit({{ seg.id }}, idx)">
+                                                    <template x-if="!reviewData[{{ seg.id }}]?.fills[idx]">
+                                                        <span style="display:flex;align-items:center;gap:3px">
+                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                            補完してください
+                                                        </span>
+                                                    </template>
+                                                    <template x-if="reviewData[{{ seg.id }}]?.fills[idx]">
+                                                        <span style="display:flex;align-items:center;gap:4px">
+                                                            <span x-text="reviewData[{{ seg.id }}]?.fills[idx]"></span>
+                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                        </span>
+                                                    </template>
+                                                </button>
+                                            </template>
+                                            <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx === idx">
+                                                <span class="fill-chip-input-wrap">
+                                                    <input class="fill-chip-input"
+                                                           :id="'fill-{{ seg.id }}-' + idx"
+                                                           x-model="reviewData[{{ seg.id }}].fills[idx]"
+                                                           @blur.stop="stopFillEdit({{ seg.id }})"
+                                                           @keydown.enter.stop="stopFillEdit({{ seg.id }})"
+                                                           @keydown.escape.stop="reviewData[{{ seg.id }}].fills[idx] = ''; stopFillEdit({{ seg.id }})"
+                                                           @click.stop>
+                                                </span>
+                                            </template>
+                                        </span>
+                                    </template>
+                                </span>
+                            </template>
+                        </div>
+                        <div class="review-inline-actions">
+                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">スキップ</button>
+                            <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
+                        </div>
+                    </div>
                 </li>
             {% endfor %}
         </ol>
@@ -778,29 +956,62 @@
 
     </div>{# /transcript-main-col #}
 
-    {# ──── ブックマークサイドバー ──── #}
-    <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0" x-cloak>
-        <div class="bookmark-panel" id="bookmark-panel">
-            <div class="bookmark-panel-header">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                <span>ブックマーク</span>
-                <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+    {# ──── サイドバー（ブックマーク / コメント） ──── #}
+    <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0 || segmentComments.length > 0" x-cloak>
+        {# タブ切り替え（両方ある場合のみ表示） #}
+        <div class="sidebar-tabs" x-show="bookmarks.length > 0 && segmentComments.length > 0">
+            <button class="sidebar-tab" :class="sidebarTab === 'bookmarks' ? 'active' : ''"
+                    @click="sidebarTab = 'bookmarks'">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:12px;height:12px;display:inline;margin-right:3px"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                ブックマーク
+            </button>
+            <button class="sidebar-tab" :class="sidebarTab === 'comments' ? 'active' : ''"
+                    @click="sidebarTab = 'comments'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;display:inline;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                コメント
+            </button>
+        </div>
+        {# ブックマークパネル #}
+        <div x-show="sidebarTab === 'bookmarks' || (bookmarks.length > 0 && segmentComments.length === 0)">
+            <div class="bookmark-panel" id="bookmark-panel">
+                <div class="bookmark-panel-header">
+                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                    <span>ブックマーク</span>
+                    <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+                </div>
+                <ul class="bookmark-list">
+                    <template x-for="bm in bookmarks" :key="bm.segId">
+                        <li class="bookmark-item">
+                            <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                            <input type="text"
+                                class="bookmark-item-memo"
+                                :value="bm.memo"
+                                placeholder="メモ（任意）"
+                                @change="saveBookmarkMemo(bm, $event.target.value)"
+                                @keydown.enter.prevent="$event.target.blur()"
+                                @compositionstart="$event.target._composing = true"
+                                @compositionend="$event.target._composing = false">
+                            <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
             </div>
-            <ul class="bookmark-list">
-                <template x-for="bm in bookmarks" :key="bm.segId">
-                    <li class="bookmark-item">
-                        <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
-                        <input type="text"
-                            class="bookmark-item-memo"
-                            :value="bm.memo"
-                            placeholder="メモ（任意）"
-                            @change="saveBookmarkMemo(bm, $event.target.value)"
-                            @keydown.enter.prevent="$event.target.blur()"
-                            @compositionstart="$event.target._composing = true"
-                            @compositionend="$event.target._composing = false">
-                        <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
+        </div>
+        {# コメントパネル #}
+        <div class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" x-cloak>
+            <div class="comment-panel-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#f59e0b"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>コメント</span>
+                <span class="comment-panel-count" x-text="segmentComments.length + '件'"></span>
+            </div>
+            <ul class="comment-list">
+                <template x-for="c in segmentComments" :key="c.segId">
+                    <li class="comment-item" @click="jumpToSegmentForComment(c.segId)">
+                        <div class="comment-item-time" x-text="c.timeLabel"></div>
+                        <div class="comment-item-text" x-text="c.comment"></div>
+                        <div class="comment-item-excerpt" x-text="c.excerpt"></div>
                     </li>
                 </template>
             </ul>
@@ -1290,8 +1501,19 @@ function segmentsApp(transcriptId, historyNames) {
         // 進捗バー: 編集済みセグメント数
         editedCount: 0,
 
+        // ── 整文インラインレビュー ─────────────────────────────────
+        reviewMode: false,
+        reviewData: {},   // { [segId]: { state, done, polishedText, original, parts, fills, activeFillIdx, preview } }
+        revertConfirmSegId: null,
+        revertConfirmType: null,
+
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
+
+        // コメント関連
+        commentEditId: null,
+        sidebarTab: 'bookmarks',
+        segmentComments: [],   // [{segId, timeLabel, comment, excerpt}]
 
         // ── ブックマーク ─────────────────────────────────────────
         async toggleBookmark(segId, card) {
@@ -1569,11 +1791,151 @@ function segmentsApp(transcriptId, historyNames) {
             // 未確定なら setupAudioSync の loadedmetadata リスナーが後で描画する）
             this._renderBookmarkMarkers();
 
+            // コメント一覧初期化
+            this._buildSegmentComments();
+
             // 進捗バー：ページロード時の編集済み件数を初期値に設定 + マーカー描画
             this.$nextTick(() => {
                 this.editedCount = document.querySelectorAll('#segment-list [data-edited]').length;
                 this._renderEditedMarkers(); // 編集済み + ブックマーク両方描画
             });
+
+            // 整文インラインレビュー：polishModal からのイベントを受け取る
+            window.addEventListener('enter-review-mode', (e) => {
+                this.enterReviewMode(e.detail.suggestions);
+            });
+
+            // 動的生成バッジ（編集済み↩）のクリックを委譲で処理
+            document.getElementById('segment-list')?.addEventListener('click', (e) => {
+                const badge = e.target.closest('.seg-badge-revertable');
+                if (!badge) return;
+                e.stopPropagation();
+                const card = badge.closest('.segment-card');
+                if (!card) return;
+                const segId = parseInt(card.dataset.segmentId, 10);
+                const type = badge.classList.contains('seg-badge-polished') ? 'polished' : 'edited';
+                this.openRevertConfirm(segId, type);
+            });
+        },
+
+        // ── コメント機能 ─────────────────────────────────────────────
+        _buildSegmentComments() {
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            this.segmentComments = cards
+                .filter(card => card.dataset.comment)
+                .map(card => {
+                    const segId = parseInt(card.dataset.segmentId, 10);
+                    const startSec = parseFloat(card.dataset.startSeconds || '0');
+                    const timeLabel = this._formatSeconds(startSec);
+                    const textEl = card.querySelector('.segment-text-remaining');
+                    const rawText = textEl ? textEl.textContent.trim() : '';
+                    const excerpt = rawText.slice(0, 40) + (rawText.length > 40 ? '…' : '');
+                    return { segId, timeLabel, comment: card.dataset.comment, excerpt };
+                });
+            if (this.segmentComments.length > 0) this.sidebarTab = 'comments';
+            else if (this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
+        },
+
+        toggleCommentEdit(segId) {
+            if (this.commentEditId === segId) {
+                this.commentEditId = null;
+                return;
+            }
+            this.commentEditId = segId;
+            this.$nextTick(() => {
+                const ta = document.getElementById('comment-ta-' + segId);
+                if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
+            });
+        },
+
+        cancelCommentEdit() {
+            this.commentEditId = null;
+        },
+
+        async saveComment(segId, ta) {
+            const text = (ta?.value || '').trim();
+            try {
+                const res = await fetch(`/api/segments/${segId}/comment`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: text }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                this.commentEditId = null;
+
+                // Update DOM
+                const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+                if (card) {
+                    card.dataset.comment = text;
+                    // Update static comment display
+                    let commentWrap = card.querySelector('.segment-comment-wrap');
+                    if (text) {
+                        if (!commentWrap) {
+                            commentWrap = document.createElement('div');
+                            commentWrap.className = 'segment-comment-wrap';
+                            const commentText = document.createElement('div');
+                            commentText.className = 'segment-comment-text';
+                            commentWrap.appendChild(commentText);
+                            // Insert before comment edit wrap
+                            const editWrap = card.querySelector('.segment-comment-edit-wrap');
+                            if (editWrap) editWrap.before(commentWrap);
+                        }
+                        const commentTextEl = commentWrap.querySelector('.segment-comment-text');
+                        if (commentTextEl) commentTextEl.textContent = text;
+                        commentWrap.style.display = '';
+                    } else {
+                        if (commentWrap) commentWrap.remove();
+                    }
+                    // Update comment button style
+                    const btn = card.querySelector('.segment-comment-btn');
+                    if (btn) {
+                        btn.classList.toggle('has-comment', !!text);
+                        btn.title = text ? 'コメントを編集' : 'コメントを追加';
+                        btn.ariaLabel = btn.title;
+                    }
+                    // Update delete button visibility in edit wrap
+                    const deleteBtn = card.querySelector('.segment-comment-edit-wrap .btn-ghost[style*="ef4444"]');
+                    if (deleteBtn) deleteBtn.style.display = text ? '' : 'none';
+                }
+                this._buildSegmentComments();
+                if (this.segmentComments.length > 0) this.sidebarTab = 'comments';
+                window.showToast(text ? 'コメントを保存しました' : 'コメントを削除しました');
+            } catch (e) {
+                window.showToast('保存に失敗しました', 'error');
+            }
+        },
+
+        async deleteComment(segId, cardEl) {
+            try {
+                const res = await fetch(`/api/segments/${segId}/comment`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: '' }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                this.commentEditId = null;
+                if (cardEl) {
+                    cardEl.dataset.comment = '';
+                    const commentWrap = cardEl.querySelector('.segment-comment-wrap');
+                    if (commentWrap) commentWrap.remove();
+                    const btn = cardEl.querySelector('.segment-comment-btn');
+                    if (btn) { btn.classList.remove('has-comment'); btn.title = btn.ariaLabel = 'コメントを追加'; }
+                }
+                this._buildSegmentComments();
+                if (this.segmentComments.length === 0 && this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
+                window.showToast('コメントを削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
+
+        jumpToSegmentForComment(segId) {
+            const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.outline = '2px solid #f59e0b';
+                setTimeout(() => { card.style.outline = ''; }, 1500);
+            }
         },
 
         // v1.1: 編集を終了する前に、編集中の textarea があれば blur (save 経由) する
@@ -2212,8 +2574,7 @@ function segmentsApp(transcriptId, historyNames) {
                     if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
                     const ta = cardEl.querySelector('.segment-text-edit');
                     if (ta) { ta.value = newText; ta.dataset.originalText = newText; this.fitToContent(ta); }
-                    const badge = cardEl.querySelector('.segment-edited');
-                    if (badge) badge.remove();
+                    cardEl.querySelectorAll('.segment-edited, .seg-badge-edited, .seg-badge-polished, .seg-badge-unresolved').forEach(el => el.remove());
                     const revertBtn = cardEl.querySelector('.segment-revert-btn');
                     if (revertBtn) revertBtn.style.display = 'none';
                 }
@@ -2222,6 +2583,178 @@ function segmentsApp(transcriptId, historyNames) {
                 window.showToast('元に戻す処理に失敗しました。もう一度お試しください。', 'error');
             }
         },
+
+        // ── 整文インラインレビュー メソッド ───────────────────────────
+
+        openRevertConfirm(segId, type) {
+            if (this.revertConfirmSegId === segId && this.revertConfirmType === type) {
+                this.revertConfirmSegId = null;
+            } else {
+                this.revertConfirmSegId = segId;
+                this.revertConfirmType = type;
+            }
+        },
+
+        async doRevert(segId, cardEl) {
+            const res = await fetch(`/api/segments/${segId}/revert`, { method: 'POST' });
+            if (!res.ok) {
+                window.showToast('元に戻すことができませんでした', 'error');
+                return;
+            }
+            const data = await res.json();
+            this.revertConfirmSegId = null;
+            // Update text in DOM
+            const textEl = cardEl.querySelector('.segment-text-remaining');
+            if (textEl) textEl.textContent = data.text || '';
+            const ta = cardEl.querySelector('.segment-text-edit');
+            if (ta) ta.value = data.text || '';
+            const overlay = cardEl.querySelector('.overlay-remaining');
+            if (overlay) overlay.textContent = data.text || '';
+            // Remove badges and update edited count
+            const hadEdited = !!cardEl.querySelector('[data-edited]');
+            cardEl.querySelectorAll('.seg-badge-edited, .seg-badge-polished, .seg-badge-unresolved, .segment-edited').forEach(el => el.remove());
+            if (hadEdited) { this.editedCount = Math.max(0, this.editedCount - 1); this._renderEditedMarkers(); }
+            const revertBtn = cardEl.querySelector('.segment-revert-btn');
+            if (revertBtn) revertBtn.style.display = 'none';
+            window.showToast('元に戻しました');
+        },
+
+        enterReviewMode(suggestions) {
+            this.reviewData = {};
+            const cards = document.querySelectorAll('#segment-list .segment-card');
+            cards.forEach(card => {
+                const id = parseInt(card.dataset.segmentId, 10);
+                const textEl = card.querySelector('.segment-text-remaining');
+                const ta = card.querySelector('.segment-text-edit');
+                const original = (ta ? ta.value : (textEl ? textEl.textContent : '')).trim();
+                const suggestion = suggestions[id];
+                if (suggestion === undefined || suggestion === original) return;
+
+                const hasUnknown = suggestion.includes('（？）');
+                const state = hasUnknown ? 'unknown' : 'diff';
+                let parts = null, fills = null;
+                if (hasUnknown) {
+                    parts = suggestion.split('（？）');
+                    fills = new Array(parts.length - 1).fill('');
+                }
+                this.reviewData[id] = {
+                    state,
+                    done: null,
+                    polishedText: suggestion,
+                    original,
+                    parts,
+                    fills,
+                    activeFillIdx: null,
+                    preview: null,
+                };
+            });
+
+            const count = Object.keys(this.reviewData).length;
+            if (count === 0) {
+                window.showToast('整文完了しましたが、変更箇所がありませんでした。', 'info');
+                return;
+            }
+            this.editMode = false;
+            this.focusedEditingSegmentId = null;
+            this.reviewMode = true;
+            window.showToast(`整文完了（${count}箇所）。インラインでレビューしてください。`);
+            // Scroll to first pending
+            this.$nextTick(() => {
+                const first = document.querySelector('.segment-card.review-pending-diff, .segment-card.review-pending-unknown');
+                if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+        },
+
+        reviewTotalCount() {
+            return Object.keys(this.reviewData).length;
+        },
+
+        pendingReviewCount() {
+            return Object.values(this.reviewData).filter(d => !d.done).length;
+        },
+
+        acceptAllReview() {
+            Object.values(this.reviewData).forEach(d => {
+                if (!d.done) {
+                    if (d.state === 'diff') {
+                        d.done = 'accepted';
+                    } else if (d.state === 'unknown') {
+                        this._buildUnknownPreview(d);
+                        d.done = 'accepted';
+                    }
+                }
+            });
+        },
+
+        _buildUnknownPreview(d) {
+            let result = '';
+            d.parts.forEach((part, idx) => {
+                result += part;
+                if (idx < d.fills.length) result += d.fills[idx].trim() || '（？）';
+            });
+            d.preview = result;
+        },
+
+        buildAndAcceptReview(segId) {
+            const d = this.reviewData[segId];
+            if (!d) return;
+            this._buildUnknownPreview(d);
+            d.polishedText = d.preview;
+            d.done = 'accepted';
+        },
+
+        startFillEdit(segId, idx) {
+            const d = this.reviewData[segId];
+            if (d) d.activeFillIdx = idx;
+            this.$nextTick(() => {
+                const el = document.getElementById('fill-' + segId + '-' + idx);
+                if (el) { el.focus(); el.select(); }
+            });
+        },
+
+        stopFillEdit(segId) {
+            const d = this.reviewData[segId];
+            if (d) d.activeFillIdx = null;
+        },
+
+        cancelReview() {
+            this.reviewMode = false;
+            this.reviewData = {};
+        },
+
+        async applyReview() {
+            Object.values(this.reviewData).forEach(d => { if (!d.done) d.done = 'skipped'; });
+
+            const accepted_texts = {};
+            Object.entries(this.reviewData).forEach(([id, d]) => {
+                if (d.done === 'accepted') {
+                    accepted_texts[parseInt(id)] = d.polishedText || '';
+                }
+            });
+
+            if (Object.keys(accepted_texts).length === 0) {
+                window.showToast('採用された変更はありません。レビューを終了します。', 'info');
+                this.reviewMode = false;
+                this.reviewData = {};
+                return;
+            }
+
+            const transcriptId = (window.__TRANSCRIPT_INIT || {}).id;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/polish/accept`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accepted_texts }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                window.showToast('保存しました。ページを更新します。');
+                setTimeout(() => location.reload(), 800);
+            } catch (e) {
+                window.showToast('保存に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        // ── ここまで整文インラインレビュー ───────────────────────────
 
         openPolish() {
             const modal = document.querySelector('[x-data^="polishModal"]');
@@ -2396,9 +2929,9 @@ function segmentsApp(transcriptId, historyNames) {
                     if (!card.querySelector('[data-edited]')) {
                         const time = card.querySelector('.segment-time');
                         const badge = document.createElement('span');
-                        badge.className = 'segment-edited';
+                        badge.className = 'seg-badge seg-badge-edited seg-badge-revertable';
                         badge.dataset.edited = '1';
-                        badge.textContent = '編集済み';
+                        badge.textContent = '編集済み ↩';
                         if (time) time.after(badge);
                         this.editedCount++;
                         this._renderEditedMarkers();
@@ -2612,9 +3145,9 @@ function segmentsApp(transcriptId, historyNames) {
                     if (!currentCard.querySelector('[data-edited]')) {
                         const time = currentCard.querySelector('.segment-time');
                         const badge = document.createElement('span');
-                        badge.className = 'segment-edited';
+                        badge.className = 'seg-badge seg-badge-edited seg-badge-revertable';
                         badge.dataset.edited = '1';
-                        badge.textContent = '編集済み';
+                        badge.textContent = '編集済み ↩';
                         if (time) time.after(badge);
                     }
                 }
@@ -2692,9 +3225,9 @@ function segmentsApp(transcriptId, historyNames) {
             time.textContent = this.formatTime(newSeg.start_seconds);
 
             const edited = document.createElement('span');
-            edited.className = 'segment-edited';
+            edited.className = 'seg-badge seg-badge-edited seg-badge-revertable';
             edited.dataset.edited = '1';
-            edited.textContent = '編集済み';
+            edited.textContent = '編集済み ↩';
 
             // ブックマーク済みインジケーター（初期は非表示）
             const bookmarkIndicator = document.createElement('button');
@@ -3098,43 +3631,9 @@ function polishModal() {
                 if (!res.ok) throw new Error((await res.json()).detail || res.status);
                 const data = await res.json();
 
-                // DOMからセグメントデータを直接構築（Alpine.evaluateはsegments配列を持たない）
-                const segsData = Array.from(
-                    document.querySelectorAll('#segment-list .segment-card')
-                ).map(card => {
-                    const id = parseInt(card.dataset.segmentId, 10);
-                    const textDiv = card.querySelector('.segment-text');
-                    const textarea = card.querySelector('.segment-text-edit');
-                    const isEditing = textarea && textarea.style.display !== 'none';
-                    const text = isEditing ? (textarea.value || '') : (textDiv ? textDiv.textContent : '');
-                    const badgeText = card.querySelector('.speaker-badge-text');
-                    return {
-                        id,
-                        text_content: text.trim(),
-                        display_name: badgeText ? badgeText.textContent.trim() : '',
-                        speaker_label: card.dataset.speakerLabel || '',
-                    };
-                });
-                this.diffSegments = segsData.map(s => {
-                    const suggestion = data.suggestions[s.id] ?? null;
-                    const changed = suggestion !== null && suggestion !== s.text_content;
-                    return {
-                        id: s.id,
-                        speaker: s.display_name || s.speaker_label || '',
-                        original: s.text_content,
-                        suggestion: suggestion ?? s.text_content,
-                        current: suggestion ?? s.text_content,
-                        changed,
-                        accepted: false,
-                    };
-                });
-                this.step = 'diff';
-                const changedN = this.diffSegments.filter(s => s.changed).length;
-                if (changedN === 0) {
-                    window.showToast('整文完了しましたが、修正箇所がありませんでした。', 'info');
-                } else {
-                    window.showToast(`整文完了（${changedN}箇所）。変更を確認してください。`);
-                }
+                // Close modal and enter inline review mode
+                this.show = false;
+                window.dispatchEvent(new CustomEvent('enter-review-mode', { detail: { suggestions: data.suggestions } }));
             } catch (e) {
                 window.showToast('整文に失敗しました: ' + e.message, 'error');
                 this.step = 'confirm';

@@ -196,8 +196,10 @@ class Segment(Base):
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     is_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_polished: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_bookmarked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     bookmark_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

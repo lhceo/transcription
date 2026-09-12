@@ -1006,6 +1006,7 @@ async def polish_run(
             "id": s.id,
             "speaker": s.display_name or speaker_name_map.get(s.speaker_label, s.speaker_label),
             "text": s.text_content,
+            "comment": s.comment or "",
         }
         for s in segments
     ]
@@ -1060,6 +1061,7 @@ async def polish_accept(
         if seg and seg.transcript_id == transcript_id:
             seg.text_content = text
             seg.is_edited = True
+            seg.is_polished = True
             updated += 1
 
     db.commit()

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -1544,9 +1544,31 @@ async def revert_segment_to_original(
 
     segment.text_content = segment.original_asr_text
     segment.is_edited = False
+    segment.is_polished = False
     db.commit()
 
     return JSONResponse({"text": segment.original_asr_text})
+
+
+@router.patch("/api/segments/{segment_id}/comment")
+async def update_segment_comment(
+    segment_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: dict = Body(...),
+) -> JSONResponse:
+    """セグメントのコメントを保存・削除する。body: {"comment": "text or empty string"}"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+    comment_text = (body.get("comment") or "").strip()
+    segment.comment = comment_text or None
+    db.commit()
+    return JSONResponse({"ok": True, "comment": segment.comment})
 
 
 # ── 固有名詞辞書（個別音声） ───────────────────────────────────────────
@@ -1669,6 +1691,8 @@ def _build_export_txt(segments: list[Segment], name_map: dict[str, str]) -> str:
         ts = _format_time_hms(seg.start_seconds)
         lines.append(f"[{ts} {name}]")
         lines.append(seg.text_content)
+        if seg.comment:
+            lines.append(f"# {seg.comment}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1681,7 +1705,10 @@ def _build_export_srt(segments: list[Segment], name_map: dict[str, str]) -> str:
         parts.append(
             f"{_format_time_srt(seg.start_seconds)} --> {_format_time_srt(seg.end_seconds)}"
         )
-        parts.append(f"[{name}] {seg.text_content}")
+        text_line = f"[{name}] {seg.text_content}"
+        if seg.comment:
+            text_line += f"\n# {seg.comment}"
+        parts.append(text_line)
         parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
@@ -1719,6 +1746,7 @@ def _build_export_json(
                 "display_name": s.display_name,
                 "text": s.text_content,
                 "speaker": _resolve_speaker_name(s, name_map),
+                "comment": s.comment,
             }
             for s in segments
         ],
