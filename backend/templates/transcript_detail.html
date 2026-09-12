@@ -13,6 +13,11 @@
         transcriptId: {{ transcript.id }},
         historyNames: {{ history_names|tojson }},
     };
+    window.__BOOKMARKS_INIT = [
+        {% for seg in segments if seg.is_bookmarked %}
+        { segId: {{ seg.id }}, startSeconds: {{ seg.start_seconds }}, memo: {{ (seg.bookmark_memo or '')|tojson }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
     window.__PEOPLE_REGISTRY = {{ people_registry|tojson }};
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
@@ -26,6 +31,7 @@
         meetingParticipants: {{ meeting_participants | tojson }},
         projectId: {{ transcript.project_id | tojson }},
         projectMemberNames: {{ project_member_names | tojson }},
+        vocabulary: [{% for v in transcript_vocabulary %}{"id":{{ v.id }},"word":{{ v.word|tojson }},"meaning":{{ (v.meaning or '')|tojson }},"reading":{{ (v.reading or '')|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
     };
 </script>
 
@@ -160,6 +166,8 @@
         <div class="player-timeline-track">
             <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
             <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'"></div>
+            {# ブックマークマーカー（JS で動的に挿入） #}
+            <div class="player-bookmark-markers" id="player-bookmark-markers"></div>
         </div>
     </div>
 
@@ -407,6 +415,55 @@
                     <p class="form-hint" style="margin-top:4px">追加した参加者は話者名の候補にも表示されます。</p>
                 </div>
             </div>
+            <div class="form-row form-row-inline">
+                <label class="form-label">固有名詞</label>
+                <div class="vocab-editor">
+                    <div class="vocab-add-row">
+                        <input type="text" class="form-input form-input-sm" x-model="newVocabWord"
+                               placeholder="単語（例: ライオンハート）" maxlength="200"
+                               @keydown.enter.prevent="if (!$event.isComposing) addVocab()"
+                               @compositionstart="$event.target._composing = true"
+                               @compositionend="$event.target._composing = false">
+                        <button type="button" class="btn btn-outline btn-sm" @click="addVocab()" :disabled="!newVocabWord.trim()">追加</button>
+                    </div>
+                    <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
+                        <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: らいおんはーと）" maxlength="200">
+                        <input type="text" class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="意味・説明（例: クライアント企業名）">
+                    </div>
+                    <template x-if="vocabulary.length === 0">
+                        <p class="form-hint" style="margin-top:6px">まだ登録されていません</p>
+                    </template>
+                    <ul class="vocab-list" x-show="vocabulary.length > 0" x-cloak>
+                        <template x-for="v in vocabulary" :key="v.id">
+                            <li class="vocab-item">
+                                <div x-show="editingVocabId !== v.id" class="vocab-item-view">
+                                    <span class="vocab-word" x-text="v.word"></span>
+                                    <span class="vocab-reading text-muted" x-show="v.reading" x-text="'(' + v.reading + ')'"></span>
+                                    <span class="vocab-meaning text-muted" x-show="v.meaning" x-text="v.meaning"></span>
+                                    <div class="vocab-item-actions">
+                                        <button type="button" class="btn-icon btn-icon-xs" @click="startEditVocab(v)" title="編集">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        </button>
+                                        <button type="button" class="btn-icon btn-icon-danger btn-icon-xs" @click="deleteVocab(v)" title="削除">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1">
+                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
+                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方">
+                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="意味・説明">
+                                    <div style="display:flex;gap:6px">
+                                        <button type="button" class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
+                                        <button type="button" class="btn btn-ghost btn-sm" @click="cancelEditVocab()">キャンセル</button>
+                                    </div>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                    <p class="form-hint" style="margin-top:4px">文字起こし精度と整文の両方に反映されます。会話に頻出する固有名詞・専門用語を登録してください。</p>
+                </div>
+            </div>
             <div class="form-actions">
                 <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving">
                     <span x-show="!saving">保存</span>
@@ -490,23 +547,55 @@
         発言をクリックして編集できます
     </div>
 
+    {# ──── ブックマークパネル ──── #}
+    <div class="bookmark-panel" id="bookmark-panel" x-show="bookmarks.length > 0" x-cloak>
+        <div class="bookmark-panel-header">
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span>ブックマーク</span>
+            <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+        </div>
+        <ul class="bookmark-list">
+            <template x-for="bm in bookmarks" :key="bm.segId">
+                <li class="bookmark-item">
+                    <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                    <input type="text"
+                        class="bookmark-item-memo"
+                        :value="bm.memo"
+                        placeholder="メモ（任意）"
+                        @change="saveBookmarkMemo(bm, $event.target.value)"
+                        @keydown.enter.prevent="$event.target.blur()"
+                        @compositionstart="$event.target._composing = true"
+                        @compositionend="$event.target._composing = false">
+                    <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </li>
+            </template>
+        </ul>
+    </div>
+
     {# ──── セグメント一覧 ──── #}
     {% if not segments %}
         <div class="segments-empty">
             まだセグメントがありません。
         </div>
     {% else %}
-        <ol class="segment-list" id="segment-list" :class="editMode ? 'segment-list-editing' : ''">
+        <ol class="segment-list" id="segment-list"
+            :class="{ 'segment-list-editing': editMode, 'segment-list-focus': editMode && focusedEditingSegmentId !== null }">
             {% for seg in segments %}
                 {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
                 {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
+                {% set mt = '0' if loop.first else ('8px' if loop.previtem.speaker_label == seg.speaker_label else '16px') %}
                 <li class="segment-card"
                     id="segment-{{ seg.id }}"
                     data-segment-id="{{ seg.id }}"
                     data-speaker-label="{{ seg.speaker_label }}"
                     data-color-index="{{ color_idx }}"
                     data-start-seconds="{{ seg.start_seconds }}"
-                    data-end-seconds="{{ seg.end_seconds }}">
+                    data-end-seconds="{{ seg.end_seconds }}"
+                    data-original-asr-text="{{ seg.original_asr_text or '' }}"
+                    data-bookmarked="{{ '1' if seg.is_bookmarked else '0' }}"
+                    style="margin-top: {{ mt }}">
                     <header class="segment-header">
                         <button
                             type="button"
@@ -519,6 +608,16 @@
                         >
                             <span class="speaker-badge-text">{{ effective_name }}</span>
                         </button>
+                        {# ブックマーク済みインジケーター（クリックでブックマークパネルへ） #}
+                        <button type="button"
+                            class="segment-bookmark-indicator"
+                            data-segment-id="{{ seg.id }}"
+                            style="{{ '' if seg.is_bookmarked else 'display:none' }}"
+                            @click.stop="scrollToBookmarkPanel({{ seg.id }})"
+                            title="ブックマーク済み"
+                            aria-label="ブックマーク済み">
+                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        </button>
                         <span class="segment-time" data-start="{{ seg.start_seconds }}">
                             {% set ts = seg.start_seconds|int %}
                             {% set th = ts // 3600 %}
@@ -527,8 +626,29 @@
                             {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
                         </span>
                         {% if seg.is_edited %}<span class="segment-edited" data-edited="1">編集済み</span>{% endif %}
-                        {# ホバーアクション（ゴミ箱） #}
+                        {# ホバーアクション（ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions">
+                            <button type="button"
+                                class="segment-action-btn segment-bookmark-btn {{ 'is-bookmarked' if seg.is_bookmarked else '' }}"
+                                @click.stop="toggleBookmark({{ seg.id }}, $el.closest('.segment-card'))"
+                                title="{{ 'ブックマーク解除' if seg.is_bookmarked else 'ブックマーク' }}"
+                                aria-label="{{ 'ブックマーク解除' if seg.is_bookmarked else 'ブックマーク' }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                            </button>
+                            {% if seg.original_asr_text and seg.original_asr_text != seg.text_content %}
+                            <button
+                                type="button"
+                                class="segment-action-btn segment-revert-btn"
+                                @click.stop="revertSegment({{ seg.id }}, $el.closest('.segment-card'))"
+                                title="元の文字起こしに戻す"
+                                aria-label="元の文字起こしに戻す"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="1 4 1 10 7 10"></polyline>
+                                    <path d="M3.51 15a9 9 0 1 0 .49-3.04"></path>
+                                </svg>
+                            </button>
+                            {% endif %}
                             <button
                                 type="button"
                                 class="segment-action-btn segment-delete-btn"
@@ -562,7 +682,7 @@
                         class="segment-text"
                         x-show="!shouldShowTextarea({{ seg.id }})"
                         @click="seekToSegmentFromEvent($event)"
-                        @dblclick="enterEditModeForSegment($event)"
+                        @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
                     {# 編集中オーバーレイカラオケ：textareaに背景ハイライトで再生位置を表示 #}
@@ -697,10 +817,10 @@
             </template>
         </div>
         <div class="speaker-popup-actions">
-            <button type="button" class="speaker-popup-action" @click="applyOnly()">
+            <button type="button" class="speaker-popup-action speaker-popup-action-primary" @click="applyOnly()">
                 この発言のみ
             </button>
-            <button type="button" class="speaker-popup-action speaker-popup-action-primary" @click="applyAll()">
+            <button type="button" class="speaker-popup-action speaker-popup-action-secondary" @click="applyAll()">
                 <span x-text="'すべての「' + editor.originalName + '」に適用'"></span>
             </button>
             <button type="button" class="btn-link" @click="closeEditor()">
@@ -708,6 +828,33 @@
             </button>
         </div>
     </div>
+
+    {# ── 固定左下ナビボタン（編集モード中のみ） ── #}
+    <a href="/" class="back-icon-btn back-icon-btn-home" x-show="editMode" x-cloak>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12L12 4l9 8"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>
+        </svg>
+        <span class="back-btn-label">ダッシュボードへ</span>
+    </a>
+    {% if breadcrumb_project %}
+    <a href="/projects/{{ breadcrumb_project.id }}" class="back-icon-btn back-icon-btn-project" x-show="editMode" x-cloak>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="back-btn-label">{{ breadcrumb_project.name }}へ</span>
+    </a>
+    {% endif %}
+
+    {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
+    <div class="vert-progress" x-show="editMode" x-cloak title="確認進捗">
+        <div class="vert-progress-fill" :style="`height: ${progressPct()}%`"></div>
+        <div class="vert-progress-badge"
+             :style="`top: clamp(14px, ${progressPct()}%, calc(100% - 14px))`"
+             x-show="progressPct() > 0"
+             x-text="progressPct() + '%'"></div>
+        <div class="vert-progress-msg" x-text="progressMsg()"></div>
+    </div>
+
 </section>
 
 {# ── 整文モーダル ── #}
@@ -1065,6 +1212,107 @@ function segmentsApp(transcriptId, historyNames) {
         // textarea に変換される。null = 「どれも編集中ではない」
         focusedEditingSegmentId: null,
 
+        // 進捗バー: 個別に画面内に入ったセグメント数
+        reviewedCount: 0,
+
+        // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
+        bookmarks: [],
+
+        // ── ブックマーク ─────────────────────────────────────────
+        async toggleBookmark(segId, card) {
+            const res = await fetch(`/api/segments/${segId}/bookmark`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            if (!res.ok) { window.showToast('ブックマークの更新に失敗しました', 'error'); return; }
+            const data = await res.json();
+            const indicator = card.querySelector('.segment-bookmark-indicator');
+            const btn = card.querySelector('.segment-bookmark-btn');
+            card.dataset.bookmarked = data.bookmarked ? '1' : '0';
+            if (indicator) indicator.style.display = data.bookmarked ? '' : 'none';
+            if (btn) {
+                btn.classList.toggle('is-bookmarked', data.bookmarked);
+                btn.title = btn.ariaLabel = data.bookmarked ? 'ブックマーク解除' : 'ブックマーク';
+            }
+            const startSeconds = parseFloat(card.dataset.startSeconds) || 0;
+            if (data.bookmarked) {
+                const entry = { segId, startSeconds, memo: data.memo, timeLabel: this._formatSeconds(startSeconds) };
+                this.bookmarks = [...this.bookmarks, entry].sort((a, b) => a.startSeconds - b.startSeconds);
+            } else {
+                this.bookmarks = this.bookmarks.filter(b => b.segId !== segId);
+            }
+            this._renderBookmarkMarkers();
+        },
+
+        async toggleBookmarkById(segId) {
+            const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+            if (card) await this.toggleBookmark(segId, card);
+        },
+
+        async saveBookmarkMemo(bm, memo) {
+            bm.memo = memo;
+            await fetch(`/api/segments/${bm.segId}/bookmark-memo`, {
+                method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ memo }),
+            });
+        },
+
+        jumpToBookmark(bm) {
+            const card = document.querySelector(`.segment-card[data-segment-id="${bm.segId}"]`);
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const audio = document.querySelector('.audio-player-section audio');
+            if (audio) { audio.currentTime = bm.startSeconds; audio.play().catch(() => {}); }
+        },
+
+        scrollToBookmarkPanel(segId) {
+            const panel = document.getElementById('bookmark-panel');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+
+        _renderBookmarkMarkers() {
+            const container = document.getElementById('player-bookmark-markers');
+            if (!container) return;
+            const audio = document.querySelector('.audio-player-section audio');
+            const duration = audio?.duration || 0;
+            container.innerHTML = '';
+            if (!duration) return;
+            this.bookmarks.forEach(bm => {
+                const pct = Math.min(100, (bm.startSeconds / duration) * 100);
+                const marker = document.createElement('button');
+                marker.type = 'button';
+                marker.className = 'player-bookmark-tick';
+                marker.style.left = pct + '%';
+                marker.title = bm.timeLabel + (bm.memo ? ' — ' + bm.memo : '');
+                marker.addEventListener('click', e => { e.stopPropagation(); this.jumpToBookmark(bm); });
+                container.appendChild(marker);
+            });
+        },
+
+        _formatSeconds(secs) {
+            const s = Math.floor(secs);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+            return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+        },
+
+        progressPct() {
+            const total = document.querySelectorAll('#segment-list .segment-card').length;
+            return total ? Math.round(this.reviewedCount / total * 100) : 0;
+        },
+
+        progressMsg() {
+            const pct = this.progressPct();
+            if (pct === 0)  return 'さあ始めましょう！';
+            if (pct < 20)  return 'いいスタートです！';
+            if (pct < 40)  return 'いいペース！';
+            if (pct < 60)  return '折り返しが見えてきた！';
+            if (pct < 80)  return '半分以上！もうすぐです！';
+            if (pct < 95)  return 'あと少し！';
+            return 'ゴールまじか！';
+        },
+
         // v1.1 Option C: このセグメントの textarea を表示すべきか判定。
         // テンプレートの x-show="shouldShowTextarea(segIdHere)" から呼ばれる
         // (Jinja で各セグメントの id が静的に展開される)。
@@ -1074,7 +1322,14 @@ function segmentsApp(transcriptId, historyNames) {
 
         init() {
             // textarea の自動サイズ調整を初期化
-            this.$nextTick(() => this.resizeAllTextareas());
+            this.$nextTick(() => {
+                this.resizeAllTextareas();
+                // （？）補完マーカー: 初回ロード時にすべてのカードをスキャン
+                document.querySelectorAll('#segment-list .segment-card').forEach(card => {
+                    const text = card.querySelector('.segment-text-remaining')?.textContent || '';
+                    if (text.includes('（？）')) card.classList.add('segment-card-has-unknown');
+                });
+            });
             // Shift+Return で動的に追加されたカードには x-show が効かないので、
             // editMode / focusedEditingSegmentId の変化を監視して
             // view/edit 表示を手動同期する。
@@ -1085,6 +1340,8 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!this.editMode && this.focusedEditingSegmentId !== null) {
                     this.endEditingCurrentSegment();
                 }
+                // 編集モード終了時に進捗リセット（seenSegIds は下の IntersectionObserver 内で参照）
+                if (!this.editMode) this.reviewedCount = 0;
             });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
@@ -1111,11 +1368,19 @@ function segmentsApp(transcriptId, historyNames) {
                 );
                 if (card) this._updateSplitBtnPos(card);
             });
-            // Ctrl+Z でセグメント保存の取り消し（テキストエリア以外でのみ発動）
+            // Cmd+Z でセグメント操作の取り消し
             window.addEventListener('keydown', async (e) => {
                 if (!(e.key === 'z' && (e.ctrlKey || e.metaKey)) || e.shiftKey) return;
                 const tag = document.activeElement?.tagName?.toLowerCase();
-                if (tag === 'textarea' || tag === 'input' || document.activeElement?.isContentEditable) return;
+                const isEditable = tag === 'textarea' || tag === 'input' || document.activeElement?.isContentEditable;
+                if (isEditable) {
+                    // textarea内では分割の取り消しのみ介入。テキスト変更はブラウザに任せる
+                    const top = this.undoStack[this.undoStack.length - 1];
+                    if (!top || top.type !== 'split') return;
+                    e.preventDefault();
+                    await this._undoLastSave();
+                    return;
+                }
                 if (this.undoStack.length === 0) return;
                 e.preventDefault();
                 await this._undoLastSave();
@@ -1127,6 +1392,47 @@ function segmentsApp(transcriptId, historyNames) {
                     e.preventDefault();
                     e.returnValue = '';
                 }
+            });
+            // タブ切替・アプリ切替時に即時フラッシュ（keepalive で確実に届ける）
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden' && this.pendingSegments.size > 0) {
+                    for (const [segId] of this.pendingSegments) {
+                        const ta = document.querySelector(`.segment-text-edit[data-segment-id="${segId}"]`);
+                        if (!ta) continue;
+                        const newText = ta.value.trim();
+                        const original = ta.dataset.originalText;
+                        if (newText === original) continue;
+                        fetch(`/api/segments/${segId}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: newText }),
+                            keepalive: true,
+                        }).catch(() => {});
+                    }
+                }
+            });
+
+            // ブックマーク初期化
+            this.bookmarks = (window.__BOOKMARKS_INIT || []).map(bm => ({
+                ...bm,
+                timeLabel: this._formatSeconds(bm.startSeconds),
+            }));
+            this.$nextTick(() => this._renderBookmarkMarkers());
+
+            // 進捗バー：ジャンプしても間のセグメントをカウントしないよう
+            // IntersectionObserver で個別追跡する
+            const seenSegIds = new Set();
+            const segObserver = new IntersectionObserver((entries) => {
+                if (!this.editMode) return;
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) seenSegIds.add(entry.target.id);
+                });
+                this.reviewedCount = seenSegIds.size;
+            }, { threshold: 0.3 });
+            this.$nextTick(() => {
+                document.querySelectorAll('#segment-list .segment-card').forEach(card => {
+                    segObserver.observe(card);
+                });
             });
         },
 
@@ -1395,6 +1701,15 @@ function segmentsApp(transcriptId, historyNames) {
             // 次の timeupdate で再描画される。
             progressSpan.textContent = '';
             remainSpan.textContent = newText;
+            // （？）補完マーカー: 含む場合はカード左にアンバーボーダーを付ける
+            const card = div.closest('.segment-card');
+            if (card) {
+                if (newText.includes('（？）')) {
+                    card.classList.add('segment-card-has-unknown');
+                } else {
+                    card.classList.remove('segment-card-has-unknown');
+                }
+            }
         },
 
         // 文字単位ハイライト: ratio (0〜1) に応じて progress span / remaining span の
@@ -1464,6 +1779,44 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         // ダブルクリックで該当テキスト位置付近から再生
+        seekFromTextDblClick(e) {
+            const div = e.currentTarget;
+            const card = div.closest('.segment-card');
+            if (!card) return;
+            const start = parseFloat(card.dataset.startSeconds) || 0;
+            const end   = parseFloat(card.dataset.endSeconds)   || (start + 5);
+            const dur   = Math.max(0, end - start);
+
+            // クリック位置の文字オフセットを取得（Chrome/Safari/Edge: caretRangeFromPoint）
+            let charOffset = 0;
+            const totalLen = div.textContent.length || 1;
+            let range = null;
+            if (document.caretRangeFromPoint) {
+                range = document.caretRangeFromPoint(e.clientX, e.clientY);
+            } else if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                if (pos) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); }
+            }
+            if (range) {
+                const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                    if (node === range.startContainer) { charOffset += range.startOffset; break; }
+                    charOffset += node.textContent.length;
+                }
+            }
+
+            const ratio  = Math.max(0, Math.min(1, charOffset / totalLen));
+            const seekTo = start + ratio * dur;
+            const audio  = document.querySelector('.audio-player-section audio');
+            if (!audio) return;
+            audio.currentTime = seekTo;
+            if (audio.paused) audio.play().catch(() => {});
+
+            // 編集モードでなければ通常通り編集モードに入る
+            if (!this.editMode) this.enterEditModeForSegment(e);
+        },
+
         seekFromTextareaDblClick(e) {
             const ta = e.currentTarget;
             const card = ta.closest('.segment-card');
@@ -1673,13 +2026,46 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async deleteSegment(segmentId, cardEl) {
-            if (!confirm('このブロックを削除しますか？')) return;
+            const ok = await window.showConfirm('このブロックを削除しますか？', { title: '削除の確認', okLabel: '削除する' });
+            if (!ok) return;
             try {
                 const res = await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete failed');
                 if (cardEl) cardEl.remove();
             } catch (e) {
-                alert('削除に失敗しました。もう一度お試しください。');
+                window.showToast('削除に失敗しました。もう一度お試しください。', 'error');
+            }
+        },
+
+        async revertSegment(segmentId, cardEl) {
+            const ok = await window.showConfirm('このブロックを元の文字起こしテキストに戻しますか？\n（整文・手動編集の内容が失われます）', { title: '元に戻す確認', okLabel: '元に戻す' });
+            if (!ok) return;
+            try {
+                const res = await fetch(`/api/segments/${segmentId}/revert`, { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    if (err?.code === 'NO_ORIGINAL') {
+                        window.showToast('元のテキストが保存されていません（この文字起こしは対象外です）。', 'error');
+                    } else {
+                        window.showToast('元に戻す処理に失敗しました。もう一度お試しください。', 'error');
+                    }
+                    return;
+                }
+                const data = await res.json();
+                const newText = data.text || '';
+                if (cardEl) {
+                    const viewDiv = cardEl.querySelector('.segment-text');
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
+                    const ta = cardEl.querySelector('.segment-text-edit');
+                    if (ta) { ta.value = newText; ta.dataset.originalText = newText; this.fitToContent(ta); }
+                    const badge = cardEl.querySelector('.segment-edited');
+                    if (badge) badge.remove();
+                    const revertBtn = cardEl.querySelector('.segment-revert-btn');
+                    if (revertBtn) revertBtn.style.display = 'none';
+                }
+                window.showToast('元の文字起こしに戻しました');
+            } catch (e) {
+                window.showToast('元に戻す処理に失敗しました。もう一度お試しください。', 'error');
             }
         },
 
@@ -1757,35 +2143,67 @@ function segmentsApp(transcriptId, historyNames) {
             await this._saveSegment(segmentId, t);
         },
 
-        // 1セグメントを保存する共通処理
         async _undoLastSave() {
             const entry = this.undoStack.pop();
             if (!entry) return;
-            const { segmentId, oldText } = entry;
-            try {
-                const res = await fetch(`/api/segments/${segmentId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: oldText }),
-                });
-                if (!res.ok) throw new Error(res.status);
-                // DOM 更新
-                const card = document.querySelector(`.segment-card[data-segment-id="${segmentId}"]`);
-                if (card) {
-                    const ta = card.querySelector('.segment-text-edit');
-                    const viewDiv = card.querySelector('.segment-text');
-                    if (ta) {
-                        ta.value = oldText;
-                        ta.dataset.originalText = oldText;
-                        this.fitToContent(ta);
+            if (entry.type === 'split') {
+                try {
+                    const delRes = await fetch(`/api/segments/${entry.newSegId}`, { method: 'DELETE' });
+                    if (!delRes.ok) throw new Error('delete failed');
+                    const patchRes = await fetch(`/api/segments/${entry.originalId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: entry.originalText }),
+                    });
+                    if (!patchRes.ok) throw new Error('patch failed');
+                    // DOM: 新カード削除
+                    const newCard = document.querySelector(`.segment-card[data-segment-id="${entry.newSegId}"]`);
+                    if (newCard) newCard.remove();
+                    // DOM: 元カードを分割前の状態に戻す
+                    const origCard = document.querySelector(`.segment-card[data-segment-id="${entry.originalId}"]`);
+                    if (origCard) {
+                        const ta = origCard.querySelector('.segment-text-edit');
+                        const viewDiv = origCard.querySelector('.segment-text');
+                        if (ta) { ta.value = entry.originalText; ta.dataset.originalText = entry.originalText; this.fitToContent(ta); }
+                        if (viewDiv) this.setSegmentTextContent(viewDiv, entry.originalText);
+                        if (entry.originalEndSeconds !== undefined) origCard.dataset.endSeconds = String(entry.originalEndSeconds);
+                        this.focusedEditingSegmentId = entry.originalId;
+                        this.$nextTick(() => {
+                            const origTa = origCard.querySelector('.segment-text-edit');
+                            if (origTa) { origTa.focus(); origTa.setSelectionRange(entry.originalText.length, entry.originalText.length); }
+                        });
                     }
-                    if (viewDiv) this.setSegmentTextContent(viewDiv, oldText);
+                    window.showToast('分割を取り消しました');
+                } catch (e) {
+                    this.undoStack.push(entry);
+                    window.showToast('取り消しに失敗しました', 'error');
                 }
-                window.showToast('取り消しました');
-            } catch (e) {
-                // 失敗したらスタックに戻す
-                this.undoStack.push(entry);
-                window.showToast('取り消しに失敗しました', 'error');
+            } else {
+                const { segmentId, oldText } = entry;
+                try {
+                    const res = await fetch(`/api/segments/${segmentId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: oldText }),
+                    });
+                    if (!res.ok) throw new Error(res.status);
+                    // DOM 更新
+                    const card = document.querySelector(`.segment-card[data-segment-id="${segmentId}"]`);
+                    if (card) {
+                        const ta = card.querySelector('.segment-text-edit');
+                        const viewDiv = card.querySelector('.segment-text');
+                        if (ta) {
+                            ta.value = oldText;
+                            ta.dataset.originalText = oldText;
+                            this.fitToContent(ta);
+                        }
+                        if (viewDiv) this.setSegmentTextContent(viewDiv, oldText);
+                    }
+                    window.showToast('取り消しました');
+                } catch (e) {
+                    this.undoStack.push(entry);
+                    window.showToast('取り消しに失敗しました', 'error');
+                }
             }
         },
 
@@ -1836,9 +2254,9 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             } catch (e) {
                 console.error('save failed:', e);
-                ta.value = original;
-                this.pendingSegments.delete(segmentId);
+                // テキストをリバートしない・pendingも残す → beforeunloadが警告を出せる状態を維持
                 this.saveStatus = 'error';
+                window.showToast('保存に失敗しました。ネットワークを確認してください。', 'error');
             }
         },
 
@@ -1998,11 +2416,16 @@ function segmentsApp(transcriptId, historyNames) {
             const position = textarea.selectionStart;
             const original = textarea.value;
 
+            // 未保存の入力がある場合、自動保存タイマーをキャンセルして
+            // テキストを分割リクエストに含めることで一括処理する
+            if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+            this.pendingSegments.delete(segmentId);
+
             try {
                 const res = await fetch(`/api/segments/${segmentId}/split`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({position: position}),
+                    body: JSON.stringify({position: position, text: original}),
                 });
                 if (!res.ok) {
                     const body = await res.text();
@@ -2018,6 +2441,7 @@ function segmentsApp(transcriptId, historyNames) {
                 // 抜けた瞬間に div 側の古い (分割前の) テキストが見え、
                 // 「カードが分かれていないように見える」バグになる。
                 const currentCard = textarea.closest('.segment-card');
+                const originalEndSeconds = parseFloat(currentCard?.dataset.endSeconds || '0');
                 if (currentCard) {
                     const viewDiv = currentCard.querySelector('.segment-text');
                     // v1.1: span 構造を保つヘルパー経由で更新
@@ -2048,6 +2472,15 @@ function segmentsApp(transcriptId, historyNames) {
                 // (focusedEditingSegmentId を更新 → watcher で syncSegmentDisplay
                 // が走り、新カードの textarea が表示される)
                 this.focusedEditingSegmentId = data.new.id;
+                // undoスタックに積む（分割の取り消しに使う）
+                this.undoStack.push({
+                    type: 'split',
+                    originalId: segmentId,
+                    originalText: original,
+                    originalEndSeconds,
+                    newSegId: data.new.id,
+                });
+                if (this.undoStack.length > 20) this.undoStack.shift();
                 // $nextTick で表示が反映されてから focus
                 this.$nextTick(() => {
                     const newTextarea = newCard.querySelector('.segment-text-edit');
@@ -2070,6 +2503,7 @@ function segmentsApp(transcriptId, historyNames) {
 
             const li = document.createElement('li');
             li.className = 'segment-card';
+            li.style.marginTop = '8px'; // 分割時は直前と同一話者なので同一話者間隔
             li.id = `segment-${newSeg.id}`;
             li.dataset.segmentId = String(newSeg.id);
             li.dataset.speakerLabel = newSeg.speaker_label;
@@ -2077,6 +2511,7 @@ function segmentsApp(transcriptId, historyNames) {
             // v1.1: 同期再生で必要 (timeupdate から active segment を特定する)
             li.dataset.startSeconds = String(newSeg.start_seconds);
             li.dataset.endSeconds = String(newSeg.end_seconds);
+            li.dataset.bookmarked = '0';
 
             const header = document.createElement('header');
             header.className = 'segment-header';
@@ -2105,9 +2540,53 @@ function segmentsApp(transcriptId, historyNames) {
             edited.dataset.edited = '1';
             edited.textContent = '編集済み';
 
+            // ブックマーク済みインジケーター（初期は非表示）
+            const bookmarkIndicator = document.createElement('button');
+            bookmarkIndicator.type = 'button';
+            bookmarkIndicator.className = 'segment-bookmark-indicator';
+            bookmarkIndicator.dataset.segmentId = String(newSeg.id);
+            bookmarkIndicator.style.display = 'none';
+            bookmarkIndicator.title = 'ブックマーク済み';
+            bookmarkIndicator.setAttribute('aria-label', 'ブックマーク済み');
+            bookmarkIndicator.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+            bookmarkIndicator.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.scrollToBookmarkPanel(newSeg.id);
+            });
+
+            const actions = document.createElement('div');
+            actions.className = 'segment-actions';
+
+            // ブックマークボタン
+            const bookmarkBtn = document.createElement('button');
+            bookmarkBtn.type = 'button';
+            bookmarkBtn.className = 'segment-action-btn segment-bookmark-btn';
+            bookmarkBtn.title = 'ブックマーク';
+            bookmarkBtn.setAttribute('aria-label', 'ブックマーク');
+            bookmarkBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+            bookmarkBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleBookmark(newSeg.id, bookmarkBtn.closest('.segment-card'));
+            });
+            actions.appendChild(bookmarkBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'segment-action-btn segment-delete-btn';
+            deleteBtn.title = 'このブロックを削除';
+            deleteBtn.setAttribute('aria-label', 'このブロックを削除');
+            deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>`;
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteSegment(newSeg.id, deleteBtn.closest('.segment-card'));
+            });
+            actions.appendChild(deleteBtn);
+
             header.appendChild(badge);
+            header.appendChild(bookmarkIndicator);
             header.appendChild(time);
             header.appendChild(edited);
+            header.appendChild(actions);
 
             // 閲覧モード div（編集中は x-show で非表示）
             // v1.1: 文字単位ハイライト用の span 構造で作る
@@ -2346,9 +2825,19 @@ function segmentsApp(transcriptId, historyNames) {
             if (!newName) return;
             const fromName = this.editor.originalName;
             if (!fromName) return;
+
+            // 変更対象の件数をDOMから取得
+            const count = document.querySelectorAll(
+                `#segment-list .speaker-badge[data-effective-name="${CSS.escape(fromName)}"]`
+            ).length;
+
+            const ok = await window.showConfirm(
+                `「${fromName}」の発言 ${count} 件をすべて「${newName}」に変更します。`,
+                { title: '一括変更の確認', okLabel: '変更する' }
+            );
+            if (!ok) return;
+
             try {
-                // 画面上の表示名 (effective name) が fromName と一致する
-                // セグメントすべてを newName に変更する（Notta 方式）
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/rename-by-name`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -2373,6 +2862,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
                 this._addToParticipants(newName);
                 this.closeEditor();
+                window.showToast(`「${fromName}」${count}件を「${newName}」に変更しました`, 'success');
             } catch (e) {
                 window.showToast(e.message, 'error');
             }
@@ -2809,6 +3299,74 @@ function mtgInfo() {
                     data.forEach(p => { window.__PEOPLE_REGISTRY[p.name] = p; });
                 }
             } catch (e) {}
+        },
+
+        // ── 固有名詞辞書 ──────────────────────────────────────────────
+        vocabulary: (init.vocabulary || []).slice(),
+        newVocabWord: '',
+        newVocabReading: '',
+        newVocabMeaning: '',
+        editingVocabId: null,
+        editVocab: { word: '', reading: '', meaning: '' },
+
+        async addVocab() {
+            const word = this.newVocabWord.trim();
+            if (!word) return;
+            try {
+                const res = await fetch('/api/transcripts/' + init.id + '/vocabulary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word, reading: this.newVocabReading.trim(), meaning: this.newVocabMeaning.trim() }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const data = await res.json();
+                this.vocabulary.push(data);
+                this.newVocabWord = '';
+                this.newVocabReading = '';
+                this.newVocabMeaning = '';
+            } catch (e) {
+                window.showToast('追加に失敗しました', 'error');
+            }
+        },
+
+        async deleteVocab(v) {
+            const ok = await window.showConfirm('「' + v.word + '」を削除しますか？', { title: '削除の確認', okLabel: '削除する' });
+            if (!ok) return;
+            try {
+                const res = await fetch('/api/transcripts/' + init.id + '/vocabulary/' + v.id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.vocabulary = this.vocabulary.filter(x => x.id !== v.id);
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
+
+        startEditVocab(v) {
+            this.editingVocabId = v.id;
+            this.editVocab = { word: v.word, reading: v.reading || '', meaning: v.meaning || '' };
+        },
+
+        cancelEditVocab() {
+            this.editingVocabId = null;
+        },
+
+        async saveEditVocab(v) {
+            const word = this.editVocab.word.trim();
+            if (!word) return;
+            try {
+                const res = await fetch('/api/transcripts/' + init.id + '/vocabulary/' + v.id, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word, reading: this.editVocab.reading.trim(), meaning: this.editVocab.meaning.trim() }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const data = await res.json();
+                const idx = this.vocabulary.findIndex(x => x.id === v.id);
+                if (idx !== -1) this.vocabulary[idx] = data;
+                this.editingVocabId = null;
+            } catch (e) {
+                window.showToast('保存に失敗しました', 'error');
+            }
         },
 
         init() {

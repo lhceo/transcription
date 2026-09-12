@@ -175,6 +175,39 @@
         </div>
     </section>
 
+    {# ── DB バックアップ ── #}
+    <section class="admin-section">
+        <h2 class="admin-section-title">データバックアップ</h2>
+        <div class="admin-maintenance-card admin-maintenance-off" x-data="{ downloading: false, lastDl: null }">
+            <p class="admin-maintenance-desc">
+                現在の DB スナップショットをダウンロードします。週1回を目安に手元に保存してください。<br>
+                ダウンロード中も他のユーザーの操作に影響しません。
+            </p>
+            <div class="admin-maintenance-actions" style="align-items:center;gap:16px">
+                <button type="button" class="btn-maintenance-start"
+                        :disabled="downloading"
+                        @click="
+                            downloading = true;
+                            fetch('/api/admin/backup/db')
+                                .then(r => r.ok ? r.blob() : Promise.reject())
+                                .then(blob => {
+                                    const a = document.createElement('a');
+                                    a.href = URL.createObjectURL(blob);
+                                    a.download = 'noto_backup_' + new Date().toISOString().slice(0,10) + '.db';
+                                    a.click();
+                                    lastDl = new Date().toLocaleString('ja-JP');
+                                })
+                                .catch(() => window.showToast('バックアップに失敗しました', 'error'))
+                                .finally(() => downloading = false)
+                        ">
+                    <span x-show="!downloading">DB をダウンロード</span>
+                    <span x-show="downloading" x-cloak>ダウンロード中…</span>
+                </button>
+                <span x-show="lastDl" x-cloak style="font-size:12px;color:var(--color-text-muted)" x-text="'最終取得: ' + lastDl"></span>
+            </div>
+        </div>
+    </section>
+
     {# ── 話者候補履歴 ── #}
     <section class="admin-section">
         <h2 class="admin-section-title">話者候補の履歴</h2>

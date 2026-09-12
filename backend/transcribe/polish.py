@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass
 
@@ -190,9 +191,9 @@ POLISH_SYSTEM = """あなたは日本語のMTG文字起こし整文アシスタ�
 整文後のテキストは議事録・要件定義書の作成や、AIへのコンテキスト入力として使用されます。
 
 【絶対に守るルール】
-- 発言の言葉・内容・順序は絶対に変えない
-- 要約・省略・言い換え・内容の追記は一切しない
-- [＝○○] 形式の注釈のみを使って文脈を補う
+- 発言の意味・内容・順序は変えない
+- 要約・省略・内容の創作は一切しない
+- 主語・目的語の補完は「文脈から確実に推察できる場合のみ」行う
 
 【整文の手順】
 
@@ -207,24 +208,41 @@ POLISH_SYSTEM = """あなたは日本語のMTG文字起こし整文アシスタ�
 ステップ3: 句読点・表記の統一
 句読点の欠落を補い、敬体（です・ます）か常体かのブレを統一する。
 
-ステップ4: 指示語・暗黙コンテキストの注釈（最重要）
-MTGでは「これ」「それ」「あの件」など、非言語コミュニケーション（指差し・画面共有・
-共有知識）で成立する表現が多く、文字だけでは意味が通じない。
-以下の手順で注釈を付ける:
+ステップ4: 「誰が・誰に・何を」の明確化（最重要）
+日本語の会話では主語・目的語・間接目的語が頻繁に省略される。
+文字起こしをコンテキストとして活用するには「誰が・誰に・何を」を明示することが不可欠。
+以下のルールで補完する:
 
-対象語句: これ・それ・あれ・ここ・そこ・あちら・こちら・あの件・先日の・例のやつ・
-         先ほどの・〜の部分・〜のところ 等
+【ルールA】省略された主語・目的語・間接目的語を補完できる場合
+→ 全角括弧 （） で囲み、文中の自然な位置に挿入する
+  発言: 「対応したから問題は納まった」
+  整文: 「（Aさんが）対応したから問題は納まった」
 
-推察の根拠（優先順）:
-  1. 直前の発言・話題の流れ
+  発言: 「送っておいて」
+  整文: 「（見積書をBさんに）送っておいて」
+  ※ 複数の補完は （） 一つにまとめる
+
+  発言: 「名古屋に戻って弊社に来た」
+  整文: 「（古瀬社長が）名古屋に戻って弊社に来た」
+
+  ※ 全角括弧 （） = 「発言にはなかったが文脈から補った」という慣習的マーカー
+
+【ルールB】指示語（これ・それ・あれ・ここ・そこ・あの件・先日の・例のやつ 等）
+→ 文脈から特定できる場合、具体的な語句に置き換える
+  発言: 「それを進めておいて」
+  整文: 「ランディングページの原稿を進めておいて」
+
+【ルールC】推察できない・確信が持てない場合
+→ 元の表現を残し （？） を挿入する
+  例: 「（？）対応してもらえますか」
+  例: 「あの件（？）については次回確認します」
+  ※ （？） は「参加者以外には判断できない箇所」のマーカー
+
+補完の優先根拠:
+  1. 直前・直後の発言の流れ
   2. 話者の役職・会社・プロジェクト役割（speakerフィールド参照）
-  3. MTGのアジェンダ・目的
+  3. MTGのアジェンダ・目的・概要
   4. 固有名詞辞書
-
-注釈フォーマット:
-  - 推察できる場合: 「それ[＝ランディングページの原稿修正]を進めてください」
-  - 推察できない場合: 「それ[＝？]を進めてください」
-  ※ 指示語を無注釈で残さない。必ずどちらかの形で注釈を付ける。
 
 ステップ5: 話者属性の活用
 speakerに含まれる会社・役職・役割の情報を推察の補強に使う。
@@ -242,10 +260,19 @@ POLISH_USER_TEMPLATE = """{context}
 
 上記の文字起こしを整文してください。
 speakerフィールドの話者名・会社・役職・役割をコンテキスト推察に積極的に活用してください。
-指示語（これ・それ・あれ等）には必ず [＝推察内容] または [＝？] を付けてください。
+「誰が・誰に・何を」を最優先で明確化し、省略された主語・目的語は （補完内容） 形式で文中に挿入してください。
+指示語（これ・それ・あれ等）は具体的な語句に置き換えてください。
+推察できない箇所のみ （？） を挿入してください。
 
 必ず以下のJSON形式のみで返してください（前後に説明文を付けないこと。セグメント数・idは変えないこと）:
 {{"segments": [{{"id": <id>, "text": "<整文後のテキスト>"}}]}}"""
+
+
+# 出力トークン閾値: これを超えると分割処理に切り替える
+# 8192 制限に対して余裕を持たせた安全値（注釈追加で若干膨張するため）
+_SAFE_OUTPUT_TOKENS = 7000
+# バッチ間のオーバーラップ（文脈保持のため前バッチ末尾を次バッチ先頭に重複させる）
+_OVERLAP_SEGMENTS = 5
 
 
 @dataclass
@@ -256,6 +283,40 @@ class PolishResult:
     cost_yen: float
 
 
+async def _run_polish_batch(
+    client,
+    segments: list[dict],
+    context_text: str,
+    model_id: str,
+) -> tuple[dict[int, str], int, int]:
+    """セグメントのリストを1回のAPI呼び出しで整文し、(suggestions, input_tokens, output_tokens) を返す。"""
+    segments_json = json.dumps(
+        [{"id": s["id"], "speaker": s.get("speaker", ""), "text": s["text"]} for s in segments],
+        ensure_ascii=False,
+        indent=2,
+    )
+    prompt = POLISH_USER_TEMPLATE.format(
+        context=context_text if context_text else "（コンテキスト情報なし）",
+        segments_json=segments_json,
+    )
+    message = await client.messages.create(
+        model=model_id,
+        max_tokens=8192,
+        system=POLISH_SYSTEM,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = message.content[0].text.strip()
+    try:
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        json_str = m.group(0) if m else raw
+        data = json.loads(json_str)
+        suggestions = {s["id"]: s["text"] for s in data.get("segments", [])}
+    except Exception:
+        logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
+        suggestions = {}
+    return suggestions, message.usage.input_tokens, message.usage.output_tokens
+
+
 async def run_polish(
     client,
     segments: list[dict],
@@ -263,6 +324,10 @@ async def run_polish(
     model_key: str = "haiku",
 ) -> PolishResult:
     """整文を実行し、セグメントごとの提案テキストを返す。
+
+    出力トークンが _SAFE_OUTPUT_TOKENS 以内なら一括送信。
+    超えそうな場合は必要最小限のバッチ数に分割し、バッチ間は
+    _OVERLAP_SEGMENTS 件をオーバーラップさせて文脈を保持する。
 
     Args:
         client: anthropic.AsyncAnthropic インスタンス
@@ -272,42 +337,48 @@ async def run_polish(
     """
     model_id = MODELS.get(model_key, MODELS["haiku"])["id"]
 
-    segments_json = json.dumps(
-        [{"id": s["id"], "speaker": s.get("speaker", ""), "text": s["text"]} for s in segments],
-        ensure_ascii=False,
-        indent=2,
-    )
+    # 出力トークンを概算（日本語 0.7 tok/char × 注釈膨張 1.2 倍）
+    estimated_output = int(sum(estimate_tokens(s["text"]) for s in segments) * 1.2)
+    logger.info("整文 出力トークン概算: %s segs → %s tok (threshold %s)", len(segments), estimated_output, _SAFE_OUTPUT_TOKENS)
 
-    prompt = POLISH_USER_TEMPLATE.format(
-        context=context_text if context_text else "（コンテキスト情報なし）",
-        segments_json=segments_json,
-    )
+    total_input = 0
+    total_output = 0
+    merged: dict[int, str] = {}
 
-    message = await client.messages.create(
-        model=model_id,
-        max_tokens=8192,
-        system=POLISH_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    if estimated_output <= _SAFE_OUTPUT_TOKENS:
+        # 一括送信
+        suggestions, inp, out = await _run_polish_batch(client, segments, context_text, model_id)
+        merged.update(suggestions)
+        total_input += inp
+        total_output += out
+    else:
+        # 必要最小限のバッチ数に分割
+        n_batches = math.ceil(estimated_output / _SAFE_OUTPUT_TOKENS)
+        batch_size = math.ceil(len(segments) / n_batches)
+        logger.info("整文 分割処理: %s バッチ (各 %s セグメント + オーバーラップ %s)", n_batches, batch_size, _OVERLAP_SEGMENTS)
 
-    raw = message.content[0].text.strip()
-    input_tokens = message.usage.input_tokens
-    output_tokens = message.usage.output_tokens
+        for i in range(n_batches):
+            own_start = i * batch_size
+            own_end = min(len(segments), (i + 1) * batch_size)
+            # オーバーラップ: 前バッチ末尾を先頭に重複させて文脈を保持
+            fetch_start = max(0, own_start - _OVERLAP_SEGMENTS)
+            batch_segs = segments[fetch_start:own_end]
 
-    # JSONパース（Claudeが前後に説明文を付けることがあるため正規表現で抽出）
-    try:
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        json_str = m.group(0) if m else raw
-        data = json.loads(json_str)
-        suggestions = {s["id"]: s["text"] for s in data.get("segments", [])}
-    except Exception:
-        logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
-        suggestions = {}
+            suggestions, inp, out = await _run_polish_batch(client, batch_segs, context_text, model_id)
 
-    cost = actual_cost_yen(input_tokens, output_tokens, model_key)
+            # オーバーラップ部分（前バッチが担当）は採用しない
+            own_ids = {s["id"] for s in segments[own_start:own_end]}
+            for seg_id, text in suggestions.items():
+                if seg_id in own_ids:
+                    merged[seg_id] = text
+
+            total_input += inp
+            total_output += out
+
+    cost = actual_cost_yen(total_input, total_output, model_key)
     return PolishResult(
-        suggestions=suggestions,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
+        suggestions=merged,
+        input_tokens=total_input,
+        output_tokens=total_output,
         cost_yen=cost,
     )

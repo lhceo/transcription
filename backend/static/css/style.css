@@ -2184,7 +2184,7 @@ a.history-item-filename:hover {
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     padding: 14px 18px;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -2259,6 +2259,10 @@ a.history-item-filename:hover {
     background: #fee2e2;
     color: #dc2626;
 }
+.segment-revert-btn:hover {
+    background: #dbeafe;
+    color: #2563eb;
+}
 .segment-action-btn svg {
     width: 15px;
     height: 15px;
@@ -2274,7 +2278,7 @@ a.history-item-filename:hover {
     background: #e0e7ff;
     color: #3730a3;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     transition: opacity 0.15s ease;
     font-family: inherit;
@@ -2314,9 +2318,10 @@ a.history-item-filename:hover {
 
 .segment-text {
     font-size: 15px;
-    line-height: 1.7;
+    line-height: 1.8;
     color: var(--color-text);
     white-space: pre-wrap;
+    max-width: 680px;
     /* v1.1: クリックでシークできる (View mode)。テキスト選択の cursor
        (text I-beam) と「タップで何か起こる」cursor (pointer) のどちらに
        するか迷うところだが、デフォルトの text のままにしてユーザーは
@@ -2401,21 +2406,23 @@ a.history-item-filename:hover {
 
 .segment-text-edit {
     width: 100%;
-    min-height: 80px;
-    padding: 10px 12px;
-    border: 1px solid var(--color-primary);
-    border-radius: 6px;
+    max-width: 680px;
+    min-height: 2lh;
+    padding: 0;
+    border: none;
+    border-radius: 0;
     font-family: inherit;
     font-size: 15px;
-    line-height: 1.7;
-    resize: vertical;
+    line-height: 1.8;
+    resize: none;
     box-sizing: border-box;
     overflow: hidden;
+    background: transparent;
+    color: var(--color-text);
 }
 
 .segment-text-edit:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .segment-edit-hint {
@@ -2455,6 +2462,249 @@ a.history-item-filename:hover {
 .segment-list-editing .segment-card:hover {
     border-color: #fbbf24;
     background: #fffbeb;
+}
+
+/* ── フォーカスモード（編集中の非アクティブセグメントをディム） ── */
+/* segment-list-focus クラスが付いているとき、非アクティブカードをフェード */
+.segment-list-focus .segment-card:not(.segment-card-active) {
+    opacity: var(--inactive-opacity, 0.35);
+    filter: blur(0.4px);
+    transition: opacity 0.2s, filter 0.2s;
+}
+.segment-list-focus .segment-card:not(.segment-card-active):hover {
+    opacity: 0.6;
+    filter: none;
+}
+.segment-list-focus .segment-card.segment-card-active {
+    opacity: 1;
+    filter: none;
+}
+
+/* ── 固定左下ナビボタン（編集モード中のみ表示） ─────────── */
+.back-icon-btn {
+    position: fixed;
+    bottom: 88px; left: 16px; z-index: 200;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, .92);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+    cursor: pointer; color: var(--color-text); text-decoration: none;
+    backdrop-filter: blur(8px);
+    transition: box-shadow .15s, transform .1s;
+}
+.back-icon-btn:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .2); transform: scale(1.06); }
+.back-icon-btn svg  { width: 20px; height: 20px; flex-shrink: 0; }
+.back-icon-btn-home    { bottom: 88px;  left: 16px; }
+.back-icon-btn-project { bottom: 140px; left: 16px; }
+
+/* ホバーラベル（ボタン右側にスライドイン） */
+.back-btn-label {
+    position: absolute;
+    left: calc(100% + 10px); top: 50%;
+    transform: translateY(-50%) translateX(-4px);
+    background: #1e293b; color: white;
+    font-size: 11px; font-weight: 600;
+    padding: 4px 10px; border-radius: 6px;
+    white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .15s, transform .15s;
+}
+.back-icon-btn:hover .back-btn-label {
+    opacity: 1; transform: translateY(-50%) translateX(0);
+}
+
+/* ── 縦型進捗バー（右端固定、編集モード中のみ） ────────── */
+.vert-progress {
+    position: fixed;
+    right: 0; top: 52px; bottom: 0;
+    width: 8px; background: #e2e8f0;
+    z-index: 400; cursor: pointer;
+    transition: width .2s;
+}
+.vert-progress:hover { width: 12px; }
+.vert-progress-fill {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    background: linear-gradient(to bottom, #60a5fa 0%, #34d399 100%);
+    transition: height .6s ease;
+    min-height: 0;
+}
+.vert-progress-badge {
+    position: absolute;
+    right: calc(100% + 8px);
+    transform: translateY(-50%);
+    background: white; border: 1.5px solid #93c5fd; border-radius: 20px;
+    padding: 2px 9px; font-size: 11px; font-weight: 700; color: #3b82f6;
+    white-space: nowrap; pointer-events: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .1);
+    opacity: 0.85; transition: opacity .15s;
+}
+.vert-progress:hover .vert-progress-badge { opacity: 1; }
+.vert-progress-msg {
+    position: absolute;
+    right: calc(100% + 8px); bottom: 16px;
+    background: #1e293b; color: white;
+    font-size: 11px; font-weight: 600;
+    padding: 5px 10px; border-radius: 6px;
+    white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .2s;
+}
+.vert-progress:hover .vert-progress-msg { opacity: 1; }
+
+/* ── ブックマーク ──────────────────────────────────────── */
+
+/* セグメントヘッダー内のブックマーク済みインジケーター（青いブックマークアイコン） */
+.segment-bookmark-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-right: 2px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #3b82f6;
+    flex-shrink: 0;
+    transition: transform .15s;
+}
+.segment-bookmark-indicator:hover { transform: scale(1.15); }
+.segment-bookmark-indicator svg { width: 14px; height: 14px; }
+
+/* segment-actions 内のブックマークボタン */
+.segment-bookmark-btn { color: var(--color-text-muted); }
+.segment-bookmark-btn.is-bookmarked { color: #3b82f6; }
+.segment-bookmark-btn.is-bookmarked svg { fill: #3b82f6; stroke: #3b82f6; }
+.segment-bookmark-btn:hover { color: #3b82f6; }
+
+/* タイムライン上のブックマークコンテナ（track の全面をカバー） */
+.player-bookmark-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* タイムライン上のブックマーク縦線ティック */
+.player-bookmark-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #3b82f6;
+    border-radius: 2px;
+    cursor: pointer;
+    transform: translateX(-50%);
+    opacity: 0.75;
+    transition: opacity .15s, width .15s;
+    border: none;
+    padding: 0;
+    pointer-events: auto;
+}
+.player-bookmark-tick:hover { opacity: 1; width: 5px; }
+
+/* ブックマークパネル（セグメントリストの上） */
+.bookmark-panel {
+    background: var(--color-surface);
+    border: 1px solid #bfdbfe;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+.bookmark-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #eff6ff;
+    border-bottom: 1px solid #bfdbfe;
+    font-weight: 600;
+    font-size: 13px;
+    color: #1d4ed8;
+}
+.bookmark-panel-header svg { width: 16px; height: 16px; flex-shrink: 0; }
+.bookmark-panel-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: #3b82f6;
+}
+.bookmark-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.bookmark-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid #e0eeff;
+}
+.bookmark-item:last-child { border-bottom: none; }
+.bookmark-item-time {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #3b82f6;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 2px 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .12s;
+}
+.bookmark-item-time:hover { background: #dbeafe; }
+.bookmark-item-memo {
+    flex: 1;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: none;
+    resize: none;
+    min-height: 22px;
+    line-height: 1.4;
+    transition: border-color .15s, background .15s;
+    font-family: inherit;
+}
+.bookmark-item-memo:focus {
+    outline: none;
+    border-color: #93c5fd;
+    background: #f0f9ff;
+}
+.bookmark-item-memo::placeholder { color: #cbd5e1; }
+.bookmark-item-remove {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #cbd5e1;
+    border-radius: 50%;
+    padding: 0;
+    transition: color .12s, background .12s;
+}
+.bookmark-item-remove:hover { color: #ef4444; background: #fee2e2; }
+.bookmark-item-remove svg { width: 14px; height: 14px; }
+
+/* ── （？）補完マーカー ────────────────────────────────── */
+/* 整文後テキストに（？）が含まれるセグメントカードの左ボーダー */
+.segment-card-has-unknown {
+    border-left: 3px solid #f59e0b;
+}
+/* （？）文字列自体のインラインハイライト */
+.segment-text .polish-unknown,
+.segment-text-edit .polish-unknown {
+    text-decoration: underline wavy #f59e0b;
+    text-underline-offset: 3px;
+    cursor: help;
 }
 
 /* ── 話者編集ポップアップ ───────────────────────────────── */
@@ -2601,6 +2851,15 @@ a.history-item-filename:hover {
 
 .speaker-popup-action-primary:hover {
     background: var(--color-primary-hover);
+}
+
+.speaker-popup-action-secondary {
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+.speaker-popup-action-secondary:hover {
+    color: var(--color-text);
 }
 
 /* ── ヘルプ画面 ───────────────────────────────────────────── */
@@ -3563,14 +3822,14 @@ a.history-item-filename:hover {
     /* セグメント本文: 読みやすさ優先 */
     .segment-text {
         font-size: 15px;
-        line-height: 1.7;
+        line-height: 1.8;
     }
 
     /* textarea は iOS zoom 回避のため 16px */
     .segment-text-edit {
         font-size: 16px;
-        padding: 10px 12px;
-        line-height: 1.7;
+        padding: 0;
+        line-height: 1.8;
     }
 
     /* === 話者編集ポップアップ === */
@@ -3756,6 +4015,26 @@ a.history-item-filename:hover {
 
 .toast-message {
     flex: 1;
+}
+
+.toast-action {
+    flex-shrink: 0;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 4px;
+    cursor: pointer;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 2px 8px;
+    white-space: nowrap;
+    opacity: 0.9;
+}
+
+.toast-action:hover {
+    opacity: 1;
+    background: rgba(255,255,255,0.15);
 }
 
 .toast-close {
@@ -4672,6 +4951,44 @@ a.history-item-filename:hover {
 
 .vocab-chip-remove:hover {
     color: #1d4ed8;
+}
+
+/* 個別音声の固有名詞エディタ（MTG情報セクション内） */
+.vocab-editor {
+    flex: 1;
+    min-width: 0;
+}
+.vocab-subfields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.vocab-list {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+    border-top: 1px solid var(--color-border);
+}
+.vocab-item {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.vocab-item:last-child { border-bottom: none; }
+.vocab-item-view {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.vocab-word { font-weight: 500; font-size: 13px; }
+.vocab-reading { font-size: 11px; white-space: nowrap; }
+.vocab-meaning { font-size: 11px; flex: 1; min-width: 0; }
+.vocab-item-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
 }
 
 /* 関連文字起こし */
@@ -6211,10 +6528,10 @@ body:has(.multi-float-bar:not([style*="none"])) {
     /* textareaと完全一致させる（style.css の .segment-text-edit と合わせる）*/
     font-family: inherit;
     font-size: 15px;
-    line-height: 1.7;
-    padding: 10px 12px;
-    border: 1px solid transparent; /* textarea の border 1px 分のオフセット確保 */
-    border-radius: 6px;
+    line-height: 1.8;
+    padding: 0;
+    border: none;
+    border-radius: 0;
     box-sizing: border-box;
 
     white-space: pre-wrap;

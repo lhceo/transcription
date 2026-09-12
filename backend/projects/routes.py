@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, User
+from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -834,6 +834,16 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
         mtg_attachment_summaries = [
             f"[{a.title}]\n{a.processed_summary}" for a in mtg_attachments
         ]
+
+    # 個別音声の固有名詞辞書をプロジェクト辞書にマージ（重複はスキップ）
+    transcript_vocab_rows = list(db.scalars(
+        select(TranscriptVocabulary).where(TranscriptVocabulary.transcript_id == transcript.id)
+    ))
+    existing_words = {v["word"].lower() for v in vocabulary}
+    for v in transcript_vocab_rows:
+        if v.word.lower() not in existing_words:
+            vocabulary.append({"word": v.word, "meaning": v.meaning or ""})
+            existing_words.add(v.word.lower())
 
     return build_context_text(
         project_name=project.name if project else None,

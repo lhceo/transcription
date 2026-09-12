@@ -384,7 +384,8 @@
             el.addEventListener('animationend', () => el.remove(), { once: true });
         }
 
-        return function showToast(message, type, duration) {
+        // action: { label: string, onClick: () => void } — 「元に戻す」ボタン等
+        return function showToast(message, type, duration, action) {
             type = type || 'success';
             duration = duration !== undefined ? duration : (type === 'error' ? 6000 : 4000);
             const container = document.getElementById('toast-container');
@@ -393,11 +394,22 @@
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
             toast.setAttribute('role', 'alert');
+
+            const actionHTML = action
+                ? `<button class="toast-action">${action.label}</button>`
+                : '';
             toast.innerHTML = (type === 'error' ? ERROR_ICON : SUCCESS_ICON) +
                 `<span class="toast-message">${message}</span>` +
+                actionHTML +
                 `<button class="toast-close" aria-label="閉じる">×</button>`;
 
             toast.querySelector('.toast-close').addEventListener('click', () => remove(toast));
+            if (action) {
+                toast.querySelector('.toast-action').addEventListener('click', () => {
+                    remove(toast);
+                    action.onClick();
+                });
+            }
             container.appendChild(toast);
 
             if (duration > 0) {
@@ -470,6 +482,7 @@
             initPage() {
                 this.load();
                 this.checkMaintenance();
+                setInterval(() => this.load(), 60_000);
             },
             toggle() {
                 this.open = !this.open;
@@ -498,7 +511,8 @@
                 } catch (e) { /* 無視 */ }
             },
             async startMaintenance() {
-                if (!confirm('メンテナンスモードを開始しますか？\n管理者以外のユーザーはアクセスできなくなります。')) return;
+                const ok = await window.showConfirm('メンテナンスモードを開始しますか？\n管理者以外のユーザーはアクセスできなくなります。', { title: 'メンテナンス開始', okLabel: '開始する' });
+                if (!ok) return;
                 this.maintenanceLoading = true;
                 try {
                     const res = await fetch('/api/admin/maintenance/start', { method: 'POST' });

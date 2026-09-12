@@ -72,6 +72,8 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE transcripts ADD COLUMN meeting_participants TEXT",
                 "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
                 "ALTER TABLE project_vocabulary ADD COLUMN meaning TEXT",
+                "ALTER TABLE segments ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE segments ADD COLUMN bookmark_memo TEXT",
             ]:
                 try:
                     _cu.execute(_sql)
@@ -136,6 +138,19 @@ async def lifespan(app: FastAPI):
                 _cu.execute("ALTER TABLE segments ADD COLUMN original_asr_text TEXT")
             except Exception:
                 pass
+            try:
+                _cu.execute("""
+                    CREATE TABLE IF NOT EXISTS transcript_vocabulary (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+                        word VARCHAR(200) NOT NULL,
+                        meaning TEXT,
+                        reading VARCHAR(200),
+                        created_at DATETIME NOT NULL
+                    )
+                """)
+            except Exception:
+                pass
             # ── alembic_version の安全な更新 ──────────────────────────────
             # 【重要】新マイグレーション追加時は必ず以下を更新する:
             #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
@@ -146,12 +161,12 @@ async def lifespan(app: FastAPI):
             #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
             #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
             #   display_name 等が消えた 2026-09-08/09 の教訓。
-            _REPAIR_HEAD = 'a1b2c3d4e5f6'
+            _REPAIR_HEAD = 'b2c3d4e5f6a7'
             _MIGRATION_CHAIN = [
                 '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
                 'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
                 'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
-                'a1b2c3d4e5f6',
+                'a1b2c3d4e5f6', 'b2c3d4e5f6a7',
             ]
             def _ver_idx(v):
                 if not v:
@@ -518,6 +533,38 @@ async def maintenance_stop(user: AdminUser) -> JSONResponse:
         _MAINTENANCE_FLAG.unlink()
     logger.info("メンテナンスモード終了: %s", user["email"])
     return JSONResponse({"active": False})
+
+
+@app.get("/api/admin/backup/db")
+async def admin_download_backup(user: AdminUser):
+    """管理者専用: SQLite DB を安全にバックアップしてダウンロードする。
+    sqlite3.backup() を使うため、書き込み中でもデータ整合性が保たれる。
+    """
+    import sqlite3
+    import tempfile
+    from datetime import datetime, timezone
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+    from backend.db.session import _DB_PATH
+
+    jst_now = datetime.now(timezone.utc).astimezone()
+    timestamp = jst_now.strftime("%Y%m%d_%H%M%S")
+    filename = f"noto_backup_{timestamp}.db"
+    tmp = Path(tempfile.mkdtemp()) / filename
+
+    src = sqlite3.connect(str(_DB_PATH))
+    dst = sqlite3.connect(str(tmp))
+    src.backup(dst)
+    src.close()
+    dst.close()
+
+    logger.info("DB バックアップダウンロード by %s: %s", user["email"], filename)
+    return FileResponse(
+        path=str(tmp),
+        filename=filename,
+        media_type="application/octet-stream",
+        background=BackgroundTask(lambda: tmp.unlink(missing_ok=True)),
+    )
 
 
 @app.delete("/api/admin/speaker-history")

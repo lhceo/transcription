@@ -573,6 +573,8 @@ v1.0 リリース時点で以下は全て確定：
 
 ## 近い将来の優先候補
 
+- **✅ AssemblyAI word_boost 連携（実装済み）**: アップロード時にプロジェクト辞書・登場人物名を自動で `word_boost` に渡し、ASR精度を向上させる。`routes.py` で実装済み（`boost_param: "high"` も付与）。最大50語。
+
 - **添付資料UI**（MTG情報セクションと プロジェクト詳細に添付資料を追加するUI。URLまたはテキスト貼り付けで登録し、整文時のClaudeコンテキストに自動反映。Attachmentモデルとbuild_context_textへの接続は実装済み、UIのみ未実装）
 - **Google Docs エクスポート**（エクスポートメニューに「Google ドキュメントとして保存」を追加。lionheart は Google Workspace 利用のため需要あり）
   - 必要な実装: OAuth スコープ追加（`documents` + `drive.file`）、アクセストークン保存（User テーブル拡張 + マイグレーション）、Google Docs API でドキュメント新規作成 + テキスト書き込み

@@ -155,6 +155,10 @@ class Transcript(Base):
         back_populates="transcript",
         cascade="all, delete-orphan",
     )
+    vocabulary: Mapped[list["TranscriptVocabulary"]] = relationship(
+        back_populates="transcript",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         # 「一覧表示」（ユーザー別・soft delete 除外・新しい順）用の複合 INDEX
@@ -192,6 +196,8 @@ class Segment(Base):
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     is_edited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_bookmarked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    bookmark_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -413,6 +419,26 @@ class ProjectVocabulary(Base):
     )
 
     project: Mapped["Project"] = relationship(back_populates="vocabulary")
+
+
+# ── transcript_vocabulary ────────────────────────────────────────────────────
+class TranscriptVocabulary(Base):
+    """個別音声ファイルに紐づく固有名詞辞書。整文コンテキストに使用する。"""
+
+    __tablename__ = "transcript_vocabulary"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    transcript_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    word: Mapped[str] = mapped_column(String(200), nullable=False)
+    meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reading: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    transcript: Mapped["Transcript"] = relationship(back_populates="vocabulary")
 
 
 # ── attachments ─────────────────────────────────────────────────────────────

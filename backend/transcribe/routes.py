@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, TranscriptVocabulary, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_cost_summary,
@@ -690,6 +690,17 @@ async def create_transcript_multi(
         raise HTTPException(status_code=500, detail={"code": "UNEXPECTED_ERROR", "message": f"予期しないエラーが発生しました: {exc}"})
 
 
+@router.get("/ui-test", response_class=HTMLResponse)
+async def ui_test(request: Request) -> HTMLResponse:
+    """UI テストページ。認証不要・ダミーデータのみ。本番でも無害。"""
+    return templates.TemplateResponse(request, "ui_test.html", {
+        "user": {"name": "テストユーザー", "email": "test@example.com"},
+        "app_version": APP_VERSION,
+        "env": "development",
+        "is_admin": False,
+    })
+
+
 @router.get("/api/transcripts", response_class=HTMLResponse)
 async def list_transcripts(
     request: Request,
@@ -1002,6 +1013,15 @@ async def transcript_detail(
             if display:
                 project_member_names.append(display)
 
+    # 個別音声の固有名詞辞書
+    transcript_vocabulary = list(
+        db.scalars(
+            select(TranscriptVocabulary)
+            .where(TranscriptVocabulary.transcript_id == transcript_id)
+            .order_by(TranscriptVocabulary.id)
+        )
+    )
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1021,6 +1041,7 @@ async def transcript_detail(
             "project_member_names": project_member_names,
             "is_owner": is_owner,
             "breadcrumb_project": breadcrumb_project,
+            "transcript_vocabulary": transcript_vocabulary,
         },
     )
 
@@ -1300,6 +1321,53 @@ async def get_segments_count(
 # ── セグメント分割（Shift+Return で1つを2つに分ける） ──────────────
 
 
+@router.post("/api/segments/{segment_id}/bookmark")
+async def toggle_bookmark(
+    segment_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """ブックマークをトグルする。memo を含む場合は同時に保存する。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    segment.is_bookmarked = not bool(segment.is_bookmarked)
+    if "memo" in payload:
+        segment.bookmark_memo = payload["memo"] or None
+    if not segment.is_bookmarked:
+        segment.bookmark_memo = None  # ブックマーク解除時はメモも削除
+    db.commit()
+    return JSONResponse({
+        "bookmarked": bool(segment.is_bookmarked),
+        "memo": segment.bookmark_memo or "",
+    })
+
+
+@router.patch("/api/segments/{segment_id}/bookmark-memo")
+async def update_bookmark_memo(
+    segment_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """ブックマークのメモだけを更新する（ブックマーク状態は変えない）。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None or not segment.is_bookmarked:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    segment.bookmark_memo = payload.get("memo") or None
+    db.commit()
+    return JSONResponse({"memo": segment.bookmark_memo or ""})
+
+
 @router.post("/api/segments/{segment_id}/split")
 async def split_segment(
     segment_id: int,
@@ -1340,6 +1408,13 @@ async def split_segment(
             status_code=400,
             detail={"code": "INVALID_POSITION", "message": "位置の指定が不正です"},
         )
+
+    # フロントエンドから現在のテキストが送られた場合はそれを使う。
+    # 未保存の入力がある状態でも正しい位置で分割できる。
+    client_text = payload.get("text")
+    if client_text is not None:
+        segment.text_content = client_text
+        segment.is_edited = True
 
     full_text = segment.text_content or ""
     position = max(0, min(position, len(full_text)))
@@ -1483,6 +1558,113 @@ async def merge_segment_with_prev(
             "deleted_id": segment_id,
         }
     )
+
+
+@router.post("/api/segments/{segment_id}/revert")
+async def revert_segment_to_original(
+    segment_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメントを元の音声認識テキスト（original_asr_text）に戻す。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    if not segment.original_asr_text:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "NO_ORIGINAL", "message": "元のテキストが保存されていません"},
+        )
+
+    segment.text_content = segment.original_asr_text
+    segment.is_edited = False
+    db.commit()
+
+    return JSONResponse({"text": segment.original_asr_text})
+
+
+# ── 固有名詞辞書（個別音声） ───────────────────────────────────────────
+
+
+@router.post("/api/transcripts/{transcript_id}/vocabulary", status_code=status.HTTP_201_CREATED)
+async def add_transcript_vocabulary(
+    transcript_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """個別音声に固有名詞を追加する。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    word = str(payload.get("word") or "").strip()[:200]
+    if not word:
+        raise HTTPException(status_code=422, detail={"code": "WORD_REQUIRED"})
+    meaning = str(payload.get("meaning") or "").strip() or None
+    reading = str(payload.get("reading") or "").strip()[:200] or None
+
+    vocab = TranscriptVocabulary(
+        transcript_id=transcript_id, word=word, meaning=meaning, reading=reading
+    )
+    db.add(vocab)
+    db.commit()
+    db.refresh(vocab)
+    return JSONResponse(
+        {"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""},
+        status_code=201,
+    )
+
+
+@router.delete("/api/transcripts/{transcript_id}/vocabulary/{vocab_id}")
+async def delete_transcript_vocabulary(
+    transcript_id: int,
+    vocab_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """個別音声の固有名詞を削除する。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    vocab = db.get(TranscriptVocabulary, vocab_id)
+    if vocab is None or vocab.transcript_id != transcript_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    db.delete(vocab)
+    db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.patch("/api/transcripts/{transcript_id}/vocabulary/{vocab_id}")
+async def update_transcript_vocabulary(
+    transcript_id: int,
+    vocab_id: int,
+    payload: dict,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """個別音声の固有名詞を更新する。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    vocab = db.get(TranscriptVocabulary, vocab_id)
+    if vocab is None or vocab.transcript_id != transcript_id:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    word = str(payload.get("word") or "").strip()[:200]
+    if not word:
+        raise HTTPException(status_code=422, detail={"code": "WORD_REQUIRED"})
+    vocab.word = word
+    vocab.meaning = str(payload.get("meaning") or "").strip() or None
+    vocab.reading = str(payload.get("reading") or "").strip()[:200] or None
+    db.commit()
+    db.refresh(vocab)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
 
 
 # ── 話者一括リネーム ───────────────────────────────────────────────────
