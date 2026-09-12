@@ -2466,16 +2466,17 @@ a.history-item-filename:hover {
 
 /* ── フォーカスモード（編集中の非アクティブセグメントをディム） ── */
 /* segment-list-focus クラスが付いているとき、非アクティブカードをフェード */
-.segment-list-focus .segment-card:not(.segment-card-active) {
+.segment-list-focus .segment-card:not(.segment-card-active):not(.segment-card-focus-edit) {
     opacity: var(--inactive-opacity, 0.35);
     filter: blur(0.4px);
     transition: opacity 0.2s, filter 0.2s;
 }
-.segment-list-focus .segment-card:not(.segment-card-active):hover {
+.segment-list-focus .segment-card:not(.segment-card-active):not(.segment-card-focus-edit):hover {
     opacity: 0.6;
     filter: none;
 }
-.segment-list-focus .segment-card.segment-card-active {
+.segment-list-focus .segment-card.segment-card-active,
+.segment-list-focus .segment-card.segment-card-focus-edit {
     opacity: 1;
     filter: none;
 }

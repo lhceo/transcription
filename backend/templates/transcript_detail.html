@@ -1345,10 +1345,12 @@ function segmentsApp(transcriptId, historyNames) {
             });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
-                // textarea になった瞬間にサイズ調整
+                // 編集中カードにフォーカスクラスを付与（フォーカスモードで dimming されないように）
+                document.querySelectorAll('.segment-card-focus-edit').forEach(el => el.classList.remove('segment-card-focus-edit'));
                 if (this.focusedEditingSegmentId !== null) {
                     this.$nextTick(() => {
                         const card = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
+                        if (card) card.classList.add('segment-card-focus-edit');
                         const ta = card?.querySelector('.segment-text-edit');
                         if (ta) this.fitToContent(ta);
                     });
