@@ -1048,7 +1048,6 @@ function audioPlayer(transcriptId) {
             const audio = this.$refs.audioEl;
             if (audio && !isNaN(audio.duration) && isFinite(audio.duration)) {
                 this.duration = audio.duration;
-                this._renderBookmarkMarkers();
             }
         },
 
@@ -1223,8 +1222,8 @@ function segmentsApp(transcriptId, historyNames) {
         // textarea に変換される。null = 「どれも編集中ではない」
         focusedEditingSegmentId: null,
 
-        // 進捗バー: 個別に画面内に入ったセグメント数
-        reviewedCount: 0,
+        // 進捗バー: 編集済みセグメント数
+        editedCount: 0,
 
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
@@ -1310,14 +1309,14 @@ function segmentsApp(transcriptId, historyNames) {
 
         progressPct() {
             const total = document.querySelectorAll('#segment-list .segment-card').length;
-            return total ? Math.round(this.reviewedCount / total * 100) : 0;
+            return total ? Math.round(this.editedCount / total * 100) : 0;
         },
 
         progressMsg() {
             const pct = this.progressPct();
-            const edited = document.querySelectorAll('#segment-list [data-edited]').length;
-            const sub = edited > 0 ? `（${edited}件編集）` : '';
-            if (pct === 0)  return 'さあ始めましょう！' + sub;
+            const total = document.querySelectorAll('#segment-list .segment-card').length;
+            const sub = total > 0 ? `（${this.editedCount}/${total}件）` : '';
+            if (pct === 0)  return 'さあ始めましょう！';
             if (pct < 20)  return 'いいスタートです！' + sub;
             if (pct < 40)  return 'いいペース！' + sub;
             if (pct < 60)  return '折り返しが見えてきた！' + sub;
@@ -1353,8 +1352,6 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!this.editMode && this.focusedEditingSegmentId !== null) {
                     this.endEditingCurrentSegment();
                 }
-                // 編集モード終了時に進捗リセット（seenSegIds は下の IntersectionObserver 内で参照）
-                if (!this.editMode) { seenSegIds.clear(); this.reviewedCount = 0; }
             });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
@@ -1434,20 +1431,9 @@ function segmentsApp(transcriptId, historyNames) {
             }));
             this.$nextTick(() => this._renderBookmarkMarkers());
 
-            // 進捗バー：ジャンプしても間のセグメントをカウントしないよう
-            // IntersectionObserver で個別追跡する
-            const seenSegIds = new Set();
-            const segObserver = new IntersectionObserver((entries) => {
-                if (!this.editMode) return;
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) seenSegIds.add(entry.target.id);
-                });
-                this.reviewedCount = seenSegIds.size;
-            }, { threshold: 0.3 });
+            // 進捗バー：ページロード時の編集済み件数を初期値に設定
             this.$nextTick(() => {
-                document.querySelectorAll('#segment-list .segment-card').forEach(card => {
-                    segObserver.observe(card);
-                });
+                this.editedCount = document.querySelectorAll('#segment-list [data-edited]').length;
             });
         },
 
@@ -1628,6 +1614,15 @@ function segmentsApp(transcriptId, historyNames) {
             audio.addEventListener('ended', () => {
                 this.updateSyncHighlight(audio.duration || audio.currentTime);
             });
+            // 音声メタデータ確定時にブックマークティックを描画
+            // (audioPlayer コンポーネントと別スコープのため直接リッスン)
+            audio.addEventListener('loadedmetadata', () => {
+                this._renderBookmarkMarkers();
+            });
+            // すでに duration が確定している場合（ブラウザキャッシュ等）
+            if (audio.readyState >= 1 && isFinite(audio.duration)) {
+                this._renderBookmarkMarkers();
+            }
         },
 
         // v1.1: 現在の再生時刻 → アクティブセグメント決定 + 文字単位の線形補間で
@@ -2261,6 +2256,7 @@ function segmentsApp(transcriptId, historyNames) {
                         badge.dataset.edited = '1';
                         badge.textContent = '編集済み';
                         if (time) time.after(badge);
+                        this.editedCount++;
                     }
                 }
                 if (this.pendingSegments.size === 0) {
