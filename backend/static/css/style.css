@@ -2321,7 +2321,7 @@ a.history-item-filename:hover {
     line-height: 1.8;
     color: var(--color-text);
     white-space: pre-wrap;
-    max-width: 680px;
+    width: 100%;
     /* v1.1: クリックでシークできる (View mode)。テキスト選択の cursor
        (text I-beam) と「タップで何か起こる」cursor (pointer) のどちらに
        するか迷うところだが、デフォルトの text のままにしてユーザーは
@@ -2709,7 +2709,7 @@ a.history-item-filename:hover {
     background: none;
     border: none;
     cursor: pointer;
-    color: #cbd5e1;
+    color: #94a3b8;
     border-radius: 50%;
     padding: 0;
     transition: color .12s, background .12s;
