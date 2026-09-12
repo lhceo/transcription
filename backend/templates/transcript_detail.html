@@ -1440,19 +1440,14 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             });
 
-            // ブックマーク初期化
+            // ブックマーク初期化（setupAudioSync より後に行うこと）
             this.bookmarks = (window.__BOOKMARKS_INIT || []).map(bm => ({
                 ...bm,
                 timeLabel: this._formatSeconds(bm.startSeconds),
             }));
-            this.$nextTick(() => {
-                // preload="metadata" で duration が確定していれば即描画、
-                // まだなら loadedmetadata 後に setupAudioSync のリスナーが描画する
-                const audio = document.querySelector('.audio-player-section audio');
-                if (audio && audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0) {
-                    this._renderBookmarkMarkers();
-                }
-            });
+            // bookmarks 設定後にティックを描画（duration が確定済みなら即描画、
+            // 未確定なら setupAudioSync の loadedmetadata リスナーが後で描画する）
+            this._renderBookmarkMarkers();
 
             // 進捗バー：ページロード時の編集済み件数を初期値に設定 + マーカー描画
             this.$nextTick(() => {
@@ -1633,6 +1628,11 @@ function segmentsApp(transcriptId, historyNames) {
             if (!audio) return; // 音声なし transcript では同期再生 UI 自体を出さない
             audio.addEventListener('timeupdate', () => {
                 this.updateSyncHighlight(audio.currentTime);
+                // ティックが未描画なら duration 確定後の最初の timeupdate で描画
+                const markers = document.getElementById('player-bookmark-markers');
+                if (markers && markers.childElementCount === 0 && this.bookmarks.length > 0) {
+                    this._renderBookmarkMarkers();
+                }
             });
             // 再生終了時もハイライトを最終位置に保持 (止まったままにする)
             audio.addEventListener('ended', () => {
