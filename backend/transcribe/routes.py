@@ -32,6 +32,7 @@ from backend.transcribe.cost import (
 )
 from backend.transcribe.eta import compute_eta_text
 from backend.transcribe.display import has_stored_audio, transcript_display_name
+from backend.transcribe.mailer import send_share_notification
 from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage import (
     UploadTooLargeError,
@@ -107,12 +108,13 @@ async def list_shares(
 
 @router.post("/api/transcripts/{transcript_id}/shares", status_code=201)
 async def add_share(
+    request: Request,
     transcript_id: int,
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     body: ShareBody,
 ) -> JSONResponse:
-    """共有先を追加する（オーナーのみ）。"""
+    """共有先を追加する（オーナーのみ）。追加後に招待メールを送信する。"""
     transcript = db.get(Transcript, transcript_id)
     if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404)
@@ -135,6 +137,20 @@ async def add_share(
     )
     db.add(share)
     db.commit()
+
+    # 招待メール送信（fire-and-forget）
+    settings = load_settings()
+    base_url = str(request.base_url).rstrip("/")
+    asyncio.create_task(send_share_notification(
+        smtp_user=settings.smtp_user,
+        smtp_password=settings.smtp_password,
+        to_email=target.email,
+        to_name=target.name,
+        sharer_name=user["name"],
+        transcript_title=transcript_display_name(transcript),
+        transcript_url=f"{base_url}/transcripts/{transcript_id}",
+    ))
+
     return JSONResponse({"ok": True, "name": target.name}, status_code=201)
 
 
@@ -1800,7 +1816,7 @@ async def rename_segments_by_effective_name(
     payload: {"from_name": "話者A", "to_name": "山田さん"}
     """
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _can_access(transcript, user["id"], db):
+    if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     from_name = (payload.get("from_name") or "").strip()

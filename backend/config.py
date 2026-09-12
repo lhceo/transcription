@@ -80,6 +80,10 @@ class Settings:
     # 管理者メールアドレス。このメールアドレスのユーザーのみ /admin にアクセスできる。
     admin_email: str
 
+    # Gmail SMTP 設定（共有通知メール用）。未設定の場合はメール送信をスキップ。
+    smtp_user: str
+    smtp_password: str
+
     # ストレージ上限 (バイト)。Railway Hobby Plan の 5 GB を default に。
     # GB は SI 表記 (10^9) で扱う。プラン変更や Pro 移行時にここを上げる。
     storage_limit_bytes: int
@@ -150,6 +154,8 @@ def load_settings() -> Settings:
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
         anthropic_api_key=_env("ANTHROPIC_API_KEY", ""),
         admin_email=_env("ADMIN_EMAIL", "a.ichikawa@lionheart.co.jp").lower(),
+        smtp_user=_env("SMTP_USER", ""),
+        smtp_password=_env("SMTP_PASSWORD", ""),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
         # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
         # Railway Hobby Plan (5 GB) と DECISIONS 2026-05-13 で確定した

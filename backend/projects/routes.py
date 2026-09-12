@@ -130,16 +130,16 @@ class PersonUpdate(BaseModel):
 # ── ヘルパー ────────────────────────────────────────────────────────────────
 
 def _get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
-    """プロジェクトを取得する。存在しなければ 404。"""
+    """プロジェクトを取得する。存在しない or 他ユーザーのものなら 404。"""
     proj = db.get(Project, project_id)
-    if not proj:
+    if not proj or proj.created_by_user_id != user_id:
         raise HTTPException(status_code=404, detail="プロジェクトが見つかりません")
     return proj
 
 
-def _get_theme_or_404(theme_id: int, db: Session) -> Theme:
+def _get_theme_or_404(theme_id: int, user_id: int, db: Session) -> Theme:
     theme = db.get(Theme, theme_id)
-    if not theme:
+    if not theme or theme.created_by_user_id != user_id:
         raise HTTPException(status_code=404, detail="テーマが見つかりません")
     return theme
 
@@ -174,13 +174,17 @@ async def themes_page(
         db.scalars(
             select(Theme)
             .options(selectinload(Theme.projects))
+            .where(Theme.created_by_user_id == user["id"])
             .order_by(Theme.created_at.desc())
         )
     )
     standalone = list(
         db.scalars(
             select(Project)
-            .where(Project.theme_id.is_(None))
+            .where(
+                Project.theme_id.is_(None),
+                Project.created_by_user_id == user["id"],
+            )
             .order_by(Project.created_at.desc())
         )
     )
@@ -218,7 +222,7 @@ async def update_theme(
     body: ThemeUpdate,
 ) -> JSONResponse:
     """テーマを更新する。"""
-    theme = _get_theme_or_404(theme_id, db)
+    theme = _get_theme_or_404(theme_id, user["id"], db)
     if body.name is not None:
         name = body.name.strip()
         if not name:
@@ -237,7 +241,7 @@ async def delete_theme(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """テーマを削除する（配下のプロジェクトも cascade 削除）。"""
-    theme = _get_theme_or_404(theme_id, db)
+    theme = _get_theme_or_404(theme_id, user["id"], db)
     db.delete(theme)
     db.commit()
     return JSONResponse({"ok": True})
@@ -251,7 +255,7 @@ async def create_project_under_theme(
     body: ProjectCreate,
 ) -> JSONResponse:
     """テーマ配下にプロジェクトを作成する。"""
-    _get_theme_or_404(theme_id, db)
+    _get_theme_or_404(theme_id, user["id"], db)
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="プロジェクト名は必須です")
@@ -306,7 +310,7 @@ async def project_detail_page(
             selectinload(Project.members).selectinload(ProjectMember.user),
             selectinload(Project.vocabulary),
         )
-        .where(Project.id == project_id)
+        .where(Project.id == project_id, Project.created_by_user_id == user["id"])
     ).first()
     if not proj:
         raise HTTPException(status_code=404, detail="プロジェクトが見つかりません")
@@ -596,6 +600,7 @@ async def themes_list(
         db.scalars(
             select(Theme)
             .options(selectinload(Theme.projects))
+            .where(Theme.created_by_user_id == user["id"])
             .order_by(Theme.created_at.desc())
         )
     )
@@ -626,6 +631,7 @@ async def projects_list(
     rows = db.execute(
         select(Project, count_sq.c.cnt)
         .outerjoin(count_sq, Project.id == count_sq.c.project_id)
+        .where(Project.created_by_user_id == user["id"])
         .order_by(Project.name)
     ).all()
     result = [
@@ -656,7 +662,7 @@ async def project_context(
             selectinload(Project.members).selectinload(ProjectMember.user),
             selectinload(Project.vocabulary),
         )
-        .where(Project.id == project_id)
+        .where(Project.id == project_id, Project.created_by_user_id == user["id"])
     ).first()
     if not proj:
         raise HTTPException(status_code=404, detail="プロジェクトが見つかりません")
