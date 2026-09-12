@@ -269,7 +269,7 @@
     {# 非表示オーディオ要素 #}
     <audio
         x-ref="audioEl"
-        preload="none"
+        preload="metadata"
         src="/api/transcripts/{{ transcript.id }}/audio"
         @timeupdate="onTimeUpdate()"
         @durationchange="onDurationChange()"
@@ -1429,7 +1429,14 @@ function segmentsApp(transcriptId, historyNames) {
                 ...bm,
                 timeLabel: this._formatSeconds(bm.startSeconds),
             }));
-            this.$nextTick(() => this._renderBookmarkMarkers());
+            this.$nextTick(() => {
+                // preload="metadata" で duration が確定していれば即描画、
+                // まだなら loadedmetadata 後に setupAudioSync のリスナーが描画する
+                const audio = document.querySelector('.audio-player-section audio');
+                if (audio && audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0) {
+                    this._renderBookmarkMarkers();
+                }
+            });
 
             // 進捗バー：ページロード時の編集済み件数を初期値に設定
             this.$nextTick(() => {
