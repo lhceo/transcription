@@ -2528,6 +2528,14 @@ a.history-item-filename:hover {
     background: linear-gradient(to bottom, #60a5fa, #34d399);
     min-height: 2px;
 }
+.vert-progress-bookmark-mark {
+    position: absolute;
+    left: 0; right: 0;
+    height: 3px;
+    background: #8b5cf6;
+    border-radius: 1px;
+    opacity: 0.85;
+}
 .vert-progress-badge {
     position: absolute;
     bottom: 16px;
@@ -2590,7 +2598,7 @@ a.history-item-filename:hover {
     top: 0;
     bottom: 0;
     width: 3px;
-    background: #3b82f6;
+    background: #8b5cf6;
     border-radius: 2px;
     cursor: pointer;
     transform: translateX(-50%);

@@ -1283,6 +1283,7 @@ function segmentsApp(transcriptId, historyNames) {
                 this.bookmarks = this.bookmarks.filter(b => b.segId !== segId);
             }
             this._renderBookmarkMarkers();
+            this._renderEditedMarkers();
         },
 
         async toggleBookmarkById(segId) {
@@ -1318,12 +1319,22 @@ function segmentsApp(transcriptId, historyNames) {
             if (!total) return;
             container.innerHTML = '';
             const segH = 100 / total;
+            // 編集済みマーク（青/緑グラデ）
             cards.forEach((card, i) => {
                 if (!card.querySelector('[data-edited]')) return;
                 const mark = document.createElement('div');
                 mark.className = 'vert-progress-seg-mark';
                 mark.style.top = (i / total * 100) + '%';
                 mark.style.height = Math.max(segH, 1.5) + '%';
+                container.appendChild(mark);
+            });
+            // ブックマークマーク（紫）- セグメントIDで位置を特定
+            const bookmarkedIds = new Set(this.bookmarks.map(bm => String(bm.segId)));
+            cards.forEach((card, i) => {
+                if (!bookmarkedIds.has(card.dataset.segmentId)) return;
+                const mark = document.createElement('div');
+                mark.className = 'vert-progress-bookmark-mark';
+                mark.style.top = (i / total * 100) + '%';
                 container.appendChild(mark);
             });
         },
@@ -1485,7 +1496,7 @@ function segmentsApp(transcriptId, historyNames) {
             // 進捗バー：ページロード時の編集済み件数を初期値に設定 + マーカー描画
             this.$nextTick(() => {
                 this.editedCount = document.querySelectorAll('#segment-list [data-edited]').length;
-                this._renderEditedMarkers();
+                this._renderEditedMarkers(); // 編集済み + ブックマーク両方描画
             });
         },
 
