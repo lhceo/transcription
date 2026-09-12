@@ -1451,12 +1451,24 @@ async def split_segment(
     segment.is_edited = True
 
     # 新セグメントを追加（後半テキスト）
+    # 元セグメントの effective_name を引き継ぐ（speakers テーブルがデフォルト名のまま
+    # でも、分割後の新セグメントが「未設定話者」に戻らないよう display_name を明示的に設定）
+    speakers_for_split = list(
+        db.scalars(select(Speaker).where(Speaker.transcript_id == segment.transcript_id))
+    )
+    split_name_map = {s.speaker_label: s.display_name for s in speakers_for_split}
+    inherited_display_name = (
+        segment.display_name
+        or split_name_map.get(segment.speaker_label)
+        or None
+    )
     new_segment = Segment(
         transcript_id=segment.transcript_id,
         order_index=segment.order_index + 1,
         start_seconds=split_time,
         end_seconds=original_end,
         speaker_label=segment.speaker_label,
+        display_name=inherited_display_name,
         text_content=after or "（無音）",
         is_edited=True,
     )
@@ -1901,10 +1913,13 @@ async def rename_segments_by_effective_name(
             seg.display_name = to_name
             matched_labels.add(seg.speaker_label)
 
-    # リネームに関与した Speaker レコードを People台帳にリンク
+    # リネームに関与した Speaker レコードの display_name も更新する。
+    # これにより分割で生まれた新セグメント（display_name=NULL）が
+    # speakers テーブルにフォールバックしても正しい名前を返せる。
     speaker_map = {s.speaker_label: s for s in speakers}
     for label in matched_labels:
         if label in speaker_map:
+            speaker_map[label].display_name = to_name
             _link_speaker_to_person(speaker_map[label], to_name, user["id"], db)
 
     _record_speaker_history(user["id"], to_name, db)
