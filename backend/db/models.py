@@ -185,6 +185,8 @@ class Segment(Base):
     # 内部ラベル（例: "SPEAKER_00"）
     speaker_label: Mapped[str] = mapped_column(String(50), nullable=False)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
+    # AssemblyAI が返した元のテキスト（変更不可）。整文前に戻す基準として使う。
+    original_asr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 個別の話者名上書き（NULL なら speakers テーブルの display_name を引く）
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

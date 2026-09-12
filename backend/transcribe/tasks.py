@@ -73,13 +73,15 @@ def _save_results_to_db(transcript_id: int, aai_result: dict) -> None:
             start_ms = utt.get("start") or 0
             end_ms = utt.get("end") or 0
             raw_text = (utt.get("text") or "").strip()
+            normalized = normalize_japanese_text(raw_text)
             seg = Segment(
                 transcript_id=transcript_id,
                 order_index=idx,
                 start_seconds=float(start_ms) / 1000.0,
                 end_seconds=float(end_ms) / 1000.0,
                 speaker_label=speaker_label,
-                text_content=normalize_japanese_text(raw_text),
+                text_content=normalized,
+                original_asr_text=normalized,
             )
             db.add(seg)
 
