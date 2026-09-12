@@ -1038,6 +1038,7 @@ function audioPlayer(transcriptId) {
             const audio = this.$refs.audioEl;
             if (audio && !isNaN(audio.duration) && isFinite(audio.duration)) {
                 this.duration = audio.duration;
+                this._renderBookmarkMarkers();
             }
         },
 
