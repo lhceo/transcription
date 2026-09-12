@@ -1305,13 +1305,15 @@ function segmentsApp(transcriptId, historyNames) {
 
         progressMsg() {
             const pct = this.progressPct();
-            if (pct === 0)  return 'さあ始めましょう！';
-            if (pct < 20)  return 'いいスタートです！';
-            if (pct < 40)  return 'いいペース！';
-            if (pct < 60)  return '折り返しが見えてきた！';
-            if (pct < 80)  return '半分以上！もうすぐです！';
-            if (pct < 95)  return 'あと少し！';
-            return 'ゴールまじか！';
+            const edited = document.querySelectorAll('#segment-list [data-edited]').length;
+            const sub = edited > 0 ? `（${edited}件編集）` : '';
+            if (pct === 0)  return 'さあ始めましょう！' + sub;
+            if (pct < 20)  return 'いいスタートです！' + sub;
+            if (pct < 40)  return 'いいペース！' + sub;
+            if (pct < 60)  return '折り返しが見えてきた！' + sub;
+            if (pct < 80)  return '半分以上！もうすぐです！' + sub;
+            if (pct < 95)  return 'あと少し！' + sub;
+            return 'ゴールまじか！' + sub;
         },
 
         // v1.1 Option C: このセグメントの textarea を表示すべきか判定。
@@ -1342,7 +1344,7 @@ function segmentsApp(transcriptId, historyNames) {
                     this.endEditingCurrentSegment();
                 }
                 // 編集モード終了時に進捗リセット（seenSegIds は下の IntersectionObserver 内で参照）
-                if (!this.editMode) this.reviewedCount = 0;
+                if (!this.editMode) { seenSegIds.clear(); this.reviewedCount = 0; }
             });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
