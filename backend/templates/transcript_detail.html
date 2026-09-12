@@ -829,15 +829,15 @@
         </div>
     </div>
 
-    {# ── 固定左下ナビボタン（編集モード中のみ） ── #}
-    <a href="/" class="back-icon-btn back-icon-btn-home" x-show="editMode" x-cloak>
+    {# ── 固定左下ナビボタン（常時表示） ── #}
+    <a href="/" class="back-icon-btn back-icon-btn-home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 12L12 4l9 8"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>
         </svg>
         <span class="back-btn-label">ダッシュボードへ</span>
     </a>
     {% if breadcrumb_project %}
-    <a href="/projects/{{ breadcrumb_project.id }}" class="back-icon-btn back-icon-btn-project" x-show="editMode" x-cloak>
+    <a href="/projects/{{ breadcrumb_project.id }}" class="back-icon-btn back-icon-btn-project">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
