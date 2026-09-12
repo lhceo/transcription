@@ -856,11 +856,10 @@
 
     {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
     <div class="vert-progress" x-show="editMode" x-cloak title="確認進捗">
-        <div class="vert-progress-fill" :style="`height: ${progressPct()}%`"></div>
+        <div class="vert-progress-segments" id="vert-progress-segments"></div>
         <div class="vert-progress-badge"
-             :style="`top: clamp(14px, ${progressPct()}%, calc(100% - 14px))`"
-             x-show="progressPct() > 0"
-             x-text="progressPct() + '%'"></div>
+             x-show="editedCount > 0"
+             x-text="editedCount + '件'"></div>
         <div class="vert-progress-msg" x-text="progressMsg()"></div>
     </div>
 
@@ -1278,6 +1277,24 @@ function segmentsApp(transcriptId, historyNames) {
             if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         },
 
+        _renderEditedMarkers() {
+            const container = document.getElementById('vert-progress-segments');
+            if (!container) return;
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            const total = cards.length;
+            if (!total) return;
+            container.innerHTML = '';
+            const segH = 100 / total;
+            cards.forEach((card, i) => {
+                if (!card.querySelector('[data-edited]')) return;
+                const mark = document.createElement('div');
+                mark.className = 'vert-progress-seg-mark';
+                mark.style.top = (i / total * 100) + '%';
+                mark.style.height = Math.max(segH, 1.5) + '%';
+                container.appendChild(mark);
+            });
+        },
+
         _renderBookmarkMarkers() {
             const container = document.getElementById('player-bookmark-markers');
             if (!container) return;
@@ -1437,9 +1454,10 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             });
 
-            // 進捗バー：ページロード時の編集済み件数を初期値に設定
+            // 進捗バー：ページロード時の編集済み件数を初期値に設定 + マーカー描画
             this.$nextTick(() => {
                 this.editedCount = document.querySelectorAll('#segment-list [data-edited]').length;
+                this._renderEditedMarkers();
             });
         },
 
@@ -2263,6 +2281,7 @@ function segmentsApp(transcriptId, historyNames) {
                         badge.textContent = '編集済み';
                         if (time) time.after(badge);
                         this.editedCount++;
+                        this._renderEditedMarkers();
                     }
                 }
                 if (this.pendingSegments.size === 0) {
