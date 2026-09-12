@@ -2531,11 +2531,15 @@ a.history-item-filename:hover {
 .vert-progress-bookmark-mark {
     position: absolute;
     left: 0; right: 0;
-    height: 3px;
+    height: 4px;
     background: #8b5cf6;
     border-radius: 1px;
     opacity: 0.85;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity .15s, height .15s;
 }
+.vert-progress-bookmark-mark:hover { opacity: 1; height: 5px; }
 .vert-progress-badge {
     position: absolute;
     bottom: 16px;
@@ -2609,6 +2613,41 @@ a.history-item-filename:hover {
     pointer-events: auto;
 }
 .player-bookmark-tick:hover { opacity: 1; width: 5px; }
+
+/* ブックマークティッカー共通ツールチップ */
+.bookmark-tooltip {
+    position: fixed;
+    background: #1e293b;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 5px 9px;
+    border-radius: 7px;
+    pointer-events: none;
+    z-index: 9999;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.12s;
+    line-height: 1;
+}
+.bookmark-tooltip.tt-top::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1e293b;
+}
+.bookmark-tooltip.tt-left::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    transform: translateY(-50%);
+    border: 5px solid transparent;
+    border-left-color: #1e293b;
+}
 
 /* ── 本文2カラムレイアウト ── */
 .transcript-body-layout {

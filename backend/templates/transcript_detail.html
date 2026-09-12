@@ -91,6 +91,42 @@
     </div>
 
     {# 共有ボタン（オーナーのみ） #}
+    {# プロジェクト選択ボタン（オーナーのみ） #}
+    {% if is_owner %}
+    <div class="history-item-project-wrap"
+         x-data="projectAssigner({{ transcript.id }}, {{ transcript.project_id or 'null' }})"
+         @click.outside="open = false"
+         style="display:inline-flex;align-items:center;gap:6px;">
+        <span class="history-item-project-tag" x-show="projectId && projectName" x-text="projectName" x-cloak style="cursor:default"></span>
+        <button type="button"
+                class="history-item-project-btn"
+                :class="{ 'has-project': projectId }"
+                @click="toggle()"
+                :title="projectId ? 'プロジェクトを変更' : 'プロジェクトに追加'"
+                aria-label="プロジェクトに追加">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+        </button>
+        <div class="history-item-project-dropdown" x-show="open" x-cloak>
+            <p class="project-dropdown-label">プロジェクトに追加</p>
+            <template x-if="projects.length === 0">
+                <p class="project-dropdown-empty"><a href="/themes">プロジェクトを作成する →</a></p>
+            </template>
+            <template x-for="p in projects" :key="p.id">
+                <button type="button"
+                        class="project-dropdown-item"
+                        :class="{ 'is-selected': projectId === p.id }"
+                        @click="assign(p.id)"
+                        x-text="p.name"></button>
+            </template>
+            <template x-if="projectId">
+                <button type="button" class="project-dropdown-item project-dropdown-remove" @click="assign(null)">プロジェクトから外す</button>
+            </template>
+        </div>
+    </div>
+    {% endif %}
+
     {% if is_owner %}
     <div class="detail-share-wrap"
          x-data="sharePanel({{ transcript.id }})"
@@ -249,18 +285,15 @@
                 <button
                     type="button"
                     class="audio-delete-btn"
-                    @click="confirmDelete()"
-                    title="音声ファイルだけを削除（テキストは残ります）"
-                    aria-label="音声ファイルを削除"
+                    @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
+                    title="ページトップに戻る"
+                    aria-label="ページトップに戻る"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                        <path d="M10 11v6M14 11v6"></path>
-                        <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+                        <polyline points="18 15 12 9 6 15"></polyline>
                     </svg>
                 </button>
-                <span class="audio-delete-label">音声のみ削除</span>
+                <span class="audio-delete-label">トップへ</span>
             </div>
         </div>
     </div>
@@ -595,7 +628,12 @@
             {% for seg in segments %}
                 {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
                 {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
-                {% set mt = '0' if loop.first else ('8px' if loop.previtem.speaker_label == seg.speaker_label else '16px') %}
+                {% if loop.first %}
+                    {% set mt = '0' %}
+                {% else %}
+                    {% set prev_effective = loop.previtem.display_name or speaker_name_map.get(loop.previtem.speaker_label) or loop.previtem.speaker_label %}
+                    {% set mt = '8px' if prev_effective == effective_name else '16px' %}
+                {% endif %}
                 <li class="segment-card"
                     id="segment-{{ seg.id }}"
                     data-segment-id="{{ seg.id }}"
@@ -807,7 +845,7 @@
                 class="speaker-popup-input"
                 placeholder="名前を入力 or 候補から選択"
                 x-model="editor.input"
-                @input="editor.fromCandidate = false"
+                @input="true"
                 @keydown.enter.prevent
                 x-ref="input"
             >
@@ -821,7 +859,7 @@
                             <button
                                 type="button"
                                 class="speaker-popup-candidate"
-                                @click="editor.input = name; editor.fromCandidate = true; $refs.input.focus()"
+                                @click="editor.input = name; $refs.input.focus()"
                             >
                                 <span class="speaker-badge speaker-badge-candidate" x-text="name"></span>
                             </button>
@@ -879,7 +917,7 @@
         </svg>
         <span class="back-btn-label">ダッシュボードへ</span>
     </a>
-    <a href="{{ '/projects/' ~ breadcrumb_project.id if breadcrumb_project else '/' }}"
+    <a href="{{ '/projects/' ~ breadcrumb_project.id if breadcrumb_project else '/themes' }}"
        class="back-icon-btn back-icon-btn-project">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -1233,10 +1271,6 @@ function segmentsApp(transcriptId, historyNames) {
             currentDisplayName: '',
             originalName: '',
             input: '',
-            // 候補からクリック選択した場合 true。「既存の話者にマージしたい」
-            // 明示的な操作とみなし、サーバー側の重複チェックをスキップする。
-            // ユーザーがタイプした瞬間に false に戻る (@input ハンドラ参照)。
-            fromCandidate: false,
         },
 
         // v1.1: 同期ハイライト用 state
@@ -1329,12 +1363,22 @@ function segmentsApp(transcriptId, historyNames) {
                 container.appendChild(mark);
             });
             // ブックマークマーク（紫）- セグメントIDで位置を特定
-            const bookmarkedIds = new Set(this.bookmarks.map(bm => String(bm.segId)));
+            const bmById = new Map(this.bookmarks.map(bm => [String(bm.segId), bm]));
+            const audio = document.querySelector('.audio-player-section audio');
             cards.forEach((card, i) => {
-                if (!bookmarkedIds.has(card.dataset.segmentId)) return;
+                const bm = bmById.get(card.dataset.segmentId);
+                if (!bm) return;
                 const mark = document.createElement('div');
                 mark.className = 'vert-progress-bookmark-mark';
                 mark.style.top = (i / total * 100) + '%';
+                mark.addEventListener('mouseenter', () => this._showTooltip(mark, bm.timeLabel, 'left'));
+                mark.addEventListener('mouseleave', () => this._hideTooltip());
+                mark.addEventListener('click', () => {
+                    this._hideTooltip();
+                    const target = document.querySelector(`.segment-card[data-segment-id="${bm.segId}"]`);
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (audio) { audio.currentTime = bm.startSeconds; audio.play().catch(() => {}); }
+                });
                 container.appendChild(mark);
             });
         },
@@ -1352,10 +1396,42 @@ function segmentsApp(transcriptId, historyNames) {
                 marker.type = 'button';
                 marker.className = 'player-bookmark-tick';
                 marker.style.left = pct + '%';
-                marker.title = bm.timeLabel + (bm.memo ? ' — ' + bm.memo : '');
-                marker.addEventListener('click', e => { e.stopPropagation(); this.jumpToBookmark(bm); });
+                const label = bm.timeLabel + (bm.memo ? ' — ' + bm.memo : '');
+                marker.addEventListener('mouseenter', () => this._showTooltip(marker, label, 'top'));
+                marker.addEventListener('mouseleave', () => this._hideTooltip());
+                marker.addEventListener('click', e => { e.stopPropagation(); this._hideTooltip(); this.jumpToBookmark(bm); });
                 container.appendChild(marker);
             });
+        },
+
+        _showTooltip(el, text, dir = 'top') {
+            let tip = document.getElementById('bookmark-tooltip');
+            if (!tip) {
+                tip = document.createElement('div');
+                tip.id = 'bookmark-tooltip';
+                document.body.appendChild(tip);
+            }
+            tip.textContent = text;
+            tip.className = 'bookmark-tooltip tt-' + dir;
+            tip.style.opacity = '0';
+            requestAnimationFrame(() => {
+                const rect = el.getBoundingClientRect();
+                const tw = tip.offsetWidth;
+                const th = tip.offsetHeight;
+                if (dir === 'top') {
+                    tip.style.top  = (rect.top - th - 8) + 'px';
+                    tip.style.left = (rect.left + rect.width / 2 - tw / 2) + 'px';
+                } else {
+                    tip.style.top  = (rect.top + rect.height / 2 - th / 2) + 'px';
+                    tip.style.left = (rect.left - tw - 8) + 'px';
+                }
+                tip.style.opacity = '1';
+            });
+        },
+
+        _hideTooltip() {
+            const tip = document.getElementById('bookmark-tooltip');
+            if (tip) tip.style.opacity = '0';
         },
 
         _formatSeconds(secs) {
@@ -2819,7 +2895,6 @@ function segmentsApp(transcriptId, historyNames) {
                 currentDisplayName: currentSegName,
                 originalName: effectiveName,
                 input: '',
-                fromCandidate: false,
             };
             this.$nextTick(() => {
                 if (this.$refs.input) this.$refs.input.focus();
@@ -2855,7 +2930,6 @@ function segmentsApp(transcriptId, historyNames) {
             this.editor.currentDisplayName = '';
             this.editor.originalName = '';
             this.editor.input = '';
-            this.editor.fromCandidate = false;
         },
 
         async _extractErrorMessage(res) {
@@ -2873,10 +2947,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/segments/${this.editor.segmentId}`, {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        display_name: name,
-                        force: !!this.editor.fromCandidate,
-                    }),
+                    body: JSON.stringify({ display_name: name }),
                 });
                 if (!res.ok) {
                     throw new Error(await this._extractErrorMessage(res));
@@ -2921,11 +2992,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/rename-by-name`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        from_name: fromName,
-                        to_name: newName,
-                        force: !!this.editor.fromCandidate,
-                    }),
+                    body: JSON.stringify({ from_name: fromName, to_name: newName }),
                 });
                 if (!res.ok) {
                     throw new Error(await this._extractErrorMessage(res));
