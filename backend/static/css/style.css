@@ -294,12 +294,6 @@ html, body {
 }
 
 /* PC: プロジェクトリンクをインライン表示 */
-.nav-projects-link {
-    display: flex;
-}
-.nav-projects-mobile {
-    display: none;
-}
 
 .btn-link {
     background: none;
@@ -3285,9 +3279,6 @@ a.history-item-filename:hover {
         font-size: 14px;
         border-radius: 0;
     }
-    /* スマホ: PC表示用プロジェクトリンクを隠し、ハンバーガー内のものを表示 */
-    .nav-projects-link { display: none; }
-    .nav-projects-mobile { display: flex; }
 
     /* スマホ: ユーザーメニュー — PCドロップダウンを隠し、フラット表示 */
     .nav-collapsible-items .user-menu-trigger { display: none; }
