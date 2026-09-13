@@ -839,8 +839,10 @@
                     </div>
 
                     {# ── コメント表示 / 編集エリア ── #}
-                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})">
+                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})"
+                         @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集" style="cursor:pointer">
                         <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
+                        <span class="segment-comment-edit-hint">✏ 編集</span>
                     </div>
                     <div class="segment-comment-edit-wrap"
                          x-show="commentEditId === {{ seg.id }}" x-cloak
@@ -1904,7 +1906,11 @@ function segmentsApp(transcriptId, historyNames) {
             if (card) {
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 card.style.outline = '2px solid #f59e0b';
-                setTimeout(() => { card.style.outline = ''; }, 1500);
+                setTimeout(() => {
+                    card.style.outline = '';
+                    // スクロール完了後にコメント編集を開く
+                    this.toggleCommentEdit(segId);
+                }, 400);
             }
         },
 
@@ -3389,10 +3395,17 @@ function segmentsApp(transcriptId, historyNames) {
             commentWrap.className = 'segment-comment-wrap';
             commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id})`);
             commentWrap.style.display = 'none';
+            commentWrap.style.cursor = 'pointer';
+            commentWrap.title = 'クリックしてコメントを編集';
+            commentWrap.setAttribute('@click.stop', `toggleCommentEdit(${newSeg.id})`);
             const commentTextEl = document.createElement('div');
             commentTextEl.className = 'segment-comment-text';
             commentTextEl.setAttribute('x-text', `segComments[${newSeg.id}] || ''`);
             commentWrap.appendChild(commentTextEl);
+            const commentEditHint = document.createElement('span');
+            commentEditHint.className = 'segment-comment-edit-hint';
+            commentEditHint.textContent = '✏ 編集';
+            commentWrap.appendChild(commentEditHint);
 
             // コメント編集エリア（Alpine x-show で管理）
             const commentEditWrap = document.createElement('div');

@@ -2344,6 +2344,16 @@ a.history-item-filename:hover {
     white-space: pre-wrap;
     word-break: break-word;
 }
+.segment-comment-edit-hint {
+    display: none;
+    font-size: 11px;
+    color: #b45309;
+    margin-top: 2px;
+    opacity: 0.7;
+}
+.segment-comment-wrap:hover .segment-comment-edit-hint {
+    display: block;
+}
 .segment-comment-edit-wrap {
     display: flex;
     flex-direction: column;
