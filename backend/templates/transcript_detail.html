@@ -990,7 +990,7 @@
                 <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                 <span class="sidebar-tab-count" x-text="bookmarks.length"></span>
             </button>
-            <button class="sidebar-tab" :class="sidebarTab === 'comments' ? 'active' : ''"
+            <button class="sidebar-tab sidebar-tab-comment" :class="sidebarTab === 'comments' ? 'active' : ''"
                     @click="sidebarTab = 'comments'" title="コメント" aria-label="コメント">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span class="sidebar-tab-count sidebar-tab-count-comment" x-text="segmentComments.length"></span>
