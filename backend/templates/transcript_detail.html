@@ -825,7 +825,7 @@
 
                     {# ── 原文に戻す確認バー ── #}
                     <div class="revert-confirm-bar"
-                         x-show="revertConfirmSegId === {{ seg.id }}" x-cloak @click.stop>
+                         x-show="revertConfirmSegId === {{ seg.id }}" style="display:none" @click.stop>
                         <div style="width:100%">
                             <div style="font-weight:600;margin-bottom:6px"
                                  x-text="revertConfirmType === 'polished' ? '整文前の文字起こしに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
@@ -846,7 +846,7 @@
                         <span class="segment-comment-edit-hint">✏ 編集</span>
                     </div>
                     <div class="segment-comment-edit-wrap"
-                         x-show="commentEditId === {{ seg.id }}" x-cloak
+                         x-show="commentEditId === {{ seg.id }}" style="display:none"
                          @click.stop>
                         <textarea class="segment-comment-textarea"
                                   id="comment-ta-{{ seg.id }}"
@@ -1886,7 +1886,11 @@ function segmentsApp(transcriptId, historyNames) {
             this.commentEditId = segId;
             this.$nextTick(() => {
                 const ta = document.getElementById('comment-ta-' + segId);
-                if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
+                if (ta) {
+                    ta.focus();
+                    ta.selectionStart = ta.selectionEnd = ta.value.length;
+                    ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
             });
         },
 
@@ -3446,7 +3450,6 @@ function segmentsApp(transcriptId, historyNames) {
             const commentEditWrap = document.createElement('div');
             commentEditWrap.className = 'segment-comment-edit-wrap';
             commentEditWrap.setAttribute('x-show', `commentEditId === ${newSeg.id}`);
-            commentEditWrap.setAttribute('x-cloak', '');
             commentEditWrap.style.display = 'none';
             commentEditWrap.setAttribute('@click.stop', '');
 
