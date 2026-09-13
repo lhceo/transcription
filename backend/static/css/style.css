@@ -2477,6 +2477,25 @@ a.history-item-filename:hover {
     color: var(--color-primary);
     border-bottom-color: var(--color-primary);
 }
+.sidebar-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin-left: 4px;
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+.sidebar-tab-count-comment {
+    background: #fef3c7;
+    color: #92400e;
+}
 
 /* ── 原文に戻す確認バー ── */
 .revert-confirm-bar {
