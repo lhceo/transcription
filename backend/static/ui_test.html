@@ -148,6 +148,9 @@
     </button>
 
     <span style="color:#64748b">|</span>
+    <a href="#section-c" class="test-btn"><strong>C</strong> 穴埋めチップUI</a>
+
+    <span style="color:#64748b">|</span>
     <span style="font-size:11px;color:#94a3b8">セグメントをクリックで編集対象を切り替え</span>
 </div>
 
@@ -251,6 +254,100 @@
         </li>
     </ul>
 
+    <!-- ─── セクションC: 穴埋めチップUI ─── -->
+    <p class="test-section-label" id="section-c" style="margin-top:40px">C — 穴埋めチップUI（整文レビュー: ⚠ 要確認）</p>
+    <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:16px">
+        整文でClaudeが指示語を補完できなかったとき表示されます。チップをクリックして補完し「採用」してください。
+    </p>
+
+    <div x-data="fillChipDemo()">
+        <ul style="list-style:none;padding:0;margin:0">
+            <template x-for="seg in demoSegs" :key="seg.id">
+                <li class="segment-card" style="margin-bottom:8px">
+                    <header class="segment-header">
+                        <button type="button" class="speaker-badge" :class="'speaker-color-' + seg.color">
+                            <span class="speaker-badge-text" x-text="seg.speaker"></span>
+                        </button>
+                        <span class="segment-time" x-text="seg.time"></span>
+                        <span class="review-pending-badge unknown-badge" style="margin-left:8px">⚠ 要確認</span>
+                    </header>
+
+                    <template x-if="!seg.done">
+                        <div>
+                            <div style="font-size:11px;color:#92400e;margin-bottom:8px">
+                                チップをクリックして補完。わからない箇所は空欄のまま採用できます
+                            </div>
+                            <div class="fill-in-area">
+                                <template x-for="(part, idx) in seg.parts" :key="seg.id + '-' + idx">
+                                    <span>
+                                        <span x-text="part"></span>
+                                        <template x-if="idx < seg.fills.length">
+                                            <span>
+                                                <template x-if="seg.activeFillIdx !== idx">
+                                                    <button class="fill-chip"
+                                                            :class="seg.fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                            @click="seg.activeFillIdx = idx; $nextTick(() => document.getElementById('fi-' + seg.id + '-' + idx)?.focus())">
+                                                        <template x-if="!seg.fills[idx]">
+                                                            <span style="display:flex;align-items:center;gap:3px">
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                                補完してください
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="seg.fills[idx]">
+                                                            <span style="display:flex;align-items:center;gap:4px">
+                                                                <span x-text="seg.fills[idx]"></span>
+                                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                            </span>
+                                                        </template>
+                                                    </button>
+                                                </template>
+                                                <template x-if="seg.activeFillIdx === idx">
+                                                    <span class="fill-chip-input-wrap">
+                                                        <input class="fill-chip-input"
+                                                               :id="'fi-' + seg.id + '-' + idx"
+                                                               x-model="seg.fills[idx]"
+                                                               @blur="seg.activeFillIdx = null"
+                                                               @keydown.enter="seg.activeFillIdx = null"
+                                                               @keydown.escape="seg.fills[idx] = ''; seg.activeFillIdx = null">
+                                                    </span>
+                                                </template>
+                                            </span>
+                                        </template>
+                                    </span>
+                                </template>
+                            </div>
+                            <div class="review-inline-actions" style="margin-top:10px">
+                                <button class="btn btn-sm btn-outline" style="color:#64748b" @click="seg.done = 'skipped'">スキップ</button>
+                                <button class="btn btn-sm btn-primary" @click="accept(seg)">採用</button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="seg.done === 'accepted'">
+                        <div>
+                            <div class="review-accepted-bar">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                採用済み
+                                <button class="review-undo-btn" @click="seg.done = null">取り消し</button>
+                            </div>
+                            <div class="segment-text" x-text="seg.result"></div>
+                        </div>
+                    </template>
+
+                    <template x-if="seg.done === 'skipped'">
+                        <div>
+                            <div class="review-skipped-bar">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                スキップ（元の文字起こしを使用）
+                                <button class="review-undo-btn" @click="seg.done = null">取り消し</button>
+                            </div>
+                        </div>
+                    </template>
+                </li>
+            </template>
+        </ul>
+    </div>
+
     <!-- ─── 参考: 現状のスタイル ─── -->
     <p class="test-section-label" style="margin-top:40px">参考 — 現在の編集モードスタイル（変更なし）</p>
     <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:16px">
@@ -283,6 +380,37 @@
 </div>
 
 <script>
+function fillChipDemo() {
+    return {
+        demoSegs: [
+            {
+                id: 10, color: 2, speaker: '蒲社長', time: '03:22',
+                done: null, activeFillIdx: null, result: '',
+                parts: ['', 'を次回までに整理しておいてもらえますか。それが決まらないと前に進めないので。'],
+                fills: [''],
+            },
+            {
+                id: 11, color: 0, speaker: '古瀬社長', time: '05:10',
+                done: null, activeFillIdx: null, result: '',
+                parts: ['', 'については、', 'さんに確認してから進めます。'],
+                fills: ['', ''],
+            },
+        ],
+        accept(seg) {
+            // parts と fills を交互に結合して文章を作る
+            let text = '';
+            seg.parts.forEach((part, i) => {
+                text += part;
+                if (i < seg.fills.length) {
+                    text += seg.fills[i] ? `（${seg.fills[i]}）` : '（？）';
+                }
+            });
+            seg.result = text;
+            seg.done = 'accepted';
+        },
+    };
+}
+
 function testApp() {
     return {
         focusMode: false,
