@@ -2069,8 +2069,12 @@ a.history-item-filename:hover {
 .autosave-chip-pending { background: #fef3c7; color: #92400e; }
 .autosave-chip-saving  { background: #dbeafe; color: #1e40af; }
 .autosave-chip-error   { background: #fee2e2; color: #991b1b; }
-.autosave-chip-retry   { border: none; cursor: pointer; }
-.autosave-chip-retry:hover { background: #fecaca; }
+.autosave-chip-retry   { border: none; cursor: pointer; animation: chip-error-pulse 1.4s ease-in-out infinite; }
+.autosave-chip-retry:hover { background: #fecaca; animation: none; }
+@keyframes chip-error-pulse {
+    0%, 100% { opacity: 1; box-shadow: none; }
+    50%       { opacity: 0.75; box-shadow: 0 0 0 3px rgba(239,68,68,0.25); }
+}
 
 .autosave-dot {
     width: 7px; height: 7px;

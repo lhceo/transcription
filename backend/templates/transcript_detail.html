@@ -1470,6 +1470,7 @@ function segmentsApp(transcriptId, historyNames) {
         pendingSegments: new Map(),  // segmentId → text
         undoStack: [],         // [{segmentId, oldText, newText}] 最大20件
         _saveTimer: null,
+        _saveErrorToast: null,  // 保存失敗トースト要素（重複防止・成功時クローズ用）
 
         editor: {
             open: false,
@@ -2931,17 +2932,25 @@ function segmentsApp(transcriptId, historyNames) {
                 }
                 if (this.pendingSegments.size === 0) {
                     this.saveStatus = 'saved';
+                    this._dismissSaveErrorToast();
                     this._verifyWithServer();
                 }
             } catch (e) {
                 console.error('save failed:', e);
                 // テキストをリバートしない・pendingも残す → beforeunloadが警告を出せる状態を維持
                 this.saveStatus = 'error';
-                window.showToast('保存に失敗しました。ネットワークを確認してください。', 'error');
+                if (!this._saveErrorToast || !this._saveErrorToast.parentNode) {
+                    this._saveErrorToast = window.showToast(
+                        'ネットワークエラーのため保存できませんでした。',
+                        'error',
+                        0,  // 自動消去しない
+                        { label: '今すぐ再試行', onClick: () => { this._saveErrorToast = null; this._flushPending(); } }
+                    );
+                }
             }
         },
 
-        // pending をまとめて保存（デバウンスタイマー発火時）
+        // pending をまとめて保存（デバウンスタイマー発火時 / 再試行ボタン）
         async _flushPending() {
             if (this.pendingSegments.size === 0) return;
             this.saveStatus = 'saving';
@@ -2949,6 +2958,14 @@ function segmentsApp(transcriptId, historyNames) {
             for (const [segId] of toSave) {
                 await this._saveSegment(segId, null);
             }
+        },
+
+        _dismissSaveErrorToast() {
+            if (this._saveErrorToast && this._saveErrorToast.parentNode) {
+                this._saveErrorToast.classList.add('toast-out');
+                this._saveErrorToast.addEventListener('animationend', () => this._saveErrorToast?.remove(), { once: true });
+            }
+            this._saveErrorToast = null;
         },
 
         // サーバー側で保存件数を確認（バックグラウンド）
