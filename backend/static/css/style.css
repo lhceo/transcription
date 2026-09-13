@@ -2069,6 +2069,8 @@ a.history-item-filename:hover {
 .autosave-chip-pending { background: #fef3c7; color: #92400e; }
 .autosave-chip-saving  { background: #dbeafe; color: #1e40af; }
 .autosave-chip-error   { background: #fee2e2; color: #991b1b; }
+.autosave-chip-retry   { border: none; cursor: pointer; }
+.autosave-chip-retry:hover { background: #fecaca; }
 
 .autosave-dot {
     width: 7px; height: 7px;

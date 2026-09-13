@@ -536,9 +536,11 @@
             <span class="autosave-chip autosave-chip-saved" x-show="saveStatus === 'saved' && editMode" x-cloak>
                 ✓ 保存済み
             </span>
-            <span class="autosave-chip autosave-chip-error" x-show="saveStatus === 'error'" x-cloak>
-                ⚠ 保存失敗
-            </span>
+            <button type="button" class="autosave-chip autosave-chip-error autosave-chip-retry"
+                    x-show="saveStatus === 'error'" x-cloak
+                    @click="_flushPending()" title="クリックして再試行">
+                ↻ 保存失敗 — 再試行
+            </button>
         </div>
 
         {# 右グループ: プロジェクト選択 + 整文する + エクスポート（常に右端固定） #}
