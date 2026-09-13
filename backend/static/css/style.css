@@ -2927,6 +2927,10 @@ a.history-item-filename:hover {
     max-height: calc(100vh - 90px);
     overflow-y: auto;
 }
+/* 固定音声プレイヤーがある場合、プレイヤー分だけ下限を上げてスクロール可能にする */
+body:has(.audio-player-fixed) .transcript-sidebar-col {
+    max-height: calc(100vh - 72px - 108px);
+}
 @media (max-width: 640px) {
     .transcript-body-layout { flex-direction: column; }
     .transcript-sidebar-col { width: 100%; position: static; max-height: none; }
