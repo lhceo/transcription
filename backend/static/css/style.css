@@ -2422,12 +2422,15 @@ a.history-item-filename:hover {
 }
 .comment-list { list-style: none; padding: 0; margin: 0; }
 .comment-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--color-border);
-    cursor: pointer;
     transition: background .1s;
 }
 .comment-item:hover { background: #fffbeb; }
+.comment-item .bookmark-item-remove { flex-shrink: 0; margin-top: 2px; }
 .comment-item-time {
     font-size: 11px;
     font-weight: 600;

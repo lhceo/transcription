@@ -1008,10 +1008,15 @@
             </div>
             <ul class="comment-list">
                 <template x-for="c in segmentComments" :key="c.segId">
-                    <li class="comment-item" @click="jumpToSegmentForComment(c.segId)">
-                        <div class="comment-item-time" x-text="c.timeLabel"></div>
-                        <div class="comment-item-text" x-text="c.comment"></div>
-                        <div class="comment-item-excerpt" x-text="c.excerpt"></div>
+                    <li class="comment-item">
+                        <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="flex:1;min-width:0;cursor:pointer">
+                            <div class="comment-item-time" x-text="c.timeLabel"></div>
+                            <div class="comment-item-text" x-text="c.comment"></div>
+                            <div class="comment-item-excerpt" x-text="c.excerpt"></div>
+                        </div>
+                        <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
                     </li>
                 </template>
             </ul>
