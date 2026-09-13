@@ -99,6 +99,10 @@ def build_context_text(
                 lines.append(f"  - {word}: {meaning}")
             else:
                 lines.append(f"  - {word}")
+        lines.append("【固有名詞辞書の使い方】")
+        lines.append("・単語欄が正式表記。音声認識の揺らぎ（発音が似た誤認識）をこの表記に統一すること")
+        lines.append("・説明欄は登場人物の役割・関係性の文脈理解に使うこと。「誰が・誰に」の補完精度を高める")
+        lines.append("・説明に正式名が含まれるニックネームは、初出時に「正式名（ニックネーム）」形式で展開すること")
 
     if project_attachments_summaries:
         lines.append("【PJT添付資料（要約）】")
@@ -251,7 +255,17 @@ speakerに含まれる会社・役職・役割の情報を推察の補強に使�
 
 ステップ6: 判断できない箇所は原文のまま残す（推測で内容を書き換えない）
 
-ステップ7: 各セグメントを必ず同じJSON形式で返す"""
+ステップ7: 各セグメントを必ず同じJSON形式で返す
+
+【整文例】
+入力: {"id": 1, "speaker": "市川 / ライオンハート / PM", "text": "えーと、それ、来週までにやっといて"}
+出力: {"id": 1, "text": "（見積書を）来週までにまとめておいてください。"}
+
+入力: {"id": 2, "speaker": "古瀬社長 / ライフバンク / 代表", "text": "あの件どうなってる？"}
+出力: {"id": 2, "text": "（村プロジェクトの補助金申請の件は）どうなっていますか？"}
+
+入力: {"id": 3, "speaker": "蒲社長", "text": "えのさんが来週対応してくれるって言ってたよ"}
+出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。"}"""
 
 POLISH_USER_TEMPLATE = """{context}
 
@@ -311,8 +325,25 @@ async def _run_polish_batch(
     message = await client.messages.create(
         model=model_id,
         max_tokens=8192,
-        system=POLISH_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+        system=[
+            {
+                "type": "text",
+                "text": POLISH_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+            }
+        ],
     )
     raw = message.content[0].text.strip()
     try:
@@ -366,12 +397,23 @@ async def run_polish(
         batch_size = math.ceil(len(segments) / n_batches)
         logger.info("整文 分割処理: %s バッチ (各 %s セグメント + オーバーラップ %s)", n_batches, batch_size, _OVERLAP_SEGMENTS)
 
+        # 前バッチの整文済み結果を保持（オーバーラップセグメントの text を差し替えるため）
+        prev_suggestions: dict[int, str] = {}
+
         for i in range(n_batches):
             own_start = i * batch_size
             own_end = min(len(segments), (i + 1) * batch_size)
             # オーバーラップ: 前バッチ末尾を先頭に重複させて文脈を保持
             fetch_start = max(0, own_start - _OVERLAP_SEGMENTS)
-            batch_segs = segments[fetch_start:own_end]
+
+            # オーバーラップセグメントの text を整文済みテキストに置き換えて文脈精度を向上させる
+            batch_segs = []
+            for s in segments[fetch_start:own_end]:
+                if s["id"] in prev_suggestions:
+                    # オーバーラップ部分は整文済みテキストを渡す（idはそのまま）
+                    batch_segs.append({**s, "text": prev_suggestions[s["id"]]})
+                else:
+                    batch_segs.append(s)
 
             suggestions, inp, out = await _run_polish_batch(client, batch_segs, context_text, model_id)
 
@@ -380,6 +422,9 @@ async def run_polish(
             for seg_id, text in suggestions.items():
                 if seg_id in own_ids:
                     merged[seg_id] = text
+
+            # 次バッチのオーバーラップに使うため今バッチの整文済み結果を保持
+            prev_suggestions = suggestions
 
             total_input += inp
             total_output += out

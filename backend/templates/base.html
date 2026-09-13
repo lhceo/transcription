@@ -382,21 +382,30 @@
             toast.className = `toast toast-${type}`;
             toast.setAttribute('role', 'alert');
 
-            const actionHTML = action
-                ? `<button class="toast-action">${action.label}</button>`
-                : '';
-            toast.innerHTML = (type === 'error' ? ERROR_ICON : SUCCESS_ICON) +
-                `<span class="toast-message">${message}</span>` +
-                actionHTML +
-                `<button class="toast-close" aria-label="閉じる">×</button>`;
+            const iconEl = document.createElement('span');
+            iconEl.innerHTML = type === 'error' ? ERROR_ICON : SUCCESS_ICON;
 
-            toast.querySelector('.toast-close').addEventListener('click', () => remove(toast));
+            const msgEl = document.createElement('span');
+            msgEl.className = 'toast-message';
+            msgEl.textContent = message;
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'toast-close';
+            closeBtn.setAttribute('aria-label', '閉じる');
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', () => remove(toast));
+
+            toast.appendChild(iconEl);
+            toast.appendChild(msgEl);
+
             if (action) {
-                toast.querySelector('.toast-action').addEventListener('click', () => {
-                    remove(toast);
-                    action.onClick();
-                });
+                const actionBtn = document.createElement('button');
+                actionBtn.className = 'toast-action';
+                actionBtn.textContent = action.label;
+                actionBtn.addEventListener('click', () => { remove(toast); action.onClick(); });
+                toast.appendChild(actionBtn);
             }
+            toast.appendChild(closeBtn);
             container.appendChild(toast);
 
             if (duration > 0) {

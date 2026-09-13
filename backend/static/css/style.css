@@ -2325,8 +2325,9 @@ a.history-item-filename:hover {
 .seg-badge-edited     { background: #f1f5f9; color: #64748b; }
 .seg-badge-polished   { background: #dbeafe; color: #1d4ed8; }
 .seg-badge-unresolved { background: #fef3c7; color: #b45309; }
-.seg-badge-revertable { cursor: pointer; transition: filter .15s; }
-.seg-badge-revertable:hover { filter: brightness(.92); }
+.seg-badge-revertable { cursor: pointer; transition: filter .15s, opacity .15s; opacity: 0.45; }
+.seg-badge-revertable:hover { filter: brightness(.92); opacity: 1; }
+.segment-card:hover .seg-badge-revertable { opacity: 1; }
 
 /* ── セグメントコメント ── */
 .segment-comment-wrap {
@@ -3856,6 +3857,13 @@ body:has(.audio-player-fixed) .transcript-sidebar-col {
         transition: background 0.12s ease;
     }
     .segment-split-btn-hint { display: none; }
+}
+
+/* スマホ: 固定プレイヤー表示中は分割ボタンをプレイヤーの上に逃がす */
+@media (max-width: 640px) {
+    body:has(.audio-player-fixed) .segment-split-btn {
+        bottom: calc(72px + max(var(--keyboard-height, 0px), env(safe-area-inset-bottom, 0px)));
+    }
 }
 
 /* ───────────────────────────────────────────────────────────────

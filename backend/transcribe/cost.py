@@ -20,9 +20,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func as sa_func
+
 from backend.config import load_settings
 from backend.db import SessionLocal
-from backend.db.models import Transcript
+from backend.db.models import PolishLog, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +76,11 @@ def current_month_cost_yen(db: Session, now_utc: datetime | None = None) -> int:
 
     削除済み (deleted_at != None) は集計対象外。
     失敗 (failed) も対象外（請求されないので）。
+    Claude 整文コスト (PolishLog.cost_yen) も同月分を加算する。
     """
     start = month_start_utc(now_utc)
 
+    # ── AssemblyAI 文字起こしコスト ──────────────────────────────────────
     stmt = (
         select(Transcript)
         .where(Transcript.created_at >= start)
@@ -89,6 +93,15 @@ def current_month_cost_yen(db: Session, now_utc: datetime | None = None) -> int:
             total += int(t.cost_yen or 0)
         else:
             total += estimate_cost_yen(t.audio_duration_seconds, t.model_tier or "best")
+
+    # ── Claude 整文コスト (PolishLog) ────────────────────────────────────
+    # PolishLog はテキストデータを持たない集計専用のログテーブルなので読み取りのみ。
+    polish_total = db.scalar(
+        select(sa_func.coalesce(sa_func.sum(PolishLog.cost_yen), 0))
+        .where(PolishLog.created_at >= start)
+    )
+    total += int(polish_total or 0)
+
     return total
 
 

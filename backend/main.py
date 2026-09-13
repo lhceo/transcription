@@ -30,11 +30,22 @@ from backend.db.models import SpeakerHistory, Transcript, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from fastapi import Depends
 from typing import Annotated
 
 logger = logging.getLogger(__name__)
+
+
+def _log_task_error(task) -> None:
+    """asyncio.create_task() の done callback。例外が握りつぶされないようにログへ記録する。"""
+    if not task.cancelled() and task.exception():
+        logger.error(
+            "バックグラウンドタスクが失敗しました: %s",
+            task.exception(),
+            exc_info=task.exception(),
+        )
+
 
 settings = load_settings()
 
@@ -204,12 +215,14 @@ async def lifespan(app: FastAPI):
     from backend.transcribe.retention import retention_loop
 
     retention_task = asyncio.create_task(retention_loop())
+    retention_task.add_done_callback(_log_task_error)
     logger.info("自動削除バックグラウンドタスク起動")
 
     # 2b. B2 自動バックアップ (Tier 2)
     from backend.transcribe.b2_backup import backup_loop as b2_backup_loop
     from backend.db.session import _DB_PATH as _B2_DB_PATH
     b2_task = asyncio.create_task(b2_backup_loop(_B2_DB_PATH))
+    b2_task.add_done_callback(_log_task_error)
     logger.info("B2バックアップタスク起動")
 
     # 3. WAL チェックポイント (10分ごと)
@@ -230,6 +243,7 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(600)
 
     wal_task = asyncio.create_task(_wal_checkpoint_loop())
+    wal_task.add_done_callback(_log_task_error)
     logger.info("WAL チェックポイントタスク起動")
 
     try:
@@ -377,7 +391,12 @@ async def admin_users_stats(
     from backend.transcribe.retention import _ensure_utc_aware
 
     try:
-        users = list(db.scalars(select(User).order_by(User.last_login_at.desc())))
+        # selectinload で User.transcripts を一括取得し、N+1 クエリを回避する
+        users = list(db.scalars(
+            select(User)
+            .options(selectinload(User.transcripts))
+            .order_by(User.last_login_at.desc())
+        ))
     except Exception as e:
         logger.error("users-stats: DB クエリ失敗 %s", e)
         return JSONResponse({"users": [], "db_error": str(e)}, status_code=200)

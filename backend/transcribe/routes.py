@@ -62,6 +62,18 @@ templates.env.globals["cost_usage"] = get_cost_summary
 router = APIRouter()
 
 
+# ── バックグラウンドタスク エラーロギング ─────────────────────────────────────
+
+def _log_task_error(task: asyncio.Task) -> None:
+    """create_task() の done callback。例外が握りつぶされないようにログへ記録する。"""
+    if not task.cancelled() and task.exception():
+        logger.error(
+            "バックグラウンドタスクが失敗しました: %s",
+            task.exception(),
+            exc_info=task.exception(),
+        )
+
+
 # ── アクセス制御ヘルパー ────────────────────────────────────────────────────
 
 def _is_owner(transcript: Transcript, user_id: int) -> bool:
@@ -141,7 +153,7 @@ async def add_share(
     # 招待メール送信（fire-and-forget）
     settings = load_settings()
     base_url = str(request.base_url).rstrip("/")
-    asyncio.create_task(send_share_notification(
+    _share_task = asyncio.create_task(send_share_notification(
         smtp_user=settings.smtp_user,
         smtp_password=settings.smtp_password,
         to_email=target.email,
@@ -150,6 +162,7 @@ async def add_share(
         transcript_title=transcript_display_name(transcript),
         transcript_url=f"{base_url}/transcripts/{transcript_id}",
     ))
+    _share_task.add_done_callback(_log_task_error)
 
     return JSONResponse({"ok": True, "name": target.name}, status_code=201)
 
@@ -453,7 +466,8 @@ async def create_transcript(
     if settings.has_assemblyai:
         # asyncio.create_task で fire-and-forget。
         # レスポンスが返った後も event loop 上で動き続ける。
-        asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers, word_boost=parsed_word_boost, custom_spelling=parsed_custom_spelling))
+        _process_task = asyncio.create_task(process_transcript(transcript.id, save_path, speakers_expected=parsed_speakers, word_boost=parsed_word_boost, custom_spelling=parsed_custom_spelling))
+        _process_task.add_done_callback(_log_task_error)
     else:
         logger.warning(
             "ASSEMBLYAI_API_KEY 未設定のため、ジョブ %s は uploaded 状態のままです",
@@ -684,12 +698,13 @@ async def create_transcript_multi(
         parsed_custom_spelling = auto_custom_spelling or None
 
         if settings.has_assemblyai:
-            asyncio.create_task(process_transcript(
+            _merge_process_task = asyncio.create_task(process_transcript(
                 transcript.id, merged_path,
                 speakers_expected=parsed_speakers,
                 word_boost=merged_boost,
                 custom_spelling=parsed_custom_spelling,
             ))
+            _merge_process_task.add_done_callback(_log_task_error)
         else:
             logger.warning("ASSEMBLYAI_API_KEY 未設定のため、ジョブ %s は uploaded 状態のままです", transcript.id)
 
@@ -714,13 +729,14 @@ async def create_transcript_multi(
 
 
 @router.get("/ui-test", response_class=HTMLResponse)
-async def ui_test(request: Request) -> HTMLResponse:
-    """UI テストページ。認証不要・ダミーデータのみ。本番でも無害。"""
+async def ui_test(request: Request, user: CurrentUser) -> HTMLResponse:
+    """UI テストページ。認証済みユーザーのみアクセス可。社外からの不用意なアクセスを防ぐ。"""
+    settings = load_settings()
     return templates.TemplateResponse(request, "ui_test.html", {
-        "user": {"name": "テストユーザー", "email": "test@example.com"},
+        "user": user,
         "app_version": APP_VERSION,
         "env": "development",
-        "is_admin": False,
+        "is_admin": user.get("email", "").lower() == settings.admin_email,
     })
 
 
