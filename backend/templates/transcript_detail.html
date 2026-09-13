@@ -866,7 +866,7 @@
 
                     {# ── 整文インラインレビュー UI ── #}
                     {# 採用済み #}
-                    <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" x-cloak>
+                    <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" x-cloak style="display:none">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         採用済み
                         <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
@@ -874,14 +874,14 @@
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
 
                     {# スキップ済み #}
-                    <div class="review-skipped-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak>
+                    <div class="review-skipped-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         スキップ（元の文字起こしを使用）
                         <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
                     </div>
 
                     {# diff 未対応 #}
-                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done" x-cloak>
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done" x-cloak style="display:none">
                         <div class="review-pending-header">
                             <span class="review-pending-badge diff-badge">整文あり</span>
                             <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
@@ -899,7 +899,7 @@
                     </div>
 
                     {# unknown（？）補完 未対応 #}
-                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done" x-cloak>
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done" x-cloak style="display:none">
                         <div class="review-pending-header">
                             <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
                             <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
