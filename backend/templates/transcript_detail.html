@@ -964,18 +964,18 @@
         <div class="sidebar-strip" x-show="sidebarCollapsed" style="display:none">
             <button class="sidebar-strip-btn" @click="sidebarCollapsed = false; sidebarTab = 'bookmarks'; localStorage.setItem('noto-sidebar-collapsed', 'false')"
                     title="ブックマーク" x-show="bookmarks.length > 0">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px;color:#94a3b8"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                 <span class="sidebar-strip-badge" x-text="bookmarks.length"></span>
             </button>
             <button class="sidebar-strip-btn" @click="sidebarCollapsed = false; sidebarTab = 'comments'; localStorage.setItem('noto-sidebar-collapsed', 'false')"
                     title="コメント" x-show="segmentComments.length > 0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;color:#f59e0b"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;color:#94a3b8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span class="sidebar-strip-badge sidebar-strip-badge-comment" x-text="segmentComments.length"></span>
             </button>
         </div>
 
-        {# 展開時コンテンツ #}
-        <div x-show="!sidebarCollapsed">
+        {# 展開時コンテンツ（x-show 評価前フラッシュを防ぐため style="display:none"） #}
+        <div x-show="!sidebarCollapsed" style="display:none">
         {# 折り畳みボタン #}
         <div class="sidebar-collapse-btn-row">
             <button class="sidebar-collapse-btn" @click="sidebarCollapsed = true; localStorage.setItem('noto-sidebar-collapsed', 'true')" title="折り畳む">
@@ -1171,9 +1171,6 @@
     {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
     <div class="vert-progress" x-show="editMode" x-cloak title="確認進捗">
         <div class="vert-progress-segments" id="vert-progress-segments"></div>
-        <div class="vert-progress-badge"
-             x-show="editedCount > 0"
-             x-text="editedCount + '件'"></div>
         <div class="vert-progress-msg" x-text="progressMsg()"></div>
     </div>
 

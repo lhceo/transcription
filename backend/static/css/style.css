@@ -2460,10 +2460,13 @@ a.history-item-filename:hover {
 }
 .sidebar-tab {
     flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     padding: 8px 4px;
     font-size: 12px;
     font-weight: 600;
-    text-align: center;
     cursor: pointer;
     color: var(--color-text-muted);
     border-bottom: 2px solid transparent;
@@ -2484,15 +2487,18 @@ a.history-item-filename:hover {
     min-width: 16px;
     height: 16px;
     padding: 0 4px;
-    margin-left: 4px;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: #e2e8f0;
+    color: #64748b;
     border-radius: 20px;
     font-size: 10px;
     font-weight: 700;
-    vertical-align: middle;
 }
-.sidebar-tab-count-comment {
+.sidebar-tab.active .sidebar-tab-count {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+.sidebar-tab-count-comment { }
+.sidebar-tab.active .sidebar-tab-count-comment {
     background: #fef3c7;
     color: #92400e;
 }
@@ -2995,19 +3001,19 @@ a.history-item-filename:hover {
     position: absolute;
     top: -4px;
     right: -4px;
-    min-width: 16px;
-    height: 16px;
-    background: #3b82f6;
-    color: white;
+    min-width: 15px;
+    height: 15px;
+    background: #cbd5e1;
+    color: #475569;
     border-radius: 20px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0 3px;
 }
-.sidebar-strip-badge-comment { background: #f59e0b; }
+.sidebar-strip-badge-comment { background: #cbd5e1; color: #475569; }
 .sidebar-collapse-btn-row {
     display: flex;
     justify-content: flex-end;
