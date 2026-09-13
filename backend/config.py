@@ -28,7 +28,8 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # - v1.2 (ナビ刷新 + 複数ファイル統合アップロード + 整文プロンプト刷新)
 # - v1.3 (ブックマーク + 進捗バー + 固定ナビボタン + ダブルクリックシーク + 管理者バックアップ)
 # - v1.4 (整文インラインレビュー + セグメントコメント + Command+Z + 複数ファイルアップロード)
-APP_VERSION = "1.4.0"
+# - v1.4.1 (固有名詞バグ修正7件 + 分割シーク修正 + 保存失敗UX強化 + サイドバースクロール)
+APP_VERSION = "1.4.1"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
