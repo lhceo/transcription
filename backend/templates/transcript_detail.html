@@ -3296,7 +3296,7 @@ function segmentsApp(transcriptId, historyNames) {
             viewDiv.className = 'segment-text';
             viewDiv.style.display = this.editMode ? 'none' : '';
             this.setSegmentTextContent(viewDiv, newSeg.text);
-            viewDiv.addEventListener('dblclick', (e) => this.enterEditModeForSegment(e));
+            viewDiv.addEventListener('dblclick', (e) => this.seekFromTextDblClick(e));
             // v1.1: クリック = シーク (View mode のみ。editMode 中の判定は
             // seekToSegmentFromEvent 内で行う)。Alpine の @click は動的挿入
             // 要素には効かないので addEventListener で直接バインド。
@@ -3322,6 +3322,7 @@ function segmentsApp(transcriptId, historyNames) {
             textarea.addEventListener('keydown', (e) => this.onSegmentKeydown(e));
             textarea.addEventListener('compositionstart', () => { textarea._composing = true; });
             textarea.addEventListener('compositionend', () => { textarea._composing = false; });
+            textarea.addEventListener('dblclick', (e) => this.seekFromTextareaDblClick(e));
             overlayWrap.appendChild(textarea);
 
             // v1.0.3: 動的に作られた新カードにも「ここで分割」ボタンを付ける。
