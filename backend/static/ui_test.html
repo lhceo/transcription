@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Noto UI テスト</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+/* ── テスト用ページレイアウト ── */
+.test-page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 24px 20px 120px;
+}
+.test-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 10px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 13px;
+    margin: -24px -20px 20px;
+}
+.test-toolbar strong { color: #93c5fd; margin-right: 4px; }
+.test-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid #475569;
+    background: #334155;
+    color: #f1f5f9;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.1s;
+}
+.test-btn:hover { background: #475569; }
+.test-btn.active { background: #3b82f6; border-color: #3b82f6; }
+.test-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 24px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* ── A案: 編集モード フォーカス演出 ── */
+/* 非アクティブセグメントを薄く */
+.focus-mode .segment-card {
+    opacity: 0.35;
+    filter: blur(0.4px);
+    transition: opacity 0.2s ease, filter 0.2s ease;
+}
+/* アクティブセグメント（編集中）は浮かせる */
+.focus-mode .segment-card.is-editing {
+    opacity: 1;
+    filter: none;
+    background: #ffffff;
+    border-color: #93c5fd;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+}
+/* ホバー時は少し浮上 */
+.focus-mode .segment-card:hover {
+    opacity: 0.6;
+    filter: none;
+}
+
+/* ── B案: （？）ハイライト ── */
+/* セグメントカード左に警告ボーダー */
+.segment-card.has-unknown {
+    border-left: 3px solid #f59e0b;
+}
+/* （？）テキストに波線アンダーライン */
+.unknown-marker {
+    text-decoration: underline wavy #f59e0b;
+    text-underline-offset: 3px;
+    cursor: help;
+    position: relative;
+}
+.unknown-marker:hover::after {
+    content: "何を指しているか確認してください";
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f1f5f9;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+/* カード上部に要確認バナー */
+.unknown-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #92400e;
+    background: #fef3c7;
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin-bottom: 8px;
+}
+.unknown-banner svg { flex-shrink: 0; }
+
+/* ── フォーカスモード比較用 opacity スライダー ── */
+.opacity-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.opacity-control input[type=range] {
+    width: 80px;
+    accent-color: #3b82f6;
+}
+</style>
+</head>
+<body x-data="testApp()" :class="focusMode ? 'focus-mode' : ''">
+
+<div class="test-toolbar">
+    <strong>Noto UIテスト</strong>
+    <span style="color:#64748b">|</span>
+
+    <span><strong>A</strong> 編集モード演出</span>
+    <button class="test-btn" :class="focusMode ? 'active' : ''" @click="toggleFocusMode()">
+        <span x-text="focusMode ? 'フォーカスモード ON' : 'フォーカスモード OFF'"></span>
+    </button>
+    <div class="opacity-control" x-show="focusMode">
+        <span style="font-size:11px">非アクティブ不透明度</span>
+        <input type="range" min="10" max="70" x-model="inactiveOpacity" @input="updateOpacity()">
+        <span style="font-size:11px" x-text="inactiveOpacity + '%'"></span>
+    </div>
+
+    <span style="color:#64748b">|</span>
+    <span><strong>B</strong> （？）ハイライト</span>
+    <button class="test-btn" :class="showUnknown ? 'active' : ''" @click="showUnknown = !showUnknown">
+        <span x-text="showUnknown ? '表示中' : '非表示'"></span>
+    </button>
+
+    <span style="color:#64748b">|</span>
+    <span style="font-size:11px;color:#94a3b8">セグメントをクリックで編集対象を切り替え</span>
+</div>
+
+<div class="test-page">
+
+    <!-- ─── セクションA: 編集モード フォーカス演出 ─── -->
+    <p class="test-section-label">A — 編集モード フォーカス演出</p>
+    <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:16px">
+        フォーカスモード ON にしてセグメントをクリックすると、編集対象が浮き上がり他が薄くなります。スライダーで不透明度を調整できます。
+    </p>
+
+    <ul class="segment-list" style="list-style:none;padding:0;margin:0">
+
+        <template x-for="seg in segments" :key="seg.id">
+            <li class="segment-card"
+                :class="{
+                    'is-editing': activeSegId === seg.id,
+                    'has-unknown': showUnknown && seg.hasUnknown
+                }"
+                @click="activeSegId = seg.id">
+
+                <header class="segment-header">
+                    <button type="button" class="speaker-badge" :class="'speaker-color-' + seg.color">
+                        <span class="speaker-badge-text" x-text="seg.speaker"></span>
+                    </button>
+                    <span class="segment-time" x-text="seg.time"></span>
+                    <template x-if="seg.isEdited">
+                        <span class="segment-edited">編集済み</span>
+                    </template>
+                </header>
+
+                <!-- 通常表示 -->
+                <template x-if="activeSegId !== seg.id">
+                    <div class="segment-text">
+                        <!-- （？）がある場合はバナー表示 -->
+                        <template x-if="showUnknown && seg.hasUnknown">
+                            <div class="unknown-banner">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                指示語が不明です。内容を確認して補完してください。
+                            </div>
+                        </template>
+                        <span x-html="renderText(seg)"></span>
+                    </div>
+                </template>
+
+                <!-- 編集中表示 -->
+                <template x-if="activeSegId === seg.id">
+                    <div>
+                        <textarea class="segment-text-edit" x-text="seg.rawText" rows="3" @click.stop></textarea>
+                        <p class="segment-edit-hint" style="margin-top:6px">Shift+Enter で次のセグメントへ</p>
+                    </div>
+                </template>
+
+            </li>
+        </template>
+    </ul>
+
+    <!-- ─── セクションB: （？）ハイライト 単体確認 ─── -->
+    <p class="test-section-label" style="margin-top:40px">B — （？）ハイライト 詳細確認</p>
+    <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:16px">
+        ツールバーで「（？）ハイライト 表示中」にすると、上のリストでも確認できます。以下は演出の詳細確認用です。
+    </p>
+
+    <ul style="list-style:none;padding:0;margin:0">
+        <!-- 要確認セグメントの例 -->
+        <li class="segment-card has-unknown" style="margin-bottom:8px">
+            <div class="unknown-banner">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                指示語が不明です。内容を確認して補完してください。
+            </div>
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-2"><span class="speaker-badge-text">蒲社長</span></button>
+                <span class="segment-time">12:34</span>
+            </header>
+            <div class="segment-text">
+                <span class="unknown-marker">（？）</span>を次回までにまとめておいてもらえますか。
+            </div>
+        </li>
+
+        <!-- 補完済みセグメントの例（比較用） -->
+        <li class="segment-card" style="margin-bottom:8px">
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-0"><span class="speaker-badge-text">古瀬社長</span></button>
+                <span class="segment-time">12:35</span>
+                <span class="segment-edited">編集済み</span>
+            </header>
+            <div class="segment-text">
+                （古瀬社長が）名古屋から弊社に来て、村プロジェクトの現状を説明しました。
+            </div>
+        </li>
+
+        <!-- 推察補完あり・不明なし（正常ケース） -->
+        <li class="segment-card" style="margin-bottom:8px">
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-1"><span class="speaker-badge-text">市川</span></button>
+                <span class="segment-time">12:36</span>
+            </header>
+            <div class="segment-text">
+                （見積書をBさんに）送っておきます。来週中には届くと思います。
+            </div>
+        </li>
+    </ul>
+
+    <!-- ─── 参考: 現状のスタイル ─── -->
+    <p class="test-section-label" style="margin-top:40px">参考 — 現在の編集モードスタイル（変更なし）</p>
+    <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:16px">
+        現在の実装では編集モード中セグメントは薄い黄色背景になります。
+    </p>
+    <ul class="segment-list segment-list-editing" style="list-style:none;padding:0;margin:0">
+        <li class="segment-card" style="margin-bottom:8px">
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-0"><span class="speaker-badge-text">古瀬社長</span></button>
+                <span class="segment-time">12:30</span>
+            </header>
+            <div class="segment-text">前日から飛騨に行って物件を見てきました。</div>
+        </li>
+        <li class="segment-card" style="margin-bottom:8px">
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-1"><span class="speaker-badge-text">長澤</span></button>
+                <span class="segment-time">12:31</span>
+            </header>
+            <textarea class="segment-text-edit" rows="3">飛騨はどうでしたか？物件の感触はよかったですか？</textarea>
+        </li>
+        <li class="segment-card" style="margin-bottom:8px">
+            <header class="segment-header">
+                <button type="button" class="speaker-badge speaker-color-0"><span class="speaker-badge-text">古瀬社長</span></button>
+                <span class="segment-time">12:32</span>
+            </header>
+            <div class="segment-text">いい場所でしたね。あとは価格の問題だけです。</div>
+        </li>
+    </ul>
+
+</div>
+
+<script>
+function testApp() {
+    return {
+        focusMode: false,
+        showUnknown: false,
+        activeSegId: null,
+        inactiveOpacity: 35,
+
+        segments: [
+            {
+                id: 1, color: 0, speaker: '古瀬社長', time: '00:12',
+                isEdited: false, hasUnknown: false,
+                text: '前日から飛騨に行って物件を見てきました。そこから名古屋に戻って弊社にいらっしゃいました。',
+                rawText: '前日から飛騨に行って物件を見てきました。そこから名古屋に戻って弊社にいらっしゃいました。',
+            },
+            {
+                id: 2, color: 1, speaker: '長澤', time: '01:45',
+                isEdited: false, hasUnknown: false,
+                text: '今回の村プロジェクトについて、前回からの変更点を確認させてください。',
+                rawText: '今回の村プロジェクトについて、前回からの変更点を確認させてください。',
+            },
+            {
+                id: 3, color: 0, speaker: '古瀬社長', time: '02:10',
+                isEdited: true, hasUnknown: false,
+                text: '（古瀬社長が）考えていたコミュニティの規模を少し縮小しようと思っています。まず30世帯くらいから始めたい。',
+                rawText: '考えていたコミュニティの規模を少し縮小しようと思っています。まず30世帯くらいから始めたい。',
+            },
+            {
+                id: 4, color: 2, speaker: '蒲社長', time: '03:22',
+                isEdited: false, hasUnknown: true,
+                text: '（？）を次回までに整理しておいてもらえますか。それが決まらないと前に進めないので。',
+                rawText: '（？）を次回までに整理しておいてもらえますか。それが決まらないと前に進めないので。',
+            },
+            {
+                id: 5, color: 1, speaker: '市川', time: '04:05',
+                isEdited: false, hasUnknown: false,
+                text: '（見積書を蒲社長に）送っておきます。今週中には届くと思います。',
+                rawText: '（見積書を蒲社長に）送っておきます。今週中には届くと思います。',
+            },
+            {
+                id: 6, color: 0, speaker: '古瀬社長', time: '05:30',
+                isEdited: false, hasUnknown: false,
+                text: 'ありがとうございます。次回は来月の頭を予定しています。またよろしくお願いします。',
+                rawText: 'ありがとうございます。次回は来月の頭を予定しています。またよろしくお願いします。',
+            },
+        ],
+
+        toggleFocusMode() {
+            this.focusMode = !this.focusMode;
+            if (!this.focusMode) this.activeSegId = null;
+            this.updateOpacity();
+        },
+
+        updateOpacity() {
+            document.documentElement.style.setProperty(
+                '--inactive-opacity', (this.inactiveOpacity / 100).toFixed(2)
+            );
+            // CSSを動的に更新
+            let style = document.getElementById('dynamic-opacity');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'dynamic-opacity';
+                document.head.appendChild(style);
+            }
+            style.textContent = `.focus-mode .segment-card { opacity: ${this.inactiveOpacity / 100}; }`;
+        },
+
+        renderText(seg) {
+            if (!this.showUnknown) return seg.text;
+            // （？）を波線アンダーライン付きspanに変換
+            return seg.text.replace(/（？）/g, '<span class="unknown-marker">（？）</span>');
+        },
+    };
+}
+</script>
+</body>
+</html>
