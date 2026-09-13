@@ -2085,10 +2085,25 @@ function segmentsApp(transcriptId, historyNames) {
                 if (markers && markers.childElementCount === 0 && this.bookmarks.length > 0) {
                     this._renderBookmarkMarkers();
                 }
+                // 固定プレイヤーのタイムライン fill を直接更新する（安全弁）。
+                // audioPlayer コンポーネントの Alpine @timeupdate が編集モード中の
+                // textarea フォーカスで遅延する場合があるため、raw DOM で上書きする。
+                if (audio.duration > 0) {
+                    const pct = Math.min(100, (audio.currentTime / audio.duration) * 100);
+                    const fill = document.querySelector('.player-timeline-fill');
+                    const thumb = document.querySelector('.player-timeline-thumb');
+                    if (fill) fill.style.width = pct + '%';
+                    if (thumb) thumb.style.left = pct + '%';
+                }
             });
             // 再生終了時もハイライトを最終位置に保持 (止まったままにする)
             audio.addEventListener('ended', () => {
-                this.updateSyncHighlight(audio.duration || audio.currentTime);
+                const endTime = audio.duration || audio.currentTime;
+                this.updateSyncHighlight(endTime);
+                const fill = document.querySelector('.player-timeline-fill');
+                const thumb = document.querySelector('.player-timeline-thumb');
+                if (fill) { fill.style.width = '100%'; }
+                if (thumb) { thumb.style.left = '100%'; }
             });
             // 音声メタデータ確定時にブックマークティックを描画
             // (audioPlayer コンポーネントと別スコープのため直接リッスン)
