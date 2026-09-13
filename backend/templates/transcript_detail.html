@@ -717,11 +717,11 @@
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
                             <button type="button"
-                                class="segment-action-btn segment-comment-btn {{ 'has-comment' if seg.comment else '' }}"
+                                class="segment-action-btn segment-comment-btn" :class="{'has-comment': segComments[{{ seg.id }}]}"
                                 data-segment-id="{{ seg.id }}"
                                 @click.stop="toggleCommentEdit({{ seg.id }})"
-                                title="{{ 'コメントを編集' if seg.comment else 'コメントを追加' }}"
-                                aria-label="{{ 'コメントを編集' if seg.comment else 'コメントを追加' }}">
+                                :title="segComments[{{ seg.id }}] ? 'コメントを編集' : 'コメントを追加'"
+                                :aria-label="segComments[{{ seg.id }}] ? 'コメントを編集' : 'コメントを追加'">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             </button>
                             <button type="button"
@@ -837,11 +837,9 @@
                     </div>
 
                     {# ── コメント表示 / 編集エリア ── #}
-                    {% if seg.comment %}
-                    <div class="segment-comment-wrap" x-show="!commentEditId || commentEditId !== {{ seg.id }}">
-                        <div class="segment-comment-text">{{ seg.comment }}</div>
+                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})">
+                        <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
                     </div>
-                    {% endif %}
                     <div class="segment-comment-edit-wrap"
                          x-show="commentEditId === {{ seg.id }}" x-cloak
                          @click.stop>
@@ -857,9 +855,7 @@
                         <div class="segment-comment-actions">
                             <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
                             <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
-                            {% if seg.comment %}
-                            <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
-                            {% endif %}
+                            <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" x-show="segComments[{{ seg.id }}]" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
                             <p class="segment-comment-hint">Shift+Enterで改行 / Enterで保存</p>
                         </div>
                     </div>
@@ -1512,6 +1508,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         // コメント関連
         commentEditId: null,
+        segComments: {},
         sidebarTab: 'bookmarks',
         segmentComments: [],   // [{segId, timeLabel, comment, excerpt}]
 
@@ -1791,6 +1788,13 @@ function segmentsApp(transcriptId, historyNames) {
             // 未確定なら setupAudioSync の loadedmetadata リスナーが後で描画する）
             this._renderBookmarkMarkers();
 
+            // segComments: data-comment属性からAlpine stateに読み込む
+            document.querySelectorAll('.segment-card[data-segment-id]').forEach(card => {
+                const segId = parseInt(card.dataset.segmentId);
+                const comment = card.dataset.comment || '';
+                if (comment) this.segComments[segId] = comment;
+            });
+
             // コメント一覧初期化
             this._buildSegmentComments();
 
@@ -1862,41 +1866,9 @@ function segmentsApp(transcriptId, historyNames) {
                 });
                 if (!res.ok) throw new Error(res.status);
                 this.commentEditId = null;
-
-                // Update DOM
+                this.segComments[segId] = text || null;
                 const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
-                if (card) {
-                    card.dataset.comment = text;
-                    // Update static comment display
-                    let commentWrap = card.querySelector('.segment-comment-wrap');
-                    if (text) {
-                        if (!commentWrap) {
-                            commentWrap = document.createElement('div');
-                            commentWrap.className = 'segment-comment-wrap';
-                            const commentText = document.createElement('div');
-                            commentText.className = 'segment-comment-text';
-                            commentWrap.appendChild(commentText);
-                            // Insert before comment edit wrap
-                            const editWrap = card.querySelector('.segment-comment-edit-wrap');
-                            if (editWrap) editWrap.before(commentWrap);
-                        }
-                        const commentTextEl = commentWrap.querySelector('.segment-comment-text');
-                        if (commentTextEl) commentTextEl.textContent = text;
-                        commentWrap.style.display = '';
-                    } else {
-                        if (commentWrap) commentWrap.remove();
-                    }
-                    // Update comment button style
-                    const btn = card.querySelector('.segment-comment-btn');
-                    if (btn) {
-                        btn.classList.toggle('has-comment', !!text);
-                        btn.title = text ? 'コメントを編集' : 'コメントを追加';
-                        btn.ariaLabel = btn.title;
-                    }
-                    // Update delete button visibility in edit wrap
-                    const deleteBtn = card.querySelector('.segment-comment-edit-wrap .btn-ghost[style*="ef4444"]');
-                    if (deleteBtn) deleteBtn.style.display = text ? '' : 'none';
-                }
+                if (card) card.dataset.comment = text;
                 this._buildSegmentComments();
                 if (this.segmentComments.length > 0) this.sidebarTab = 'comments';
                 window.showToast(text ? 'コメントを保存しました' : 'コメントを削除しました');
@@ -1914,13 +1886,8 @@ function segmentsApp(transcriptId, historyNames) {
                 });
                 if (!res.ok) throw new Error(res.status);
                 this.commentEditId = null;
-                if (cardEl) {
-                    cardEl.dataset.comment = '';
-                    const commentWrap = cardEl.querySelector('.segment-comment-wrap');
-                    if (commentWrap) commentWrap.remove();
-                    const btn = cardEl.querySelector('.segment-comment-btn');
-                    if (btn) { btn.classList.remove('has-comment'); btn.title = btn.ariaLabel = 'コメントを追加'; }
-                }
+                this.segComments[segId] = null;
+                if (cardEl) cardEl.dataset.comment = '';
                 this._buildSegmentComments();
                 if (this.segmentComments.length === 0 && this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
                 window.showToast('コメントを削除しました');
@@ -2548,6 +2515,10 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete failed');
                 if (cardEl) cardEl.remove();
+                // 削除済みセグメントへのundoエントリを除去（undoが404にならないように）
+                this.undoStack = this.undoStack.filter(e =>
+                    e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
+                );
             } catch (e) {
                 window.showToast('削除に失敗しました。もう一度お試しください。', 'error');
             }
@@ -2834,6 +2805,12 @@ function segmentsApp(transcriptId, historyNames) {
             const entry = this.undoStack.pop();
             if (!entry) return;
             if (entry.type === 'split') {
+                // 分割で生まれた新セグメントの未保存状態を先にクリア（デバウンス残留を防ぐ）
+                if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+                this.pendingSegments.delete(entry.newSegId);
+                this.pendingSegments.delete(entry.originalId);
+                if (this.pendingSegments.size === 0) this.saveStatus = 'saved';
+
                 try {
                     const delRes = await fetch(`/api/segments/${entry.newSegId}`, { method: 'DELETE' });
                     if (!delRes.ok) throw new Error('delete failed');
@@ -2854,6 +2831,12 @@ function segmentsApp(transcriptId, historyNames) {
                         if (ta) { ta.value = entry.originalText; ta.dataset.originalText = entry.originalText; this.fitToContent(ta); }
                         if (viewDiv) this.setSegmentTextContent(viewDiv, entry.originalText);
                         if (entry.originalEndSeconds !== undefined) origCard.dataset.endSeconds = String(entry.originalEndSeconds);
+                        // 分割時にバッジを追加していた場合は除去
+                        if (entry.addedEditedBadge) {
+                            origCard.querySelectorAll('[data-edited]').forEach(el => el.remove());
+                            this.editedCount = Math.max(0, this.editedCount - 1);
+                            this._renderEditedMarkers();
+                        }
                         this.focusedEditingSegmentId = entry.originalId;
                         this.$nextTick(() => {
                             const origTa = origCard.querySelector('.segment-text-edit');
@@ -2896,14 +2879,21 @@ function segmentsApp(transcriptId, historyNames) {
 
         async _saveSegment(segmentId, ta) {
             if (!ta) ta = document.querySelector(`.segment-text-edit[data-segment-id="${segmentId}"]`);
-            if (!ta) return;
+            if (!ta) {
+                // セグメントがDOMから消えていた場合（削除・結合直後など）は pending を除去して終了
+                this.pendingSegments.delete(segmentId);
+                if (this.pendingSegments.size === 0 && this.saveStatus === 'saving') {
+                    this.saveStatus = 'saved';
+                }
+                return;
+            }
             const newText = ta.value.trim();
             const original = ta.dataset.originalText !== undefined
                 ? ta.dataset.originalText
                 : ta.defaultValue.trim();
             if (newText === original) {
                 this.pendingSegments.delete(segmentId);
-                if (this.pendingSegments.size === 0 && this.saveStatus !== 'saving') {
+                if (this.pendingSegments.size === 0) {
                     this.saveStatus = 'saved';
                 }
                 return;
@@ -3081,6 +3071,10 @@ function segmentsApp(transcriptId, historyNames) {
                 // 現カードを DOM から削除
                 const currentCard = textarea.closest('.segment-card');
                 if (currentCard) currentCard.remove();
+                // 結合で消えたセグメントへのundoエントリを除去
+                this.undoStack = this.undoStack.filter(e =>
+                    e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
+                );
 
                 // 前カードの末尾にフォーカス移動
                 if (prevCard) {
@@ -3142,19 +3136,23 @@ function segmentsApp(transcriptId, historyNames) {
                     if (data.current.end_seconds !== undefined) {
                         currentCard.dataset.endSeconds = String(data.current.end_seconds);
                     }
-                    if (!currentCard.querySelector('[data-edited]')) {
+                    const hadBadge = !!currentCard.querySelector('[data-edited]');
+                    if (!hadBadge) {
                         const time = currentCard.querySelector('.segment-time');
                         const badge = document.createElement('span');
                         badge.className = 'seg-badge seg-badge-edited seg-badge-revertable';
                         badge.dataset.edited = '1';
                         badge.textContent = '編集済み ↩';
                         if (time) time.after(badge);
+                        this.editedCount++;
+                        this._renderEditedMarkers();
                     }
                 }
 
-                // 新カードを DOM に挿入
+                // 新カードを DOM に挿入し Alpine でバインディングを初期化
                 const newCard = this.buildSegmentCardElement(data.new, currentCard);
                 currentCard.after(newCard);
+                if (window.Alpine) Alpine.initTree(newCard);
                 this.recolorByName();
 
                 // v1.1 Option C: 分割後は新カードを編集対象に切り替える
@@ -3162,12 +3160,14 @@ function segmentsApp(transcriptId, historyNames) {
                 // が走り、新カードの textarea が表示される)
                 this.focusedEditingSegmentId = data.new.id;
                 // undoスタックに積む（分割の取り消しに使う）
+                // addedEditedBadge: 分割前にバッジがなかった場合 = 分割でバッジを追加した（undo時に除去する）
                 this.undoStack.push({
                     type: 'split',
                     originalId: segmentId,
                     originalText: original,
                     originalEndSeconds,
                     newSegId: data.new.id,
+                    addedEditedBadge: !hadBadge,
                 });
                 if (this.undoStack.length > 20) this.undoStack.shift();
                 // $nextTick で表示が反映されてから focus
@@ -3245,6 +3245,19 @@ function segmentsApp(transcriptId, historyNames) {
 
             const actions = document.createElement('div');
             actions.className = 'segment-actions';
+
+            // コメントボタン
+            const commentBtn = document.createElement('button');
+            commentBtn.type = 'button';
+            commentBtn.className = 'segment-action-btn segment-comment-btn';
+            commentBtn.dataset.segmentId = String(newSeg.id);
+            commentBtn.setAttribute(':class', `{'has-comment': segComments[${newSeg.id}]}`);
+            commentBtn.setAttribute(':title', `segComments[${newSeg.id}] ? 'コメントを編集' : 'コメントを追加'`);
+            commentBtn.setAttribute(':aria-label', `segComments[${newSeg.id}] ? 'コメントを編集' : 'コメントを追加'`);
+            commentBtn.setAttribute('@click.stop', `toggleCommentEdit(${newSeg.id})`);
+            commentBtn.title = 'コメントを追加';
+            commentBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+            actions.appendChild(commentBtn);
 
             // ブックマークボタン
             const bookmarkBtn = document.createElement('button');
@@ -3336,10 +3349,72 @@ function segmentsApp(transcriptId, historyNames) {
             splitBtn.addEventListener('pointerdown', (e) => e.preventDefault());
             splitBtn.addEventListener('click', (e) => this.onSplitButtonClick(e));
 
+            // コメント表示エリア（Alpine x-show で管理）
+            const commentWrap = document.createElement('div');
+            commentWrap.className = 'segment-comment-wrap';
+            commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id})`);
+            commentWrap.style.display = 'none';
+            const commentTextEl = document.createElement('div');
+            commentTextEl.className = 'segment-comment-text';
+            commentTextEl.setAttribute('x-text', `segComments[${newSeg.id}] || ''`);
+            commentWrap.appendChild(commentTextEl);
+
+            // コメント編集エリア（Alpine x-show で管理）
+            const commentEditWrap = document.createElement('div');
+            commentEditWrap.className = 'segment-comment-edit-wrap';
+            commentEditWrap.setAttribute('x-show', `commentEditId === ${newSeg.id}`);
+            commentEditWrap.setAttribute('x-cloak', '');
+            commentEditWrap.style.display = 'none';
+            commentEditWrap.setAttribute('@click.stop', '');
+
+            const commentTa = document.createElement('textarea');
+            commentTa.className = 'segment-comment-textarea';
+            commentTa.id = `comment-ta-${newSeg.id}`;
+            commentTa.rows = 2;
+            commentTa.placeholder = '補足メモ（整文・エクスポートに反映されます）';
+            commentTa.setAttribute('@keydown.escape.stop', 'cancelCommentEdit()');
+            commentTa.setAttribute('@compositionstart', '$event.target._composing = true');
+            commentTa.setAttribute('@compositionend', '$event.target._composing = false');
+            commentTa.setAttribute('@keydown.enter.prevent', `if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) saveComment(${newSeg.id}, $el)`);
+
+            const commentActionsEl = document.createElement('div');
+            commentActionsEl.className = 'segment-comment-actions';
+
+            const cSaveBtn = document.createElement('button');
+            cSaveBtn.className = 'btn btn-primary btn-sm';
+            cSaveBtn.textContent = '保存';
+            cSaveBtn.setAttribute('@click.stop', `saveComment(${newSeg.id}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))`);
+
+            const cCancelBtn = document.createElement('button');
+            cCancelBtn.className = 'btn btn-ghost btn-sm';
+            cCancelBtn.textContent = 'キャンセル';
+            cCancelBtn.setAttribute('@click.stop', 'cancelCommentEdit()');
+
+            const cDeleteBtn = document.createElement('button');
+            cDeleteBtn.className = 'btn btn-ghost btn-sm';
+            cDeleteBtn.style.cssText = 'color:#ef4444;margin-left:auto';
+            cDeleteBtn.setAttribute('x-show', `segComments[${newSeg.id}]`);
+            cDeleteBtn.style.display = 'none';
+            cDeleteBtn.textContent = '削除';
+            cDeleteBtn.setAttribute('@click.stop', `deleteComment(${newSeg.id}, $el.closest('.segment-card'))`);
+
+            const cHint = document.createElement('p');
+            cHint.className = 'segment-comment-hint';
+            cHint.textContent = 'Shift+Enterで改行 / Enterで保存';
+
+            commentActionsEl.appendChild(cSaveBtn);
+            commentActionsEl.appendChild(cCancelBtn);
+            commentActionsEl.appendChild(cDeleteBtn);
+            commentActionsEl.appendChild(cHint);
+            commentEditWrap.appendChild(commentTa);
+            commentEditWrap.appendChild(commentActionsEl);
+
             li.appendChild(header);
             li.appendChild(viewDiv);
             li.appendChild(overlayWrap);
             li.appendChild(splitBtn);
+            li.appendChild(commentWrap);
+            li.appendChild(commentEditWrap);
 
             return li;
         },

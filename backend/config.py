@@ -27,7 +27,8 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # - v1.1 (音声同期再生 + インラインエディタ) ← ここでもバンプ漏れ
 # - v1.2 (ナビ刷新 + 複数ファイル統合アップロード + 整文プロンプト刷新)
 # - v1.3 (ブックマーク + 進捗バー + 固定ナビボタン + ダブルクリックシーク + 管理者バックアップ)
-APP_VERSION = "1.3.0"
+# - v1.4 (整文インラインレビュー + セグメントコメント + Command+Z + 複数ファイルアップロード)
+APP_VERSION = "1.4.0"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
