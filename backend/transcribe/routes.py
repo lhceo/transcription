@@ -259,7 +259,8 @@ async def create_transcript(
 
     user_word_boost: list[str] = []
     if word_boost and word_boost.strip():
-        user_word_boost = [w.strip() for w in word_boost.splitlines() if w.strip()]
+        import re as _re
+        user_word_boost = [w.strip() for w in _re.split(r'[\n,]', word_boost) if w.strip()]
 
     parsed_project_id: int | None = None
     if project_id:
@@ -437,6 +438,8 @@ async def create_transcript(
     auto_boost.extend(people_names)
 
     merged = list(dict.fromkeys(user_word_boost + auto_boost))  # 重複排除・順序保持
+    if len(merged) > 50:
+        logger.warning("word_boost が50語を超えるため先頭50語に切り詰めます (total=%s)", len(merged))
     parsed_word_boost = merged[:50] if merged else None
     parsed_custom_spelling = auto_custom_spelling if auto_custom_spelling else None
 
@@ -535,7 +538,8 @@ async def create_transcript_multi(
 
     user_word_boost: list[str] = []
     if word_boost and word_boost.strip():
-        user_word_boost = [w.strip() for w in word_boost.splitlines() if w.strip()]
+        import re as _re
+        user_word_boost = [w.strip() for w in _re.split(r'[\n,]', word_boost) if w.strip()]
 
     parsed_project_id: int | None = None
     if project_id:
@@ -673,7 +677,10 @@ async def create_transcript_multi(
                     auto_custom_spelling.append({"from": [v.reading], "to": v.word})
         people_names = list(db.scalars(select(Person.name).where(Person.owner_user_id == user["id"])))
         auto_boost.extend(people_names)
-        merged_boost = list(dict.fromkeys(user_word_boost + auto_boost))[:50] or None
+        _merged_boost = list(dict.fromkeys(user_word_boost + auto_boost))
+        if len(_merged_boost) > 50:
+            logger.warning("word_boost が50語を超えるため先頭50語に切り詰めます (total=%s)", len(_merged_boost))
+        merged_boost = _merged_boost[:50] or None
         parsed_custom_spelling = auto_custom_spelling or None
 
         if settings.has_assemblyai:
@@ -1583,7 +1590,7 @@ async def add_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声に固有名詞を追加する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]):
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     word = str(payload.get("word") or "").strip()[:200]
@@ -1613,7 +1620,7 @@ async def delete_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声の固有名詞を削除する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]):
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     vocab = db.get(TranscriptVocabulary, vocab_id)
     if vocab is None or vocab.transcript_id != transcript_id:
@@ -1633,7 +1640,7 @@ async def update_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声の固有名詞を更新する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]):
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     vocab = db.get(TranscriptVocabulary, vocab_id)
     if vocab is None or vocab.transcript_id != transcript_id:

@@ -1180,7 +1180,7 @@ function projectSelector() {
                 if (ctx.vocabulary && ctx.vocabulary.length > 0) {
                     const ta = document.getElementById('word_boost');
                     if (ta && !ta.value.trim()) {
-                        ta.value = ctx.vocabulary.join('\n');
+                        ta.value = ctx.vocabulary.map(v => v.word).join('\n');
                     }
                 }
 

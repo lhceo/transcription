@@ -752,7 +752,7 @@ class PolishAcceptRequest(BaseModel):
 
 def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
     t = db.get(Transcript, transcript_id)
-    if not t or t.user_id != user_id:
+    if not t or t.user_id != user_id or t.deleted_at is not None:
         raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
     return t
 
@@ -897,14 +897,19 @@ async def polish_estimate(
 
     vocab_count = 0
     member_count = 0
+    from sqlalchemy import func
     if transcript.project_id:
-        from sqlalchemy import func
         vocab_count = db.scalar(
             select(func.count()).where(ProjectVocabulary.project_id == transcript.project_id)
         ) or 0
         member_count = db.scalar(
             select(func.count()).where(ProjectMember.project_id == transcript.project_id)
         ) or 0
+    # 個別音声の固有名詞も合算する
+    transcript_vocab_count = db.scalar(
+        select(func.count()).where(TranscriptVocabulary.transcript_id == transcript_id)
+    ) or 0
+    vocab_count += transcript_vocab_count
 
     context_items = [
         {"label": "PJTに紐づいている", "ok": has_project, "action": None},
@@ -946,14 +951,22 @@ async def polish_pickup(
     ))
     full_text = "\n".join(s.text_content for s in segments)
 
-    # 登録済み語句
+    # 登録済み語句（PJT辞書 + 個別辞書の両方）
     registered: list[str] = []
     if transcript.project_id:
-        vocab = list(db.scalars(
+        registered = list(db.scalars(
             select(ProjectVocabulary.word)
             .where(ProjectVocabulary.project_id == transcript.project_id)
         ))
-        registered = vocab
+    transcript_vocab_words = list(db.scalars(
+        select(TranscriptVocabulary.word)
+        .where(TranscriptVocabulary.transcript_id == transcript_id)
+    ))
+    existing_lower = {w.lower() for w in registered}
+    for w in transcript_vocab_words:
+        if w.lower() not in existing_lower:
+            registered.append(w)
+            existing_lower.add(w.lower())
 
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -988,9 +1001,14 @@ async def polish_run(
 
     # ピックアップ後に追加登録された語句をコンテキストに追加
     if body.extra_vocabulary:
+        sanitized_extra = [
+            {"word": str(v.get("word") or "").strip()[:200], "meaning": str(v.get("meaning") or "").strip()[:500]}
+            for v in body.extra_vocabulary[:30]
+            if str(v.get("word") or "").strip()
+        ]
         extra_lines = "\n".join(
-            f"  - {v.get('word', '')}: {v.get('meaning', '')}"
-            for v in body.extra_vocabulary
+            f"  - {v['word']}: {v['meaning']}"
+            for v in sanitized_extra
         )
         if extra_lines:
             context_text += f"\n【追加固有名詞（今回登録）】\n{extra_lines}"
