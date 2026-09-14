@@ -1538,7 +1538,7 @@ function segmentsApp(transcriptId, historyNames) {
         commentEditId: null,
         segComments: {},
         sidebarTab: 'bookmarks',
-        sidebarCollapsed: false,
+        sidebarCollapsed: true,
         segmentComments: [],   // [{segId, timeLabel, comment, excerpt}]
         unknownSegments: [],   // [{segId, timeLabel, excerpt}] — （？）含むセグメント
 
@@ -1753,8 +1753,8 @@ function segmentsApp(transcriptId, historyNames) {
                     });
                 }
             });
-            // サイドバー折り畳み状態を復元
-            this.sidebarCollapsed = localStorage.getItem('noto-sidebar-collapsed') === 'true';
+            // サイドバー折り畳み状態を復元（未設定時はデフォルト折りたたみ）
+            this.sidebarCollapsed = localStorage.getItem('noto-sidebar-collapsed') !== 'false';
             // v1.1: 音声プレイヤーの timeupdate にフックして同期ハイライトを開始
             this.setupAudioSync();
             // v1.1: PC キーボードショートカット (Space / ←→)
