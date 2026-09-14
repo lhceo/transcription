@@ -1210,7 +1210,8 @@
                             <li class="polish-context-item" :class="item.ok ? 'ok' : 'ng'">
                                 <span x-text="item.ok ? '✓' : '✗'" class="polish-context-icon"></span>
                                 <span x-text="item.label" class="polish-context-item-label"></span>
-                                <button x-show="!item.ok && item.action" @click="doAction(item.action)" class="polish-context-action">→ 入力する</button>
+                                <button x-show="!item.ok && item.action" @click="doAction(item.action)" class="polish-context-action"
+                                    x-text="item.action === 'scroll_speakers' ? '→ 話者を設定する' : '→ 入力する'"></button>
                             </li>
                         </template>
                     </ul>
@@ -3932,6 +3933,14 @@ function polishModal() {
             setTimeout(() => {
                 if (action === 'scroll_mtg') {
                     window.dispatchEvent(new CustomEvent('open-mtg-section'));
+                } else if (action === 'scroll_speakers') {
+                    const firstBadge = document.querySelector('#segment-list .speaker-badge');
+                    if (firstBadge) {
+                        firstBadge.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        firstBadge.style.outline = '2px solid #f59e0b';
+                        firstBadge.style.outlineOffset = '2px';
+                        setTimeout(() => { firstBadge.style.outline = ''; firstBadge.style.outlineOffset = ''; }, 1800);
+                    }
                 }
             }, 80);
         },

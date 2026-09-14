@@ -890,7 +890,7 @@ async def polish_estimate(
 
     costs = {k: estimate_cost(input_tokens, output_tokens, k) for k in POLISH_MODELS}
 
-    # コンテキスト充実度（5項目）
+    # コンテキスト充実度（6項目）
     has_project = transcript.project_id is not None
     has_purpose = bool(transcript.meeting_purpose)
     has_agenda = bool(transcript.meeting_agenda)
@@ -911,7 +911,23 @@ async def polish_estimate(
     ) or 0
     vocab_count += transcript_vocab_count
 
+    # 話者名設定チェック（「未設定話者X」のままだと整文の主語補完精度が大幅低下）
+    all_speakers = list(db.scalars(
+        select(Speaker).where(Speaker.transcript_id == transcript_id)
+    ))
+    speaker_count = len(all_speakers)
+    unnamed_count = sum(
+        1 for s in all_speakers
+        if not s.display_name or s.display_name.startswith("未設定話者")
+    )
+    speakers_named = speaker_count > 0 and unnamed_count == 0
+    if speaker_count > 0 and unnamed_count > 0:
+        speaker_label = f"話者名の設定（{speaker_count - unnamed_count}/{speaker_count}人）"
+    else:
+        speaker_label = f"話者名が設定されている（{speaker_count}人）"
+
     context_items = [
+        {"label": speaker_label, "ok": speakers_named, "action": "scroll_speakers"},
         {"label": "PJTに紐づいている", "ok": has_project, "action": None},
         {"label": f"固有名詞辞書（{vocab_count}件）", "ok": vocab_count > 0, "action": None},
         {"label": "MTGの目的が設定されている", "ok": has_purpose, "action": "scroll_mtg"},
