@@ -3189,6 +3189,16 @@ function segmentsApp(transcriptId, historyNames) {
         // ── セグメント結合（Backspace 先頭）─────────────────────────────
         async mergeWithPrevSegment(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
+
+            // 二重呼び出し防止（Backspace連打対策）
+            if (!this._mergingIds) this._mergingIds = new Set();
+            if (this._mergingIds.has(segmentId)) return;
+            this._mergingIds.add(segmentId);
+
+            // 未保存の自動保存タイマーをキャンセル（削除済みセグメントへのPATCHを防ぐ）
+            if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+            this.pendingSegments.delete(segmentId);
+
             const currentText = textarea.value || '';
 
             try {
@@ -3252,6 +3262,8 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             } catch (e) {
                 window.showToast('結合に失敗しました', 'error');
+            } finally {
+                this._mergingIds?.delete(segmentId);
             }
         },
 
