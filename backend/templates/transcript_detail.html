@@ -964,7 +964,7 @@
         {# パネルコンテンツ（Activity Barの左側、折り畳み時は非表示） #}
         <div class="sidebar-panel-content" x-show="!sidebarCollapsed" style="display:none">
             {# ブックマークパネル #}
-            <div x-show="sidebarTab === 'bookmarks' || (bookmarks.length > 0 && segmentComments.length === 0)" style="display:none">
+            <div id="sidebar-subpanel-bookmarks" x-show="sidebarTab === 'bookmarks' || (bookmarks.length > 0 && segmentComments.length === 0)" style="display:none">
                 <div class="bookmark-panel" id="bookmark-panel">
                     <div class="bookmark-panel-header">
                         <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -992,7 +992,7 @@
                 </div>
             </div>
             {# コメントパネル #}
-            <div class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" style="display:none">
+            <div id="sidebar-subpanel-comments" class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" style="display:none">
                 <div class="comment-panel-header">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#f59e0b"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     <span>コメント</span>
@@ -1957,18 +1957,33 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         toggleSidebarTab(tab) {
+            const panelWrap = document.querySelector('.sidebar-panel-content');
+            const bmPanel = document.getElementById('sidebar-subpanel-bookmarks');
+            const cmPanel = document.getElementById('sidebar-subpanel-comments');
+
             if (!this.sidebarCollapsed && this.sidebarTab === tab) {
                 this.sidebarCollapsed = true;
+                if (panelWrap) panelWrap.style.display = 'none';
                 localStorage.setItem('noto-sidebar-collapsed', 'true');
             } else {
                 this.sidebarCollapsed = false;
                 this.sidebarTab = tab;
+                if (panelWrap) panelWrap.style.display = '';
+                // サブパネルの切り替えも直接操作（Alpine reactive 喪失の保険）
+                if (bmPanel) bmPanel.style.display = tab === 'bookmarks' ? '' : 'none';
+                if (cmPanel) cmPanel.style.display = tab === 'comments' ? '' : 'none';
                 localStorage.setItem('noto-sidebar-collapsed', 'false');
             }
         },
 
         jumpToSegmentForComment(segId) {
             this.sidebarCollapsed = false;
+            const _pw = document.querySelector('.sidebar-panel-content');
+            const _cp = document.getElementById('sidebar-subpanel-comments');
+            const _bp = document.getElementById('sidebar-subpanel-bookmarks');
+            if (_pw) _pw.style.display = '';
+            if (_cp) _cp.style.display = '';
+            if (_bp) _bp.style.display = 'none';
             localStorage.setItem('noto-sidebar-collapsed', 'false');
             const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
             if (card) {
