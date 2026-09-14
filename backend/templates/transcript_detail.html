@@ -32,6 +32,7 @@
         projectId: {{ transcript.project_id | tojson }},
         projectMemberNames: {{ project_member_names | tojson }},
         vocabulary: [{% for v in transcript_vocabulary %}{"id":{{ v.id }},"word":{{ v.word|tojson }},"meaning":{{ (v.meaning or '')|tojson }},"reading":{{ (v.reading or '')|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
+        hasPickupSuggestions: {{ 'true' if has_pickup_suggestions else 'false' }},
     };
 </script>
 
@@ -578,11 +579,12 @@
                 </div>
             </div>
 
-            <button type="button" class="btn btn-polish" @click="openPolish()">
+            <button type="button" class="btn btn-polish" @click="openPolish()" style="position:relative">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
                     <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                 </svg>
                 整文する
+                {% if has_pickup_suggestions %}<span class="pickup-ready-dot" title="固有名詞候補あり"></span>{% endif %}
             </button>
 
             <div class="export-menu" x-data="{ open: false }" @click.outside="open = false">

@@ -5930,6 +5930,17 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
 }
 .btn-polish:hover { opacity: 0.88; }
 
+.pickup-ready-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background: #f59e0b;
+    border-radius: 50%;
+    border: 1.5px solid #fff;
+}
+
 /* ── 整文モーダル ── */
 .polish-overlay {
     position: fixed;

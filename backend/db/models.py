@@ -132,6 +132,8 @@ class Transcript(Base):
     last_polished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # 文字起こし完了後に自動ピックアップした固有名詞候補（JSON配列文字列）
+    pickup_suggestions: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="transcripts")
     segments: Mapped[list["Segment"]] = relationship(

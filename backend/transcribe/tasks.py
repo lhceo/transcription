@@ -17,13 +17,16 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+import json
+
 from backend.config import load_settings
 from backend.db import SessionLocal
-from backend.db.models import Segment, Speaker, Transcript
+from backend.db.models import ProjectVocabulary, Segment, Speaker, Transcript, TranscriptVocabulary
 from backend.transcribe.assemblyai_client import AssemblyAIClient, AssemblyAIError
 from backend.transcribe.cost import COST_YEN_PER_HOUR
 from backend.transcribe.storage import cleanup_job_dir, move_to_storage
 from backend.transcribe.text_utils import normalize_japanese_text
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +127,59 @@ async def _mark_failed(transcript_id: int, error_message: str) -> None:
             db.commit()
 
 
+async def _run_auto_pickup(transcript_id: int) -> None:
+    """文字起こし完了後に固有名詞候補を自動ピックアップしてDBに保存する。"""
+    settings = load_settings()
+    if not settings.has_anthropic:
+        return
+    try:
+        import anthropic
+        from backend.transcribe.polish import pickup_proper_nouns
+
+        with SessionLocal() as db:
+            transcript = db.get(Transcript, transcript_id)
+            if transcript is None:
+                return
+            segments = list(db.scalars(
+                select(Segment)
+                .where(Segment.transcript_id == transcript_id)
+                .order_by(Segment.order_index)
+            ))
+            if not segments:
+                return
+            full_text = "\n".join(s.text_content for s in segments)
+
+            registered: list[str] = []
+            if transcript.project_id:
+                registered = list(db.scalars(
+                    select(ProjectVocabulary.word)
+                    .where(ProjectVocabulary.project_id == transcript.project_id)
+                ))
+            transcript_vocab_words = list(db.scalars(
+                select(TranscriptVocabulary.word)
+                .where(TranscriptVocabulary.transcript_id == transcript_id)
+            ))
+            existing_lower = {w.lower() for w in registered}
+            for w in transcript_vocab_words:
+                if w.lower() not in existing_lower:
+                    registered.append(w)
+                    existing_lower.add(w.lower())
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        words = await pickup_proper_nouns(client, full_text, registered)
+        await client.aclose()
+
+        if words:
+            with SessionLocal() as db:
+                t = db.get(Transcript, transcript_id)
+                if t is not None:
+                    t.pickup_suggestions = json.dumps(words, ensure_ascii=False)
+                    db.commit()
+            logger.info("固有名詞候補ピックアップ完了: transcript_id=%s words=%s", transcript_id, len(words))
+    except Exception:
+        logger.exception("固有名詞候補ピックアップ失敗: transcript_id=%s", transcript_id)
+
+
 async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_expected: int | None = None, word_boost: list[str] | None = None, custom_spelling: list[dict] | None = None) -> None:
     """1ジョブのライフサイクル全体を処理する。
 
@@ -214,6 +270,9 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
         # 5. 結果保存（同期処理。少しの間 event loop が止まるが segments 数千件
         #    程度なので問題ない範囲）
         _save_results_to_db(transcript_id, result)
+
+        # 5b. 固有名詞候補の自動ピックアップ（失敗しても全体の成功は妨げない）
+        await _run_auto_pickup(transcript_id)
 
         # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
         #    失敗時は移動せず、一時領域ごと削除される。

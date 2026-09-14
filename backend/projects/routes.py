@@ -670,7 +670,7 @@ async def project_context(
     # 固有名詞: プロジェクト分 + テーマ配下の全プロジェクトからではなく、
     # 「テーマ自体の vocabulary」は Theme モデルには無いので
     # プロジェクトの語彙のみを使う（仕様上テーマレベルの語彙は ProjectVocabulary で管理）
-    vocab_words = [{"word": v.word, "meaning": v.meaning} for v in proj.vocabulary]
+    vocab_words = [{"word": v.word, "meaning": v.meaning, "reading": v.reading or ""} for v in proj.vocabulary]
 
     members_out = []
     for m in proj.members:
@@ -782,7 +782,7 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
                     "project_role": m.project_role or "",
                 })
             for v in project.vocabulary:
-                vocabulary.append({"word": v.word, "meaning": v.meaning or ""})
+                vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
 
     # PJTがない場合、Speaker→Peopleリンクから話者情報を補完する
     if not members:
@@ -848,7 +848,7 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
     existing_words = {v["word"].lower() for v in vocabulary}
     for v in transcript_vocab_rows:
         if v.word.lower() not in existing_words:
-            vocabulary.append({"word": v.word, "meaning": v.meaning or ""})
+            vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
             existing_words.add(v.word.lower())
 
     return build_context_text(
@@ -938,11 +938,22 @@ async def polish_pickup(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """整文前に固有名詞候補をピックアップする。"""
+    """整文前に固有名詞候補をピックアップする。自動ピックアップ済みの候補があれば即返す。"""
     if not settings.has_anthropic:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY が設定されていません")
 
     transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+
+    # 文字起こし完了時に自動ピックアップ済みの候補があれば返してクリア（API呼び出しを節約）
+    if transcript.pickup_suggestions:
+        import json as _json_pickup
+        try:
+            words = _json_pickup.loads(transcript.pickup_suggestions)
+        except Exception:
+            words = []
+        transcript.pickup_suggestions = None
+        db.commit()
+        return JSONResponse({"words": words})
 
     segments = list(db.scalars(
         select(Segment)

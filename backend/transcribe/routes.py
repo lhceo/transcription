@@ -1081,6 +1081,7 @@ async def transcript_detail(
             "is_owner": is_owner,
             "breadcrumb_project": breadcrumb_project,
             "transcript_vocabulary": transcript_vocabulary,
+            "has_pickup_suggestions": bool(transcript.pickup_suggestions),
         },
     )
 
@@ -1721,7 +1722,7 @@ def _resolve_speaker_name(seg: Segment, name_map: dict[str, str]) -> str:
     return name_map.get(seg.speaker_label, seg.speaker_label)
 
 
-def _build_export_txt(segments: list[Segment], name_map: dict[str, str]) -> str:
+def _build_export_txt(segments: list[Segment], name_map: dict[str, str], vocab_items: list[dict] | None = None) -> str:
     lines: list[str] = []
     for seg in segments:
         name = _resolve_speaker_name(seg, name_map)
@@ -1731,6 +1732,16 @@ def _build_export_txt(segments: list[Segment], name_map: dict[str, str]) -> str:
         if seg.comment:
             lines.append(f"# {seg.comment}")
         lines.append("")
+    if vocab_items:
+        lines.append("")
+        lines.append("──── 固有名詞辞書 ────")
+        for v in vocab_items:
+            entry = v["word"]
+            if v.get("reading"):
+                entry += f"（{v['reading']}）"
+            if v.get("meaning"):
+                entry += f": {v['meaning']}"
+            lines.append(entry)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1751,7 +1762,7 @@ def _build_export_srt(segments: list[Segment], name_map: dict[str, str]) -> str:
 
 
 def _build_export_json(
-    transcript: Transcript, segments: list[Segment], name_map: dict[str, str]
+    transcript: Transcript, segments: list[Segment], name_map: dict[str, str], vocab_items: list[dict] | None = None
 ) -> str:
     import json
 
@@ -1787,6 +1798,10 @@ def _build_export_json(
             }
             for s in segments
         ],
+        "vocabulary": [
+            {"word": v["word"], "reading": v.get("reading") or "", "meaning": v.get("meaning") or ""}
+            for v in (vocab_items or [])
+        ],
     }
     return json.dumps(data, ensure_ascii=False, indent=2)
 
@@ -1821,9 +1836,28 @@ async def export_transcript(
     )
     name_map = {s.speaker_label: s.display_name for s in speakers}
 
+    # 固有名詞辞書（PJT辞書 + 個別辞書）を収集してエクスポートに添付
+    vocab_items: list[dict] = []
+    if transcript.project_id:
+        proj_vocab = list(db.scalars(
+            select(ProjectVocabulary)
+            .where(ProjectVocabulary.project_id == transcript.project_id)
+            .order_by(ProjectVocabulary.id)
+        ))
+        vocab_items.extend({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""} for v in proj_vocab)
+    transcript_vocab = list(db.scalars(
+        select(TranscriptVocabulary)
+        .where(TranscriptVocabulary.transcript_id == transcript_id)
+        .order_by(TranscriptVocabulary.id)
+    ))
+    existing_vocab_words = {v["word"].lower() for v in vocab_items}
+    for v in transcript_vocab:
+        if v.word.lower() not in existing_vocab_words:
+            vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
+
     fmt = format.lower()
     if fmt == "txt":
-        content = _build_export_txt(segments, name_map)
+        content = _build_export_txt(segments, name_map, vocab_items or None)
         media_type = "text/plain; charset=utf-8"
         ext = "txt"
     elif fmt == "srt":
@@ -1831,7 +1865,7 @@ async def export_transcript(
         media_type = "application/x-subrip; charset=utf-8"
         ext = "srt"
     elif fmt == "json":
-        content = _build_export_json(transcript, segments, name_map)
+        content = _build_export_json(transcript, segments, name_map, vocab_items or None)
         media_type = "application/json; charset=utf-8"
         ext = "json"
     else:
