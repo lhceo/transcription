@@ -26,7 +26,7 @@ from backend.auth import router as auth_router
 from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import SpeakerHistory, Transcript, User
+from backend.db.models import PolishLog, SpeakerHistory, Transcript, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import delete, select
@@ -388,12 +388,12 @@ async def admin_users_stats(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """管理者向け: 全ユーザーの利用状況サマリー。"""
+    from sqlalchemy import func
     from backend.transcribe.storage_usage import _AUDIO_DIR
     from backend.transcribe.cost import month_start_utc, estimate_cost_yen
     from backend.transcribe.retention import _ensure_utc_aware
 
     try:
-        # selectinload で User.transcripts を一括取得し、N+1 クエリを回避する
         users = list(db.scalars(
             select(User)
             .options(selectinload(User.transcripts))
@@ -414,22 +414,59 @@ async def admin_users_stats(
                     pass
 
     month_start = month_start_utc()
+
+    # 整文コスト（今月）をユーザー別に集計
+    polish_rows = db.execute(
+        select(
+            PolishLog.created_by_user_id,
+            func.count(PolishLog.id).label("count"),
+            func.sum(PolishLog.cost_yen).label("cost"),
+        )
+        .where(PolishLog.created_at >= month_start)
+        .group_by(PolishLog.created_by_user_id)
+    ).all()
+    polish_by_user: dict[int, dict] = {
+        row.created_by_user_id: {"count": row.count, "cost": float(row.cost or 0)}
+        for row in polish_rows
+    }
+
     result = []
     for u in users:
         active_transcripts = [t for t in u.transcripts if t.deleted_at is None]
         audio_bytes = sum(audio_sizes.get(t.id, 0) for t in active_transcripts)
         last_upload = max((t.created_at for t in active_transcripts), default=None)
 
-        cost_this_month = 0
+        # 累計音声時間（completed のみ）
+        total_audio_secs = sum(
+            t.audio_duration_seconds or 0
+            for t in active_transcripts
+            if t.status == "completed"
+        )
+
+        transcription_cost_month = 0
+        count_this_month = 0
         for t in active_transcripts:
             if t.created_at is None:
                 continue
             if _ensure_utc_aware(t.created_at) < month_start:
                 continue
+            count_this_month += 1
             if t.status == "completed":
-                cost_this_month += int(t.cost_yen or 0)
+                transcription_cost_month += int(t.cost_yen or 0)
             elif t.status in ("uploaded", "processing"):
-                cost_this_month += estimate_cost_yen(t.audio_duration_seconds, t.model_tier or "best")
+                transcription_cost_month += estimate_cost_yen(t.audio_duration_seconds, t.model_tier or "best")
+
+        polish_stats = polish_by_user.get(u.id, {"count": 0, "cost": 0.0})
+        polish_cost_month = int(polish_stats["cost"])
+        total_cost_month = transcription_cost_month + polish_cost_month
+
+        # 累計音声時間の表示形式
+        if total_audio_secs >= 3600:
+            audio_time_pretty = f"{total_audio_secs / 3600:.1f}時間"
+        elif total_audio_secs >= 60:
+            audio_time_pretty = f"{int(total_audio_secs / 60)}分"
+        else:
+            audio_time_pretty = f"{int(total_audio_secs)}秒" if total_audio_secs > 0 else "—"
 
         result.append({
             "id": u.id,
@@ -437,10 +474,16 @@ async def admin_users_stats(
             "email": u.email,
             "picture": u.picture_url,
             "transcript_count": len(active_transcripts),
+            "transcript_count_this_month": count_this_month,
             "audio_bytes": audio_bytes,
             "audio_pretty": f"{audio_bytes / 1_000_000:.1f} MB" if audio_bytes > 0 else "0 MB",
-            "cost_this_month_yen": cost_this_month,
-            "cost_this_month_pretty": f"¥{cost_this_month:,}" if cost_this_month > 0 else "¥0",
+            "total_audio_seconds": total_audio_secs,
+            "audio_time_pretty": audio_time_pretty,
+            "transcription_cost_this_month_yen": transcription_cost_month,
+            "polish_cost_this_month_yen": polish_cost_month,
+            "polish_count_this_month": polish_stats["count"],
+            "total_cost_this_month_yen": total_cost_month,
+            "total_cost_this_month_pretty": f"¥{total_cost_month:,}" if total_cost_month > 0 else "¥0",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "last_upload_at": last_upload.isoformat() if last_upload else None,
             "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,

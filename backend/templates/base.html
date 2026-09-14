@@ -604,6 +604,10 @@
         }
         sendHeartbeat();
         setInterval(sendHeartbeat, 60_000);
+        // タブ復帰時に即座に更新（「利用中」バッジの精度向上）
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') sendHeartbeat();
+        });
         {% endif %}
     })();
     </script>

@@ -15,12 +15,20 @@
             <span class="admin-summary-value" x-text="loading ? '—' : users.length + ' 人'">—</span>
         </div>
         <div class="admin-summary-card">
-            <span class="admin-summary-label">今月総コスト</span>
-            <span class="admin-summary-value" x-text="loading ? '—' : '¥' + users.reduce((s,u) => s + u.cost_this_month_yen, 0).toLocaleString('ja-JP')">—</span>
+            <span class="admin-summary-label">今月 文字起こし</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : users.reduce((s,u) => s + u.transcript_count_this_month, 0) + ' 件'">—</span>
         </div>
         <div class="admin-summary-card">
-            <span class="admin-summary-label">総件数</span>
-            <span class="admin-summary-value" x-text="loading ? '—' : users.reduce((s,u) => s + u.transcript_count, 0) + ' 件'">—</span>
+            <span class="admin-summary-label">今月 文字起こしコスト</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : '¥' + users.reduce((s,u) => s + u.transcription_cost_this_month_yen, 0).toLocaleString('ja-JP')">—</span>
+        </div>
+        <div class="admin-summary-card">
+            <span class="admin-summary-label">今月 整文コスト</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : '¥' + users.reduce((s,u) => s + u.polish_cost_this_month_yen, 0).toLocaleString('ja-JP')">—</span>
+        </div>
+        <div class="admin-summary-card">
+            <span class="admin-summary-label">今月 合計コスト</span>
+            <span class="admin-summary-value" x-text="loading ? '—' : '¥' + users.reduce((s,u) => s + u.total_cost_this_month_yen, 0).toLocaleString('ja-JP')">—</span>
         </div>
     </div>
 
@@ -76,9 +84,9 @@
                         <tr>
                             <th>ユーザー</th>
                             <th>メールアドレス</th>
-                            <th class="admin-col-num">件数</th>
-                            <th class="admin-col-num">音声容量</th>
-                            <th class="admin-col-num">今月コスト</th>
+                            <th class="admin-col-num">件数 (今月/全体)</th>
+                            <th class="admin-col-num">音声 累計</th>
+                            <th class="admin-col-num">今月コスト (文字起こし+整文)</th>
                             <th class="admin-col-date">最終利用</th>
                         </tr>
                     </thead>
@@ -95,9 +103,20 @@
                                     </template>
                                 </td>
                                 <td class="admin-email-cell" x-text="u.email"></td>
-                                <td class="admin-col-num" x-text="u.transcript_count + '件'"></td>
-                                <td class="admin-col-num" x-text="u.audio_pretty"></td>
-                                <td class="admin-col-num" x-text="u.cost_this_month_pretty"></td>
+                                <td class="admin-col-num">
+                                    <span x-text="u.transcript_count_this_month + '件'"></span>
+                                    <span class="admin-stat-sub" x-text="'/ 全' + u.transcript_count + '件'"></span>
+                                </td>
+                                <td class="admin-col-num">
+                                    <span x-text="u.audio_time_pretty"></span>
+                                    <span class="admin-stat-sub" x-text="u.audio_pretty"></span>
+                                </td>
+                                <td class="admin-col-num">
+                                    <span x-text="u.total_cost_this_month_pretty"></span>
+                                    <template x-if="u.polish_count_this_month > 0">
+                                        <span class="admin-stat-sub" x-text="'整文' + u.polish_count_this_month + '回 ¥' + u.polish_cost_this_month_yen.toLocaleString('ja-JP')"  ></span>
+                                    </template>
+                                </td>
                                 <td class="admin-col-date" x-text="formatDate(lastActivity(u))"></td>
                             </tr>
                         </template>
@@ -124,11 +143,19 @@
                                 </div>
                             </div>
                             <div class="admin-user-card-stats">
-                                <span x-text="u.transcript_count + '件'"></span>
+                                <span x-text="'今月' + u.transcript_count_this_month + '件'"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span x-text="u.audio_time_pretty"></span>
+                                <span class="admin-card-sep">·</span>
+                                <span x-text="u.total_cost_this_month_pretty"></span>
+                            </div>
+                            <div class="admin-user-card-stats" style="font-size:11px;color:var(--color-text-muted)">
+                                <span x-text="'全' + u.transcript_count + '件'"></span>
                                 <span class="admin-card-sep">·</span>
                                 <span x-text="u.audio_pretty"></span>
-                                <span class="admin-card-sep">·</span>
-                                <span x-text="u.cost_this_month_pretty"></span>
+                                <template x-if="u.polish_count_this_month > 0">
+                                    <span x-text="'· 整文' + u.polish_count_this_month + '回'"></span>
+                                </template>
                             </div>
                             <div class="admin-user-card-dates">
                                 <span>最終利用: <strong x-text="formatDate(lastActivity(u))"></strong></span>

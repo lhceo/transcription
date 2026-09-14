@@ -513,9 +513,16 @@ html, body {
 /* サマリーカード */
 .admin-summary-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
     margin-bottom: 20px;
+}
+
+.admin-stat-sub {
+    display: block;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-top: 1px;
 }
 
 .admin-summary-card {
