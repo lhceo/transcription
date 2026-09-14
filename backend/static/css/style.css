@@ -6046,6 +6046,21 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     margin-top: 16px;
 }
 
+/* 整文適用確認 */
+.polish-result-summary { font-size: 14px; line-height: 1.7; margin-bottom: 4px; }
+.polish-result-unknown {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #fff1f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #b91c1c;
+}
+
 /* 固有名詞ピックアップ */
 .pickup-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .pickup-row { display: flex; align-items: center; gap: 10px; }

@@ -1280,43 +1280,23 @@
             </div>
         </div>
 
-        {# ステップ4: diffレビュー #}
-        <div x-show="step === 'diff'" class="polish-diff-view">
-            <div class="polish-diff-header">
-                <h2 class="polish-modal-title" style="margin:0">整文の確認</h2>
-                <div class="polish-diff-summary">
-                    <span x-text="changedCount() + '件の変更'"></span>
-                    <button class="btn btn-outline btn-sm" @click="acceptAll()">すべて採用</button>
-                </div>
+        {# ステップ4: 適用確認 #}
+        <div x-show="step === 'result'">
+            <h2 class="polish-modal-title">整文が完了しました</h2>
+            <div class="polish-result-summary">
+                <p x-text="totalChanged + '件のセグメントを整文しました。'"></p>
+                <p x-show="unknownCount > 0" class="polish-result-unknown">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    うち <strong x-text="unknownCount + '件'"></strong> に要確認（？）があります。適用後にサイドバーの <strong>！</strong> タブから確認できます。
+                </p>
+                <p x-show="totalChanged === 0" class="section-hint" style="margin-top:8px">変更はありませんでした。</p>
             </div>
-            <p class="section-hint">変更のあるセグメントを確認してください。テキストエリアは編集できます。</p>
-            <div class="polish-diff-list">
-                <template x-for="seg in diffSegments" :key="seg.id">
-                    <div class="diff-seg" :class="seg.changed ? 'diff-seg-changed' : 'diff-seg-unchanged'">
-                        <div class="diff-seg-speaker" x-text="seg.speaker"></div>
-                        <template x-if="!seg.changed">
-                            <div class="diff-seg-text unchanged" x-text="seg.original"></div>
-                        </template>
-                        <template x-if="seg.changed">
-                            <div class="diff-seg-body">
-                                <div class="diff-original" x-text="seg.original"></div>
-                                <textarea class="diff-textarea" x-model="seg.current" rows="2"></textarea>
-                                <div class="diff-actions">
-                                    <button class="btn btn-primary btn-sm" @click="acceptSeg(seg)">採用</button>
-                                    <button class="btn btn-ghost btn-sm" @click="restorePolish(seg)">整文に戻す</button>
-                                    <button class="btn btn-ghost btn-sm" @click="restoreOriginal(seg)">原文に戻す</button>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-            </div>
-            <div class="polish-modal-actions polish-diff-footer">
-                <button class="btn btn-primary" @click="saveAccepted()" :disabled="saving">
-                    <span x-show="!saving">採用した変更を保存</span>
-                    <span x-show="saving" x-cloak>保存中…</span>
+            <div class="polish-modal-actions">
+                <button class="btn btn-primary" @click="applyAll()" :disabled="saving || totalChanged === 0">
+                    <span x-show="!saving">整文を適用する</span>
+                    <span x-show="saving" style="display:none">適用中…</span>
                 </button>
-                <button class="btn btn-ghost" @click="close()">閉じる</button>
+                <button class="btn btn-ghost" @click="close()" :disabled="saving">キャンセル（適用しない）</button>
             </div>
         </div>
 
@@ -3919,13 +3899,15 @@ function polishModal() {
     const transcriptId = (window.__TRANSCRIPT_INIT || {}).id;
     return {
         show: false,
-        step: 'confirm',   // confirm | pickup | running | diff
+        step: 'confirm',   // confirm | pickup | running | result
         loading: false,
         saving: false,
         modelKey: 'haiku',
         estimate: null,
         pickupWords: [],   // [{word, meaning}]
-        diffSegments: [],  // [{id, speaker, original, suggestion, current, changed, accepted}]
+        suggestions: {},   // {segId: polishedText}
+        totalChanged: 0,
+        unknownCount: 0,
 
         async open() {
             this.show = true;
@@ -3981,48 +3963,24 @@ function polishModal() {
                 if (!res.ok) throw new Error((await res.json()).detail || res.status);
                 const data = await res.json();
 
-                // Close modal and enter inline review mode
-                this.show = false;
-                window.dispatchEvent(new CustomEvent('enter-review-mode', { detail: { suggestions: data.suggestions } }));
+                // 結果を保持してモーダル内の確認ステップへ
+                this.suggestions = data.suggestions || {};
+                this.totalChanged = Object.keys(this.suggestions).length;
+                this.unknownCount = Object.values(this.suggestions).filter(t => t.includes('（？）')).length;
+                this.step = 'result';
             } catch (e) {
                 window.showToast('整文に失敗しました: ' + e.message, 'error');
                 this.step = 'confirm';
             }
         },
 
-        changedCount() {
-            return this.diffSegments.filter(s => s.changed).length;
-        },
-
-        acceptSeg(seg) {
-            seg.accepted = true;
-            window.showToast('採用しました', 'success');
-        },
-
-        restorePolish(seg) {
-            seg.current = seg.suggestion;
-        },
-
-        restoreOriginal(seg) {
-            seg.current = seg.original;
-        },
-
-        acceptAll() {
-            this.diffSegments.filter(s => s.changed).forEach(s => {
-                s.accepted = true;
-            });
-            window.showToast('すべて採用しました');
-        },
-
-        async saveAccepted() {
-            const toSave = this.diffSegments.filter(s => s.changed && s.accepted);
-            if (toSave.length === 0) {
-                window.showToast('採用された変更がありません', 'error');
-                return;
-            }
+        async applyAll() {
+            if (this.totalChanged === 0) return;
             this.saving = true;
             const accepted_texts = {};
-            toSave.forEach(s => { accepted_texts[s.id] = s.current; });
+            Object.entries(this.suggestions).forEach(([id, text]) => {
+                accepted_texts[parseInt(id)] = text;
+            });
             try {
                 const res = await fetch('/api/transcripts/' + transcriptId + '/polish/accept', {
                     method: 'POST',
@@ -4030,10 +3988,10 @@ function polishModal() {
                     body: JSON.stringify({ accepted_texts }),
                 });
                 if (!res.ok) throw new Error(res.status);
-                window.showToast('保存しました。ページを更新します。');
+                window.showToast('整文を適用しました。ページを更新します。');
                 setTimeout(() => location.reload(), 800);
             } catch (e) {
-                window.showToast('保存に失敗しました', 'error');
+                window.showToast('適用に失敗しました', 'error');
             } finally {
                 this.saving = false;
             }
