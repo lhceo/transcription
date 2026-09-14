@@ -2760,7 +2760,6 @@ a.history-item-filename:hover {
 
 .segment-text-edit {
     width: 100%;
-    max-width: 680px;
     min-height: 2lh;
     padding: 0;
     border: none;
