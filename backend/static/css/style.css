@@ -2400,6 +2400,49 @@ a.history-item-filename:hover {
 .segment-action-btn.segment-comment-btn { color: var(--color-text-muted); }
 .segment-action-btn.segment-comment-btn.has-comment { color: #f59e0b; }
 
+/* サイドバーの要確認リスト */
+.unknown-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+}
+.unknown-panel-count {
+    font-size: 11px;
+    background: #fee2e2;
+    color: #b91c1c;
+    border-radius: 20px;
+    padding: 0 6px;
+    font-weight: 700;
+}
+.unknown-list { list-style: none; padding: 0; margin: 0; }
+.unknown-item {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: background .1s;
+}
+.unknown-item:hover { background: #fff1f2; }
+.unknown-item-time {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ef4444;
+    margin-bottom: 3px;
+}
+.unknown-item-excerpt {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
 /* サイドバーのコメントリスト */
 .comment-panel { padding: 0; }
 .comment-panel-header {
@@ -2483,6 +2526,7 @@ a.history-item-filename:hover {
 .sidebar-activity-btn:hover { background: #f1f5f9; color: #475569; }
 .sidebar-activity-btn.active { color: #3b82f6; background: #eff6ff; }
 .sidebar-activity-btn.active-comment { color: #f59e0b; background: #fffbeb; }
+.sidebar-activity-btn.active-unknown { color: #ef4444; background: #fff1f2; }
 .sidebar-activity-badge {
     position: absolute;
     top: 1px;
@@ -2501,6 +2545,7 @@ a.history-item-filename:hover {
     pointer-events: none;
 }
 .sidebar-activity-badge-comment { background: #fcd34d; color: #92400e; }
+.sidebar-activity-badge-unknown { background: #ef4444; color: white; }
 .sidebar-panel-content {
     flex: 1;
     min-width: 0;

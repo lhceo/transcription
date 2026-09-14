@@ -958,7 +958,7 @@
     </div>{# /transcript-main-col #}
 
     {# ──── サイドバー（ブックマーク / コメント） ──── #}
-    <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0 || segmentComments.length > 0" x-cloak style="display:none"
+    <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0 || segmentComments.length > 0 || unknownSegments.length > 0" x-cloak style="display:none"
            :class="sidebarCollapsed ? 'sidebar-collapsed' : ''">
 
         {# パネルコンテンツ（Activity Barの左側、折り畳み時は非表示） #}
@@ -990,6 +990,22 @@
                         </template>
                     </ul>
                 </div>
+            </div>
+            {# 要確認パネル #}
+            <div id="sidebar-subpanel-unknown" x-show="sidebarTab === 'unknown'" style="display:none">
+                <div class="unknown-panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#f59e0b"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>要確認</span>
+                    <span class="unknown-panel-count" x-text="unknownSegments.length + '件'"></span>
+                </div>
+                <ul class="unknown-list">
+                    <template x-for="u in unknownSegments" :key="u.segId">
+                        <li class="unknown-item" @click="jumpToUnknownSegment(u.segId)">
+                            <div class="unknown-item-time" x-text="u.timeLabel"></div>
+                            <div class="unknown-item-excerpt" x-text="u.excerpt"></div>
+                        </li>
+                    </template>
+                </ul>
             </div>
             {# コメントパネル #}
             <div id="sidebar-subpanel-comments" class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" style="display:none">
@@ -1032,6 +1048,14 @@
                     title="コメント" aria-label="コメント">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span class="sidebar-activity-badge sidebar-activity-badge-comment" x-show="segmentComments.length > 0" x-text="segmentComments.length"></span>
+            </button>
+            <button class="sidebar-activity-btn sidebar-activity-btn-unknown"
+                    :class="!sidebarCollapsed && sidebarTab === 'unknown' ? 'active-unknown' : ''"
+                    @click="toggleSidebarTab('unknown')"
+                    x-show="unknownSegments.length > 0" style="display:none"
+                    title="要確認（？）" aria-label="要確認">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span class="sidebar-activity-badge sidebar-activity-badge-unknown" x-show="unknownSegments.length > 0" x-text="unknownSegments.length"></span>
             </button>
         </div>
     </aside>
@@ -1532,6 +1556,7 @@ function segmentsApp(transcriptId, historyNames) {
         sidebarTab: 'bookmarks',
         sidebarCollapsed: false,
         segmentComments: [],   // [{segId, timeLabel, comment, excerpt}]
+        unknownSegments: [],   // [{segId, timeLabel, excerpt}] — （？）含むセグメント
 
         // ── ブックマーク ─────────────────────────────────────────
         async toggleBookmark(segId, card) {
@@ -1829,8 +1854,9 @@ function segmentsApp(transcriptId, historyNames) {
                 if (comment) this.segComments[segId] = comment;
             });
 
-            // コメント一覧初期化
+            // コメント・要確認一覧初期化
             this._buildSegmentComments();
+            this._buildUnknownSegments();
 
             // 進捗バー：ページロード時の編集済み件数を初期値に設定 + マーカー描画
             this.$nextTick(() => {
@@ -1872,6 +1898,34 @@ function segmentsApp(transcriptId, historyNames) {
                 });
             if (this.segmentComments.length > 0) this.sidebarTab = 'comments';
             else if (this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
+        },
+
+        _buildUnknownSegments() {
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            this.unknownSegments = cards
+                .filter(card => {
+                    const ta = card.querySelector('.segment-text-edit');
+                    const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
+                    return text.includes('（？）');
+                })
+                .map(card => {
+                    const segId = parseInt(card.dataset.segmentId, 10);
+                    const startSec = parseFloat(card.dataset.startSeconds || '0');
+                    const timeLabel = this._formatSeconds(startSec);
+                    const ta = card.querySelector('.segment-text-edit');
+                    const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
+                    return { segId, timeLabel, excerpt: text };
+                });
+            // 全件解消したら要確認タブを閉じる
+            if (this.unknownSegments.length === 0 && this.sidebarTab === 'unknown') {
+                if (this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
+                else if (this.segmentComments.length > 0) this.sidebarTab = 'comments';
+                else { this.sidebarCollapsed = true; localStorage.setItem('noto-sidebar-collapsed', 'true'); }
+                const panelWrap = document.querySelector('.sidebar-panel-content');
+                const ukPanel = document.getElementById('sidebar-subpanel-unknown');
+                if (ukPanel) ukPanel.style.display = 'none';
+                if (this.sidebarCollapsed && panelWrap) panelWrap.style.display = 'none';
+            }
         },
 
         _commentWrap(segId) {
@@ -1960,6 +2014,7 @@ function segmentsApp(transcriptId, historyNames) {
             const panelWrap = document.querySelector('.sidebar-panel-content');
             const bmPanel = document.getElementById('sidebar-subpanel-bookmarks');
             const cmPanel = document.getElementById('sidebar-subpanel-comments');
+            const ukPanel = document.getElementById('sidebar-subpanel-unknown');
 
             if (!this.sidebarCollapsed && this.sidebarTab === tab) {
                 this.sidebarCollapsed = true;
@@ -1969,11 +2024,29 @@ function segmentsApp(transcriptId, historyNames) {
                 this.sidebarCollapsed = false;
                 this.sidebarTab = tab;
                 if (panelWrap) panelWrap.style.display = '';
-                // サブパネルの切り替えも直接操作（Alpine reactive 喪失の保険）
                 if (bmPanel) bmPanel.style.display = tab === 'bookmarks' ? '' : 'none';
                 if (cmPanel) cmPanel.style.display = tab === 'comments' ? '' : 'none';
+                if (ukPanel) ukPanel.style.display = tab === 'unknown' ? '' : 'none';
                 localStorage.setItem('noto-sidebar-collapsed', 'false');
             }
+        },
+
+        jumpToUnknownSegment(segId) {
+            // パネルは開いたまま、セグメントへジャンプして編集モードに誘導
+            const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+            if (!card) return;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.outline = '2px solid #f59e0b';
+            setTimeout(() => {
+                card.style.outline = '';
+                if (!this.editMode) this.editMode = true;
+                const ta = card.querySelector('.segment-text-edit');
+                if (ta) {
+                    ta.focus();
+                    const pos = ta.value.indexOf('（？）');
+                    if (pos >= 0) ta.setSelectionRange(pos, pos + 3);
+                }
+            }, 400);
         },
 
         jumpToSegmentForComment(segId) {
@@ -2698,6 +2771,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (revertBtn) revertBtn.style.display = 'none';
             }
             // is_edited = true の場合は「編集済み ↩」バッジが残り、戻すボタンも維持
+            this._buildUnknownSegments();
         },
 
         enterReviewMode(suggestions) {
@@ -3083,6 +3157,7 @@ function segmentsApp(transcriptId, historyNames) {
                     this.saveStatus = 'saved';
                     this._dismissSaveErrorToast();
                     this._verifyWithServer();
+                    this._buildUnknownSegments();
                 }
             } catch (e) {
                 console.error('save failed:', e);
