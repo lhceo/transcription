@@ -1077,6 +1077,8 @@ async def polish_accept(
     for seg_id, text in body.accepted_texts.items():
         seg = db.get(Segment, seg_id)
         if seg and seg.transcript_id == transcript_id:
+            # 整文前のテキストを退避（「整文前に戻す」で使用）
+            seg.pre_polish_text = seg.text_content
             seg.text_content = text
             seg.is_edited = True
             seg.is_polished = True

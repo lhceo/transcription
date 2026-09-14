@@ -2632,7 +2632,7 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async revertSegment(segmentId, cardEl) {
-            const ok = await window.showConfirm('このブロックを元の文字起こしテキストに戻しますか？\n（整文・手動編集の内容が失われます）', { title: '元に戻す確認', okLabel: '元に戻す' });
+            const ok = await window.showConfirm('このブロックを一つ前の状態に戻しますか？', { title: '元に戻す確認', okLabel: '元に戻す' });
             if (!ok) return;
             try {
                 const res = await fetch(`/api/segments/${segmentId}/revert`, { method: 'POST' });
@@ -2646,17 +2646,8 @@ function segmentsApp(transcriptId, historyNames) {
                     return;
                 }
                 const data = await res.json();
-                const newText = data.text || '';
-                if (cardEl) {
-                    const viewDiv = cardEl.querySelector('.segment-text');
-                    if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
-                    const ta = cardEl.querySelector('.segment-text-edit');
-                    if (ta) { ta.value = newText; ta.dataset.originalText = newText; this.fitToContent(ta); }
-                    cardEl.querySelectorAll('.segment-edited, .seg-badge-edited, .seg-badge-polished, .seg-badge-unresolved').forEach(el => el.remove());
-                    const revertBtn = cardEl.querySelector('.segment-revert-btn');
-                    if (revertBtn) revertBtn.style.display = 'none';
-                }
-                window.showToast('元の文字起こしに戻しました');
+                if (cardEl) this._applyRevertToCard(cardEl, data);
+                window.showToast('元に戻しました');
             } catch (e) {
                 window.showToast('元に戻す処理に失敗しました。もう一度お試しください。', 'error');
             }
@@ -2681,20 +2672,32 @@ function segmentsApp(transcriptId, historyNames) {
             }
             const data = await res.json();
             this.revertConfirmSegId = null;
-            // Update text in DOM
-            const textEl = cardEl.querySelector('.segment-text-remaining');
-            if (textEl) textEl.textContent = data.text || '';
-            const ta = cardEl.querySelector('.segment-text-edit');
-            if (ta) ta.value = data.text || '';
-            const overlay = cardEl.querySelector('.overlay-remaining');
-            if (overlay) overlay.textContent = data.text || '';
-            // Remove badges and update edited count
-            const hadEdited = !!cardEl.querySelector('[data-edited]');
-            cardEl.querySelectorAll('.seg-badge-edited, .seg-badge-polished, .seg-badge-unresolved, .segment-edited').forEach(el => el.remove());
-            if (hadEdited) { this.editedCount = Math.max(0, this.editedCount - 1); this._renderEditedMarkers(); }
-            const revertBtn = cardEl.querySelector('.segment-revert-btn');
-            if (revertBtn) revertBtn.style.display = 'none';
+            this._applyRevertToCard(cardEl, data);
             window.showToast('元に戻しました');
+        },
+
+        _applyRevertToCard(cardEl, data) {
+            const newText = data.text || '';
+            // テキスト更新
+            const viewDiv = cardEl.querySelector('.segment-text');
+            if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
+            const ta = cardEl.querySelector('.segment-text-edit');
+            if (ta) { ta.value = newText; ta.dataset.originalText = newText; this.fitToContent(ta); }
+            const overlay = cardEl.querySelector('.overlay-remaining');
+            if (overlay) overlay.textContent = newText;
+
+            // 整文済みバッジは常に除去
+            cardEl.querySelectorAll('.seg-badge-polished, .seg-badge-unresolved, .segment-edited').forEach(el => el.remove());
+
+            if (!data.is_edited) {
+                // 手動編集も消えた（原文に戻った）→ 編集済みバッジも除去、戻すボタン非表示
+                const hadEdited = !!cardEl.querySelector('[data-edited]');
+                cardEl.querySelectorAll('.seg-badge-edited').forEach(el => el.remove());
+                if (hadEdited) { this.editedCount = Math.max(0, this.editedCount - 1); this._renderEditedMarkers(); }
+                const revertBtn = cardEl.querySelector('.segment-revert-btn');
+                if (revertBtn) revertBtn.style.display = 'none';
+            }
+            // is_edited = true の場合は「編集済み ↩」バッジが残り、戻すボタンも維持
         },
 
         enterReviewMode(suggestions) {

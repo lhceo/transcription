@@ -1559,18 +1559,32 @@ async def revert_segment_to_original(
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
-    if not segment.original_asr_text:
+    if segment.pre_polish_text:
+        # 整文済みセグメント：整文直前の状態（ユーザーの承認・編集済みテキスト）に戻す
+        revert_text = segment.pre_polish_text
+        segment.text_content = revert_text
+        segment.is_polished = False
+        segment.pre_polish_text = None
+        # 整文前と原文が同じ → 編集なしだったので is_edited も戻す
+        segment.is_edited = (revert_text != (segment.original_asr_text or ""))
+    elif segment.original_asr_text:
+        # 手動編集のみのセグメント：原文（ASR生テキスト）に戻す
+        revert_text = segment.original_asr_text
+        segment.text_content = revert_text
+        segment.is_edited = False
+        segment.is_polished = False
+    else:
         raise HTTPException(
             status_code=400,
             detail={"code": "NO_ORIGINAL", "message": "元のテキストが保存されていません"},
         )
 
-    segment.text_content = segment.original_asr_text
-    segment.is_edited = False
-    segment.is_polished = False
     db.commit()
-
-    return JSONResponse({"text": segment.original_asr_text})
+    return JSONResponse({
+        "text": revert_text,
+        "is_polished": segment.is_polished,
+        "is_edited": segment.is_edited,
+    })
 
 
 @router.patch("/api/segments/{segment_id}/comment")

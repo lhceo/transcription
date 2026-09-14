@@ -87,6 +87,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE segments ADD COLUMN bookmark_memo TEXT",
                 "ALTER TABLE segments ADD COLUMN is_polished INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE segments ADD COLUMN comment TEXT",
+                "ALTER TABLE segments ADD COLUMN pre_polish_text TEXT",
             ]:
                 try:
                     _cu.execute(_sql)
