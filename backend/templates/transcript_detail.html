@@ -961,62 +961,52 @@
     <aside class="transcript-sidebar-col" x-show="bookmarks.length > 0 || segmentComments.length > 0" x-cloak style="display:none"
            :class="sidebarCollapsed ? 'sidebar-collapsed' : ''">
 
-        {# 折り畳み時：アイコンストリップ（x-show 評価前フラッシュを防ぐため style="display:none"） #}
-        <div class="sidebar-strip" x-show="sidebarCollapsed" style="display:none">
-            <button class="sidebar-strip-btn" @click="sidebarCollapsed = false; sidebarTab = 'bookmarks'; localStorage.setItem('noto-sidebar-collapsed', 'false')"
-                    title="ブックマーク" x-show="bookmarks.length > 0">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px;color:#94a3b8"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                <span class="sidebar-strip-badge" x-text="bookmarks.length"></span>
-            </button>
-            <button class="sidebar-strip-btn" @click="sidebarCollapsed = false; sidebarTab = 'comments'; localStorage.setItem('noto-sidebar-collapsed', 'false')"
-                    title="コメント" x-show="segmentComments.length > 0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;color:#94a3b8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span class="sidebar-strip-badge sidebar-strip-badge-comment" x-text="segmentComments.length"></span>
-            </button>
-        </div>
-
-        {# 展開時コンテンツ（x-show 評価前フラッシュを防ぐため style="display:none"） #}
-        <div x-show="!sidebarCollapsed" style="display:none">
-        {# 折り畳みボタン #}
-        <div class="sidebar-collapse-btn-row">
-            <button class="sidebar-collapse-btn" @click="sidebarCollapsed = true; localStorage.setItem('noto-sidebar-collapsed', 'true')" title="折り畳む">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-        </div>
-        {# タブ切り替え（両方ある場合のみ表示） #}
-        <div class="sidebar-tabs" x-show="bookmarks.length > 0 && segmentComments.length > 0">
-            <button class="sidebar-tab" :class="sidebarTab === 'bookmarks' ? 'active' : ''"
-                    @click="sidebarTab = 'bookmarks'" title="ブックマーク" aria-label="ブックマーク">
-                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                <span class="sidebar-tab-count" x-text="bookmarks.length"></span>
-            </button>
-            <button class="sidebar-tab sidebar-tab-comment" :class="sidebarTab === 'comments' ? 'active' : ''"
-                    @click="sidebarTab = 'comments'" title="コメント" aria-label="コメント">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span class="sidebar-tab-count sidebar-tab-count-comment" x-text="segmentComments.length"></span>
-            </button>
-        </div>
-        {# ブックマークパネル #}
-        <div x-show="sidebarTab === 'bookmarks' || (bookmarks.length > 0 && segmentComments.length === 0)">
-            <div class="bookmark-panel" id="bookmark-panel">
-                <div class="bookmark-panel-header" x-show="segmentComments.length === 0">
-                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                    <span>ブックマーク</span>
-                    <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+        {# パネルコンテンツ（Activity Barの左側、折り畳み時は非表示） #}
+        <div class="sidebar-panel-content" x-show="!sidebarCollapsed" style="display:none">
+            {# ブックマークパネル #}
+            <div x-show="sidebarTab === 'bookmarks' || (bookmarks.length > 0 && segmentComments.length === 0)" style="display:none">
+                <div class="bookmark-panel" id="bookmark-panel">
+                    <div class="bookmark-panel-header">
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="width:14px;height:14px;color:#3b82f6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        <span>ブックマーク</span>
+                        <span class="bookmark-panel-count" x-text="bookmarks.length + '件'"></span>
+                    </div>
+                    <ul class="bookmark-list">
+                        <template x-for="bm in bookmarks" :key="bm.segId">
+                            <li class="bookmark-item">
+                                <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                                <input type="text"
+                                    class="bookmark-item-memo"
+                                    :value="bm.memo"
+                                    placeholder="メモ（任意）"
+                                    @change="saveBookmarkMemo(bm, $event.target.value)"
+                                    @keydown.enter.prevent="$event.target.blur()"
+                                    @compositionstart="$event.target._composing = true"
+                                    @compositionend="$event.target._composing = false">
+                                <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
                 </div>
-                <ul class="bookmark-list">
-                    <template x-for="bm in bookmarks" :key="bm.segId">
-                        <li class="bookmark-item">
-                            <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
-                            <input type="text"
-                                class="bookmark-item-memo"
-                                :value="bm.memo"
-                                placeholder="メモ（任意）"
-                                @change="saveBookmarkMemo(bm, $event.target.value)"
-                                @keydown.enter.prevent="$event.target.blur()"
-                                @compositionstart="$event.target._composing = true"
-                                @compositionend="$event.target._composing = false">
-                            <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+            </div>
+            {# コメントパネル #}
+            <div class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" style="display:none">
+                <div class="comment-panel-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#f59e0b"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>コメント</span>
+                    <span class="comment-panel-count" x-text="segmentComments.length + '件'"></span>
+                </div>
+                <ul class="comment-list">
+                    <template x-for="c in segmentComments" :key="c.segId">
+                        <li class="comment-item">
+                            <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="flex:1;min-width:0;cursor:pointer">
+                                <div class="comment-item-time" x-text="c.timeLabel"></div>
+                                <div class="comment-item-text" x-text="c.comment"></div>
+                                <div class="comment-item-excerpt" x-text="c.excerpt"></div>
+                            </div>
+                            <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                         </li>
@@ -1024,29 +1014,26 @@
                 </ul>
             </div>
         </div>
-        {# コメントパネル #}
-        <div class="comment-panel" x-show="sidebarTab === 'comments' || (segmentComments.length > 0 && bookmarks.length === 0)" x-cloak>
-            <div class="comment-panel-header" x-show="bookmarks.length === 0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#f59e0b"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>コメント</span>
-                <span class="comment-panel-count" x-text="segmentComments.length + '件'"></span>
-            </div>
-            <ul class="comment-list">
-                <template x-for="c in segmentComments" :key="c.segId">
-                    <li class="comment-item">
-                        <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="flex:1;min-width:0;cursor:pointer">
-                            <div class="comment-item-time" x-text="c.timeLabel"></div>
-                            <div class="comment-item-text" x-text="c.comment"></div>
-                            <div class="comment-item-excerpt" x-text="c.excerpt"></div>
-                        </div>
-                        <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
-                    </li>
-                </template>
-            </ul>
+
+        {# Activity Bar：常時表示のアイコン縦タブ #}
+        <div class="sidebar-activity-bar">
+            <button class="sidebar-activity-btn"
+                    :class="!sidebarCollapsed && sidebarTab === 'bookmarks' ? 'active' : ''"
+                    @click="toggleSidebarTab('bookmarks')"
+                    x-show="bookmarks.length > 0" style="display:none"
+                    title="ブックマーク" aria-label="ブックマーク">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:16px;height:16px"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                <span class="sidebar-activity-badge" x-show="bookmarks.length > 0" x-text="bookmarks.length"></span>
+            </button>
+            <button class="sidebar-activity-btn sidebar-activity-btn-comment"
+                    :class="!sidebarCollapsed && sidebarTab === 'comments' ? 'active-comment' : ''"
+                    @click="toggleSidebarTab('comments')"
+                    x-show="segmentComments.length > 0" style="display:none"
+                    title="コメント" aria-label="コメント">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="sidebar-activity-badge sidebar-activity-badge-comment" x-show="segmentComments.length > 0" x-text="segmentComments.length"></span>
+            </button>
         </div>
-        </div>{# /展開時コンテンツ #}
     </aside>
 
     </div>{# /transcript-body-layout #}
@@ -1887,13 +1874,27 @@ function segmentsApp(transcriptId, historyNames) {
             else if (this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
         },
 
+        _commentWrap(segId) {
+            const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+            return card ? card.querySelector('.segment-comment-edit-wrap') : null;
+        },
+
         toggleCommentEdit(segId) {
             if (this.commentEditId === segId) {
+                const wrap = this._commentWrap(segId);
+                if (wrap) wrap.style.display = 'none';
                 this.commentEditId = null;
                 return;
             }
+            // Hide previous
+            if (this.commentEditId) {
+                const prevWrap = this._commentWrap(this.commentEditId);
+                if (prevWrap) prevWrap.style.display = 'none';
+            }
             this.commentEditId = segId;
             this.$nextTick(() => {
+                const wrap = this._commentWrap(segId);
+                if (wrap) wrap.style.display = 'flex';
                 const ta = document.getElementById('comment-ta-' + segId);
                 if (ta) {
                     ta.focus();
@@ -1904,6 +1905,10 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         cancelCommentEdit() {
+            if (this.commentEditId) {
+                const wrap = this._commentWrap(this.commentEditId);
+                if (wrap) wrap.style.display = 'none';
+            }
             this.commentEditId = null;
         },
 
@@ -1916,6 +1921,8 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({ comment: text }),
                 });
                 if (!res.ok) throw new Error(res.status);
+                const wrap = this._commentWrap(segId);
+                if (wrap) wrap.style.display = 'none';
                 this.commentEditId = null;
                 this.segComments[segId] = text || null;
                 const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
@@ -1936,6 +1943,8 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({ comment: '' }),
                 });
                 if (!res.ok) throw new Error(res.status);
+                const dWrap = this._commentWrap(segId);
+                if (dWrap) dWrap.style.display = 'none';
                 this.commentEditId = null;
                 this.segComments[segId] = null;
                 if (cardEl) cardEl.dataset.comment = '';
@@ -1944,6 +1953,17 @@ function segmentsApp(transcriptId, historyNames) {
                 window.showToast('コメントを削除しました');
             } catch (e) {
                 window.showToast('削除に失敗しました', 'error');
+            }
+        },
+
+        toggleSidebarTab(tab) {
+            if (!this.sidebarCollapsed && this.sidebarTab === tab) {
+                this.sidebarCollapsed = true;
+                localStorage.setItem('noto-sidebar-collapsed', 'true');
+            } else {
+                this.sidebarCollapsed = false;
+                this.sidebarTab = tab;
+                localStorage.setItem('noto-sidebar-collapsed', 'false');
             }
         },
 

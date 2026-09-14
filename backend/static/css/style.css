@@ -2454,57 +2454,58 @@ a.history-item-filename:hover {
 }
 
 /* サイドバータブ切り替え */
-.sidebar-tabs {
+/* ── サイドバー Activity Bar ── */
+.sidebar-activity-bar {
+    width: 44px;
+    flex-shrink: 0;
     display: flex;
-    border-bottom: 1px solid var(--color-border);
-}
-.sidebar-tab {
-    flex: 1;
-    display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    padding: 10px 0;
     gap: 4px;
-    padding: 8px 4px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    color: var(--color-text-muted);
-    border-bottom: 2px solid transparent;
-    transition: color .15s, border-color .15s;
-    background: none;
-    border-top: none;
-    border-left: none;
-    border-right: none;
+    border-left: 1px solid var(--color-border);
+    align-self: stretch;
 }
-.sidebar-tab.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
-}
-.sidebar-tab-comment.active {
-    color: #f59e0b;
-    border-bottom-color: #f59e0b;
-}
-.sidebar-tab-count {
-    display: inline-flex;
+.sidebar-activity-btn {
+    position: relative;
+    display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    background: #e2e8f0;
-    color: #64748b;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #94a3b8;
+    transition: background 0.12s, color 0.12s;
+}
+.sidebar-activity-btn:hover { background: #f1f5f9; color: #475569; }
+.sidebar-activity-btn.active { color: #3b82f6; background: #eff6ff; }
+.sidebar-activity-btn.active-comment { color: #f59e0b; background: #fffbeb; }
+.sidebar-activity-badge {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    min-width: 14px;
+    height: 14px;
+    background: #cbd5e1;
+    color: #475569;
     border-radius: 20px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    pointer-events: none;
 }
-.sidebar-tab.active .sidebar-tab-count {
-    background: #dbeafe;
-    color: #1d4ed8;
-}
-.sidebar-tab-count-comment { }
-.sidebar-tab.active .sidebar-tab-count-comment {
-    background: #fef3c7;
-    color: #92400e;
+.sidebar-activity-badge-comment { background: #fcd34d; color: #92400e; }
+.sidebar-panel-content {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    max-height: calc(100vh - 90px);
 }
 
 /* ── 原文に戻す確認バー ── */
@@ -2967,86 +2968,44 @@ a.history-item-filename:hover {
     min-width: 0;
 }
 .transcript-sidebar-col {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
     width: 220px;
     flex-shrink: 0;
     position: sticky;
     top: 72px;
     max-height: calc(100vh - 90px);
-    overflow-y: auto;
+    overflow: hidden;
     transition: width 0.2s ease;
 }
 .transcript-sidebar-col.sidebar-collapsed {
     width: 44px;
-    overflow: hidden;
     flex-shrink: 0;
 }
-.sidebar-strip {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 0;
-}
-.sidebar-strip-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border: none;
-    background: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.1s;
-}
-.sidebar-strip-btn:hover { background: #f1f5f9; }
-.sidebar-strip-btn:first-child:hover svg { color: #3b82f6 !important; }
-.sidebar-strip-btn:last-child:hover svg { color: #f59e0b !important; }
-.sidebar-strip-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 15px;
-    height: 15px;
-    background: #cbd5e1;
-    color: #475569;
-    border-radius: 20px;
-    font-size: 9px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 3px;
-}
-.sidebar-strip-badge-comment { background: #cbd5e1; color: #475569; }
-.sidebar-collapse-btn-row {
-    display: flex;
-    justify-content: flex-end;
-    padding: 6px 10px 0;
-}
-.sidebar-collapse-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: none;
-    background: none;
-    border-radius: 4px;
-    cursor: pointer;
-    color: var(--color-text-muted);
-    transition: background 0.1s;
-}
-.sidebar-collapse-btn:hover { background: #f1f5f9; }
 /* 固定音声プレイヤーがある場合、プレイヤー分だけ下限を上げてスクロール可能にする */
-body:has(.audio-player-fixed) .transcript-sidebar-col {
+body:has(.audio-player-fixed) .transcript-sidebar-col,
+body:has(.audio-player-fixed) .sidebar-panel-content {
     max-height: calc(100vh - 72px - 108px);
 }
 @media (max-width: 640px) {
     .transcript-body-layout { flex-direction: column; }
-    .transcript-sidebar-col { width: 100%; position: static; max-height: none; }
+    .transcript-sidebar-col {
+        width: 100%;
+        position: static;
+        max-height: none;
+        flex-direction: column-reverse;
+    }
     .transcript-sidebar-col.sidebar-collapsed { width: 100%; }
+    .sidebar-activity-bar {
+        flex-direction: row;
+        width: 100%;
+        border-left: none;
+        border-bottom: 1px solid var(--color-border);
+        padding: 6px 8px;
+        justify-content: flex-start;
+    }
+    .sidebar-panel-content { max-height: none; width: 100%; }
 }
 
 /* ブックマークパネル（右サイドバー） */
