@@ -2163,38 +2163,29 @@ function segmentsApp(transcriptId, historyNames) {
 
         // v1.1: PC 用キーボードショートカット
         // 非編集時: Space=再生/停止、←/→=±3秒
-        // 編集時(textarea): Ctrl+Space=再生/停止、Ctrl+←/→=±3秒
+        // 編集時(segment textarea): Escape=再生/停止
         setupKeyboardShortcuts() {
             document.addEventListener('keydown', (e) => {
                 const target = e.target;
                 const tag = (target.tagName || '').toLowerCase();
 
-                // ── 編集中(textarea)専用: Ctrl のみ、他修飾キーなし ──
-                if (tag === 'textarea' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                // ── セグメント編集中: Escape = 再生/停止 ──
+                if (tag === 'textarea' && e.key === 'Escape'
+                    && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
+                    && target.classList.contains('segment-text-edit')) {
                     const audio = document.querySelector('.audio-player-section audio');
                     if (!audio) return;
-                    if (e.code === 'Space' || e.key === ' ') {
-                        e.preventDefault();
-                        if (audio.paused) {
-                            audio.play().catch(() => {});
-                        } else {
-                            audio.pause();
-                        }
-                    } else if (e.key === 'ArrowLeft') {
-                        e.preventDefault();
-                        audio.currentTime = Math.max(0, audio.currentTime - 3);
-                    } else if (e.key === 'ArrowRight') {
-                        e.preventDefault();
-                        const dur = audio.duration || 0;
-                        audio.currentTime = dur > 0
-                            ? Math.min(dur, audio.currentTime + 3)
-                            : audio.currentTime + 3;
+                    e.preventDefault();
+                    if (audio.paused) {
+                        audio.play().catch(() => {});
+                    } else {
+                        audio.pause();
                     }
                     return;
                 }
 
-                // ── 非編集時: Ctrl は許可、Cmd/Alt/Shift は無視、フォーム要素以外 ──
-                if (e.metaKey || e.altKey || e.shiftKey) return;
+                // ── 非編集時: 修飾キーなし、フォーム要素以外 ──
+                if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
                 if (tag === 'textarea' || tag === 'input' || tag === 'select' || target.isContentEditable) return;
 
                 const audio = document.querySelector('.audio-player-section audio');
