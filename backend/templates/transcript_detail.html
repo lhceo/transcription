@@ -1493,6 +1493,7 @@ function segmentsApp(transcriptId, historyNames) {
         saveStatus: 'saved',   // 'saved' | 'pending' | 'saving' | 'error'
         pendingSegments: new Map(),  // segmentId → text
         undoStack: [],         // [{segmentId, oldText, newText}] 最大20件
+        redoStack: [],
         _saveTimer: null,
         _saveErrorToast: null,  // 保存失敗トースト要素（重複防止・成功時クローズ用）
 
@@ -1768,11 +1769,34 @@ function segmentsApp(transcriptId, historyNames) {
                 );
                 if (card) this._updateSplitBtnPos(card);
             });
-            // Cmd+Z でセグメント操作の取り消し
+            // Cmd+Z / Cmd+Shift+Z でセグメント操作の取り消し・やり直し
             window.addEventListener('keydown', async (e) => {
-                if (!(e.key === 'z' && (e.ctrlKey || e.metaKey)) || e.shiftKey) return;
+                if (!(e.key === 'z' && (e.ctrlKey || e.metaKey))) return;
                 const tag = document.activeElement?.tagName?.toLowerCase();
                 const isEditable = tag === 'textarea' || tag === 'input' || document.activeElement?.isContentEditable;
+
+                if (e.shiftKey) {
+                    // Cmd+Shift+Z = Redo
+                    if (isEditable) {
+                        const ta = document.activeElement;
+                        const segId = ta.dataset?.segmentId;
+                        if (segId) {
+                            const hasUnsaved = ta.value !== (ta.dataset.originalText ?? ta.value);
+                            if (hasUnsaved) return;
+                            if (!this.redoStack.length) return;
+                            e.preventDefault();
+                            await this._redoLastUndo();
+                            return;
+                        }
+                        return;
+                    }
+                    if (!this.redoStack.length) return;
+                    e.preventDefault();
+                    await this._redoLastUndo();
+                    return;
+                }
+
+                // Cmd+Z = Undo
                 if (isEditable) {
                     const ta = document.activeElement;
                     const segId = ta.dataset?.segmentId;
@@ -2138,22 +2162,40 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         // v1.1: PC 用キーボードショートカット
-        // - Space: 再生/停止
-        // - ←/→: ±3秒戻る/進む
-        // textarea / input フォーカス中、修飾キー併用時は何もしない (タイプ操作・
-        // ブラウザ標準ショートカットを邪魔しない)。スマホでは key event が
-        // 発火しないので影響なし。
+        // 非編集時: Space=再生/停止、←/→=±3秒
+        // 編集時(textarea): Ctrl+Space=再生/停止、Ctrl+←/→=±3秒
         setupKeyboardShortcuts() {
             document.addEventListener('keydown', (e) => {
-                // 修飾キー併用は無視 (Cmd+Space の Spotlight 等とぶつけない)
-                if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-                // 入力中のフォーム要素にフォーカスがある時は無視
                 const target = e.target;
                 const tag = (target.tagName || '').toLowerCase();
-                if (tag === 'textarea' || tag === 'input' || tag === 'select' || target.isContentEditable) {
+
+                // ── 編集中(textarea)専用: Ctrl のみ、他修飾キーなし ──
+                if (tag === 'textarea' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                    const audio = document.querySelector('.audio-player-section audio');
+                    if (!audio) return;
+                    if (e.code === 'Space' || e.key === ' ') {
+                        e.preventDefault();
+                        if (audio.paused) {
+                            audio.play().catch(() => {});
+                        } else {
+                            audio.pause();
+                        }
+                    } else if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        audio.currentTime = Math.max(0, audio.currentTime - 3);
+                    } else if (e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        const dur = audio.duration || 0;
+                        audio.currentTime = dur > 0
+                            ? Math.min(dur, audio.currentTime + 3)
+                            : audio.currentTime + 3;
+                    }
                     return;
                 }
+
+                // ── 非編集時: Ctrl は許可、Cmd/Alt/Shift は無視、フォーム要素以外 ──
+                if (e.metaKey || e.altKey || e.shiftKey) return;
+                if (tag === 'textarea' || tag === 'input' || tag === 'select' || target.isContentEditable) return;
 
                 const audio = document.querySelector('.audio-player-section audio');
                 if (!audio) return;
@@ -3010,6 +3052,7 @@ function segmentsApp(transcriptId, historyNames) {
                             if (origTa) { origTa.focus(); origTa.setSelectionRange(entry.originalText.length, entry.originalText.length); }
                         });
                     }
+                    this.redoStack = [];
                     window.showToast('分割を取り消しました');
                 } catch (e) {
                     this.undoStack.push(entry);
@@ -3052,13 +3095,14 @@ function segmentsApp(transcriptId, historyNames) {
                             if (prevTa) { prevTa.focus(); prevTa.setSelectionRange(prevTa.value.length, prevTa.value.length); }
                         });
                     }
+                    this.redoStack = [];
                     window.showToast('結合を取り消しました');
                 } catch (err) {
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
             } else {
-                const { segmentId, oldText } = entry;
+                const { segmentId, oldText, newText } = entry;
                 try {
                     const res = await fetch(`/api/segments/${segmentId}`, {
                         method: 'PATCH',
@@ -3078,11 +3122,44 @@ function segmentsApp(transcriptId, historyNames) {
                         }
                         if (viewDiv) this.setSegmentTextContent(viewDiv, oldText);
                     }
+                    this.redoStack.push({ segmentId, oldText, newText });
+                    if (this.redoStack.length > 20) this.redoStack.shift();
                     window.showToast('取り消しました');
                 } catch (e) {
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
+            }
+        },
+
+        async _redoLastUndo() {
+            const entry = this.redoStack.pop();
+            if (!entry) return;
+            const { segmentId, oldText, newText } = entry;
+            try {
+                const res = await fetch(`/api/segments/${segmentId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: newText }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const card = document.querySelector(`.segment-card[data-segment-id="${segmentId}"]`);
+                if (card) {
+                    const ta = card.querySelector('.segment-text-edit');
+                    const viewDiv = card.querySelector('.segment-text');
+                    if (ta) {
+                        ta.value = newText;
+                        ta.dataset.originalText = newText;
+                        this.fitToContent(ta);
+                    }
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
+                }
+                this.undoStack.push({ segmentId, oldText, newText });
+                if (this.undoStack.length > 20) this.undoStack.shift();
+                window.showToast('やり直しました');
+            } catch (e) {
+                this.redoStack.push(entry);
+                window.showToast('やり直しに失敗しました', 'error');
             }
         },
 
@@ -3115,7 +3192,8 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({text: newText}),
                 });
                 if (!res.ok) throw new Error(await res.text());
-                // undo スタックに積む（保存成功時のみ）
+                // undo スタックに積む（保存成功時のみ）。新規編集でredo履歴をクリア。
+                this.redoStack = [];
                 this.undoStack.push({ segmentId, oldText: original, newText });
                 if (this.undoStack.length > 20) this.undoStack.shift();
                 ta.dataset.originalText = newText;
@@ -3314,7 +3392,8 @@ function segmentsApp(transcriptId, historyNames) {
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
                 );
-                // 結合操作自体の undo エントリを積む
+                // 結合操作自体の undo エントリを積む（新規操作でredo履歴クリア）
+                this.redoStack = [];
                 this.undoStack.push({
                     type: 'merge',
                     prevSegId: data.prev_id,
@@ -3410,8 +3489,9 @@ function segmentsApp(transcriptId, historyNames) {
                 // (focusedEditingSegmentId を更新 → watcher で syncSegmentDisplay
                 // が走り、新カードの textarea が表示される)
                 this.focusedEditingSegmentId = data.new.id;
-                // undoスタックに積む（分割の取り消しに使う）
+                // undoスタックに積む（分割の取り消しに使う）（新規操作でredo履歴クリア）
                 // addedEditedBadge: 分割前にバッジがなかった場合 = 分割でバッジを追加した（undo時に除去する）
+                this.redoStack = [];
                 this.undoStack.push({
                     type: 'split',
                     originalId: segmentId,
