@@ -1999,7 +1999,7 @@ a.history-item-filename:hover {
     border-radius: var(--radius);
     position: sticky;
     top: 8px;
-    z-index: 5;
+    z-index: 60;
 }
 
 .toolbar-left {
