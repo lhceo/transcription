@@ -1779,11 +1779,20 @@ function segmentsApp(transcriptId, historyNames) {
                 const tag = document.activeElement?.tagName?.toLowerCase();
                 const isEditable = tag === 'textarea' || tag === 'input' || document.activeElement?.isContentEditable;
                 if (isEditable) {
-                    // textarea内では分割の取り消しのみ介入。テキスト変更はブラウザに任せる
-                    const top = this.undoStack[this.undoStack.length - 1];
-                    if (!top || top.type !== 'split') return;
-                    e.preventDefault();
-                    await this._undoLastSave();
+                    const ta = document.activeElement;
+                    const segId = ta.dataset?.segmentId;
+                    if (segId) {
+                        // セグメントtextarea: 未保存の入力（タイプ中）であればブラウザに任せる
+                        const hasUnsaved = ta.value !== (ta.dataset.originalText ?? ta.value);
+                        if (hasUnsaved) return;
+                        // 保存済み状態ならアプリundoを実行
+                        const top = this.undoStack[this.undoStack.length - 1];
+                        if (!top) return;
+                        e.preventDefault();
+                        await this._undoLastSave();
+                        return;
+                    }
+                    // コメント入力欄など非セグメントtextareaはブラウザに任せる
                     return;
                 }
                 if (this.undoStack.length === 0) return;
@@ -2911,6 +2920,48 @@ function segmentsApp(transcriptId, historyNames) {
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
+            } else if (entry.type === 'merge') {
+                // 結合の取り消し: 分割APIで元の2セグメントに戻す
+                try {
+                    const splitRes = await fetch(`/api/segments/${entry.prevSegId}/split`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            position: entry.prevTextBefore.length,
+                            text: entry.combinedText,
+                        }),
+                    });
+                    if (!splitRes.ok) throw new Error('split failed');
+                    const splitData = await splitRes.json();
+                    // DOM: 前カード更新
+                    const prevCard = document.querySelector(`.segment-card[data-segment-id="${entry.prevSegId}"]`);
+                    if (prevCard) {
+                        const prevTa = prevCard.querySelector('.segment-text-edit');
+                        const prevViewDiv = prevCard.querySelector('.segment-text');
+                        if (prevTa) {
+                            prevTa.value = splitData.current.text;
+                            prevTa.dataset.originalText = splitData.current.text;
+                            this.fitToContent(prevTa);
+                        }
+                        if (prevViewDiv) this.setSegmentTextContent(prevViewDiv, splitData.current.text);
+                        if (splitData.current.end_seconds !== undefined)
+                            prevCard.dataset.endSeconds = String(splitData.current.end_seconds);
+                        // DOM: 復元したカードを挿入
+                        const restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
+                        prevCard.after(restoredCard);
+                        if (window.Alpine) Alpine.initTree(restoredCard);
+                        this.recolorByName();
+                        // フォーカスを前カードの結合点へ
+                        this.focusedEditingSegmentId = entry.prevSegId;
+                        this.$nextTick(() => {
+                            if (prevTa) { prevTa.focus(); prevTa.setSelectionRange(prevTa.value.length, prevTa.value.length); }
+                        });
+                    }
+                    window.showToast('結合を取り消しました');
+                } catch (err) {
+                    this.undoStack.push(entry);
+                    window.showToast('取り消しに失敗しました', 'error');
+                }
             } else {
                 const { segmentId, oldText } = entry;
                 try {
@@ -3133,9 +3184,12 @@ function segmentsApp(transcriptId, historyNames) {
                 }
                 const data = await res.json();
 
-                // 前カードのテキスト更新
+                // 前カードのテキスト更新（merge undo 用に更新前のテキストを保存）
                 const prevCard = document.querySelector(`.segment-card[data-segment-id="${data.prev_id}"]`);
+                let prevTextBefore = '';
                 if (prevCard) {
+                    const prevTa0 = prevCard.querySelector('.segment-text-edit');
+                    prevTextBefore = prevTa0?.dataset?.originalText ?? prevTa0?.value ?? '';
                     const prevViewDiv = prevCard.querySelector('.segment-text');
                     const prevTextarea = prevCard.querySelector('.segment-text-edit');
                     if (prevViewDiv) this.setSegmentTextContent(prevViewDiv, data.prev_text);
@@ -3154,6 +3208,15 @@ function segmentsApp(transcriptId, historyNames) {
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
                 );
+                // 結合操作自体の undo エントリを積む
+                this.undoStack.push({
+                    type: 'merge',
+                    prevSegId: data.prev_id,
+                    prevTextBefore,
+                    combinedText: data.prev_text,
+                    currentText,
+                });
+                if (this.undoStack.length > 20) this.undoStack.shift();
 
                 // 前カードの末尾にフォーカス移動
                 if (prevCard) {
