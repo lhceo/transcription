@@ -3267,6 +3267,7 @@ function segmentsApp(transcriptId, historyNames) {
                 // 「カードが分かれていないように見える」バグになる。
                 const currentCard = textarea.closest('.segment-card');
                 const originalEndSeconds = parseFloat(currentCard?.dataset.endSeconds || '0');
+                let hadBadge = false; // ブロック外でも参照するため if の前に宣言
                 if (currentCard) {
                     const viewDiv = currentCard.querySelector('.segment-text');
                     // v1.1: span 構造を保つヘルパー経由で更新
@@ -3278,7 +3279,7 @@ function segmentsApp(transcriptId, historyNames) {
                     if (data.current.end_seconds !== undefined) {
                         currentCard.dataset.endSeconds = String(data.current.end_seconds);
                     }
-                    const hadBadge = !!currentCard.querySelector('[data-edited]');
+                    hadBadge = !!currentCard.querySelector('[data-edited]');
                     if (!hadBadge) {
                         const time = currentCard.querySelector('.segment-time');
                         const badge = document.createElement('span');
