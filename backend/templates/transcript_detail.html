@@ -609,6 +609,32 @@
                     </div>
                 </div>
             </div>
+            {# ショートカットヘルプ #}
+            <div class="shortcut-help" x-data="{ open: false }" @click.outside="open = false">
+                <button type="button" class="shortcut-help-btn" @click="open = !open" :aria-expanded="open" title="キーボードショートカット">?</button>
+                <div class="shortcut-help-popover" x-show="open" x-cloak>
+                    <h4>キーボードショートカット</h4>
+                    <p class="shortcut-group-label">通常閲覧中</p>
+                    <ul class="shortcut-list">
+                        <li><span>再生 / 停止</span><kbd>Space</kbd></li>
+                        <li><span>3秒戻る</span><kbd>←</kbd></li>
+                        <li><span>3秒進む</span><kbd>→</kbd></li>
+                    </ul>
+                    <p class="shortcut-group-label">セグメント編集中</p>
+                    <ul class="shortcut-list">
+                        <li><span>再生 / 停止</span><kbd>Escape</kbd></li>
+                        <li><span>取り消す</span><kbd>⌘Z</kbd></li>
+                        <li><span>やり直す</span><kbd>⌘⇧Z</kbd></li>
+                        <li><span>ここで分割</span><kbd>⇧↵</kbd></li>
+                    </ul>
+                    <p class="shortcut-group-label">どちらでも — MacBook メディアキー</p>
+                    <ul class="shortcut-list">
+                        <li><span>3秒戻る</span><kbd>F7</kbd></li>
+                        <li><span>再生 / 停止</span><kbd>F8</kbd></li>
+                        <li><span>3秒進む</span><kbd>F9</kbd></li>
+                    </ul>
+                </div>
+            </div>
         </div>{# /toolbar-right #}
     </div>{# /detail-toolbar #}
 

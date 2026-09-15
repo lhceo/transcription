@@ -2137,6 +2137,92 @@ a.history-item-filename:hover {
     background: #f8fafc;
 }
 
+/* ── ショートカットヘルプポップオーバー ── */
+.shortcut-help {
+    position: relative;
+    display: inline-flex;
+}
+
+.shortcut-help-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.shortcut-help-btn:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+}
+
+.shortcut-help-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 240px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    padding: 12px 14px 14px;
+    z-index: 200;
+}
+
+.shortcut-help-popover h4 {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+}
+
+.shortcut-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin: 10px 0 4px;
+}
+
+.shortcut-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.shortcut-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 0;
+    font-size: 12.5px;
+    color: var(--color-text);
+}
+
+.shortcut-list kbd {
+    font-family: ui-monospace, "SFMono-Regular", monospace;
+    font-size: 11px;
+    background: var(--color-hover);
+    border: 1px solid var(--color-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--color-text);
+}
+
 .export-option strong {
     font-size: 13px;
     color: var(--color-primary);
