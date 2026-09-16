@@ -579,6 +579,15 @@
                 </div>
             </div>
 
+            <button type="button" class="btn btn-secondary-outline" x-show="editMode" x-cloak
+                    @click="findReplace.open ? closeFindReplace() : openFindReplace()"
+                    :class="{ 'is-active': findReplace.open }"
+                    title="テキストを検索・置換 (⌘⇧H)" style="padding:5px 10px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;vertical-align:-2px">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </button>
+
             <button type="button" class="btn btn-polish" @click="openPolish()" style="position:relative">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px">
                     <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -637,6 +646,42 @@
             </div>
         </div>{# /toolbar-right #}
     </div>{# /detail-toolbar #}
+
+    {# ──── 検索・置換バー ──── #}
+    <div class="find-replace-bar" x-show="findReplace.open && editMode" x-cloak
+         @keydown.escape.stop="closeFindReplace()">
+        <div class="find-replace-inputs">
+            <input type="text" class="find-replace-input" placeholder="検索"
+                   x-model="findReplace.query"
+                   @input="onFindInput()"
+                   @keydown.enter="if (!$event.isComposing) { $event.shiftKey ? prevMatch() : nextMatch(); }"
+                   x-ref="findInput"
+                   @compositionstart="$event.target._composing = true"
+                   @compositionend="$event.target._composing = false">
+            <input type="text" class="find-replace-input" placeholder="置換後"
+                   x-model="findReplace.replacement"
+                   @keydown.enter.prevent="if (!$event.isComposing) replaceCurrent()"
+                   @compositionstart="$event.target._composing = true"
+                   @compositionend="$event.target._composing = false">
+        </div>
+        <span class="find-replace-count"
+              x-text="findReplace.query ? (findReplace.matches.length ? (findReplace.currentIndex + 1) + ' / ' + findReplace.matches.length + ' 件' : '0 件') : ''"></span>
+        <div class="find-replace-nav">
+            <button type="button" class="find-replace-nav-btn" @click="prevMatch()" :disabled="findReplace.matches.length === 0" title="前へ (Shift+Enter)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button type="button" class="find-replace-nav-btn" @click="nextMatch()" :disabled="findReplace.matches.length === 0" title="次へ (Enter)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+        </div>
+        <button type="button" class="btn btn-secondary-outline btn-sm"
+                @click="replaceCurrent()" :disabled="findReplace.currentIndex < 0 || findReplace.replacement === '' || findReplace.matches.length === 0">置換</button>
+        <button type="button" class="btn btn-primary btn-sm"
+                @click="replaceAll()" :disabled="findReplace.matches.length === 0 || findReplace.replacement === ''">すべて置換</button>
+        <button type="button" class="find-replace-close" @click="closeFindReplace()" title="閉じる (Esc)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
 
     {# ──── 編集モード開始ヒント（2秒で自動消滅） ──── #}
     <div class="edit-mode-hint" x-show="showEditHint" x-cloak style="display:none">
@@ -1521,6 +1566,7 @@ function segmentsApp(transcriptId, historyNames) {
         undoStack: [],         // [{segmentId, oldText, newText}] 最大20件
         redoStack: [],
         _saveTimer: null,
+        findReplace: { open: false, query: '', replacement: '', matches: [], currentIndex: -1 },
         _saveErrorToast: null,  // 保存失敗トースト要素（重複防止・成功時クローズ用）
 
         editor: {
@@ -1749,6 +1795,7 @@ function segmentsApp(transcriptId, historyNames) {
         // テンプレートの x-show="shouldShowTextarea(segIdHere)" から呼ばれる
         // (Jinja で各セグメントの id が静的に展開される)。
         shouldShowTextarea(segId) {
+            if (this.findReplace.open) return false;
             return this.editMode && this.focusedEditingSegmentId === segId;
         },
 
@@ -1802,6 +1849,14 @@ function segmentsApp(transcriptId, historyNames) {
                 );
                 if (card) this._updateSplitBtnPos(card);
             });
+            // Cmd+Shift+H で検索・置換バーを開閉
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'h' && e.shiftKey && (e.ctrlKey || e.metaKey) && this.editMode) {
+                    e.preventDefault();
+                    if (this.findReplace.open) this.closeFindReplace(); else this.openFindReplace();
+                }
+            });
+
             // Cmd+Z / Cmd+Shift+Z でセグメント操作の取り消し・やり直し
             window.addEventListener('keydown', async (e) => {
                 if (!(e.key === 'z' && (e.ctrlKey || e.metaKey))) return;
@@ -3049,6 +3104,185 @@ function segmentsApp(transcriptId, historyNames) {
             }, 0);
 
             await this._saveSegment(segmentId, t);
+        },
+
+        // ── 検索・置換 ──────────────────────────────────────────────────
+        openFindReplace() {
+            this.focusedEditingSegmentId = null; // 編集中 textarea を閉じる
+            this.findReplace.open = true;
+            this.$nextTick(() => this.$refs.findInput?.focus());
+        },
+
+        closeFindReplace() {
+            this._clearFindHighlights();
+            this.findReplace.open = false;
+            this.findReplace.query = '';
+            this.findReplace.replacement = '';
+            this.findReplace.matches = [];
+            this.findReplace.currentIndex = -1;
+        },
+
+        onFindInput() {
+            this._clearFindHighlights();
+            const q = this.findReplace.query;
+            if (!q) { this.findReplace.matches = []; this.findReplace.currentIndex = -1; return; }
+            const matches = [];
+            const qLower = q.toLowerCase();
+            document.querySelectorAll('#segment-list .segment-card').forEach(card => {
+                const segId = parseInt(card.dataset.segmentId, 10);
+                const ta = card.querySelector('.segment-text-edit');
+                const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
+                let idx = 0;
+                while ((idx = text.toLowerCase().indexOf(qLower, idx)) !== -1) {
+                    matches.push({ segId, cardEl: card, startIdx: idx, text });
+                    idx += q.length;
+                }
+            });
+            this.findReplace.matches = matches;
+            this.findReplace.currentIndex = matches.length > 0 ? 0 : -1;
+            this._applyFindHighlights();
+            if (matches.length > 0) this._scrollToFindMatch(0);
+        },
+
+        prevMatch() {
+            if (!this.findReplace.matches.length) return;
+            this.findReplace.currentIndex = (this.findReplace.currentIndex - 1 + this.findReplace.matches.length) % this.findReplace.matches.length;
+            this._applyFindHighlights();
+            this._scrollToFindMatch(this.findReplace.currentIndex);
+        },
+
+        nextMatch() {
+            if (!this.findReplace.matches.length) return;
+            this.findReplace.currentIndex = (this.findReplace.currentIndex + 1) % this.findReplace.matches.length;
+            this._applyFindHighlights();
+            this._scrollToFindMatch(this.findReplace.currentIndex);
+        },
+
+        _scrollToFindMatch(idx) {
+            const m = this.findReplace.matches[idx];
+            if (!m) return;
+            m.cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        },
+
+        _clearFindHighlights() {
+            document.querySelectorAll('#segment-list .segment-text-remaining mark.find-highlight').forEach(mark => {
+                const parent = mark.parentNode;
+                if (parent) parent.replaceChild(document.createTextNode(mark.textContent), mark);
+            });
+            document.querySelectorAll('#segment-list .segment-text-remaining').forEach(el => {
+                if (el.innerHTML.includes('find-highlight')) el.normalize();
+            });
+        },
+
+        _applyFindHighlights() {
+            this._clearFindHighlights();
+            const q = this.findReplace.query;
+            if (!q || !this.findReplace.matches.length) return;
+            const currentMatch = this.findReplace.matches[this.findReplace.currentIndex];
+            // グループ化（セグメントごと）
+            const bySegId = new Map();
+            this.findReplace.matches.forEach((m, gi) => {
+                if (!bySegId.has(m.segId)) bySegId.set(m.segId, []);
+                bySegId.get(m.segId).push({ ...m, gi });
+            });
+            bySegId.forEach((segMatches) => {
+                const remaining = segMatches[0].cardEl.querySelector('.segment-text-remaining');
+                if (!remaining) return;
+                const ta = segMatches[0].cardEl.querySelector('.segment-text-edit');
+                const text = ta ? ta.value : segMatches[0].text;
+                let html = '';
+                let last = 0;
+                segMatches.forEach(m => {
+                    const isActive = currentMatch && m.gi === this.findReplace.currentIndex;
+                    html += this._escHtml(text.slice(last, m.startIdx));
+                    html += `<mark class="find-highlight${isActive ? ' find-highlight-active' : ''}">${this._escHtml(text.slice(m.startIdx, m.startIdx + q.length))}</mark>`;
+                    last = m.startIdx + q.length;
+                });
+                html += this._escHtml(text.slice(last));
+                remaining.innerHTML = html;
+            });
+        },
+
+        _escHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        },
+
+        async replaceCurrent() {
+            const idx = this.findReplace.currentIndex;
+            if (idx < 0 || !this.findReplace.matches.length) return;
+            const m = this.findReplace.matches[idx];
+            const q = this.findReplace.query;
+            const r = this.findReplace.replacement;
+            const ta = m.cardEl.querySelector('.segment-text-edit');
+            const oldText = ta ? ta.value : m.text;
+            const newText = oldText.slice(0, m.startIdx) + r + oldText.slice(m.startIdx + q.length);
+            try {
+                const res = await fetch(`/api/segments/${m.segId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: newText }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                if (ta) { ta.value = newText; ta.dataset.originalText = newText; }
+                const viewDiv = m.cardEl.querySelector('.segment-text');
+                if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
+                this.redoStack = [];
+                this.undoStack.push({ segmentId: m.segId, oldText, newText });
+                if (this.undoStack.length > 20) this.undoStack.shift();
+                // 再検索。置換後に残るヒットの currentIndex を保持（または末尾クランプ）
+                const prevIdx = this.findReplace.currentIndex;
+                this.onFindInput();
+                if (this.findReplace.matches.length > 0) {
+                    this.findReplace.currentIndex = Math.min(prevIdx, this.findReplace.matches.length - 1);
+                    this._applyFindHighlights();
+                    this._scrollToFindMatch(this.findReplace.currentIndex);
+                }
+            } catch (e) {
+                window.showToast('置換に失敗しました', 'error');
+            }
+        },
+
+        async replaceAll() {
+            const q = this.findReplace.query;
+            const r = this.findReplace.replacement;
+            if (!q || !this.findReplace.matches.length) return;
+            const qLower = q.toLowerCase();
+            // セグメントごとにまとめる
+            const bySegId = new Map();
+            this.findReplace.matches.forEach(m => {
+                if (!bySegId.has(m.segId)) {
+                    const ta = m.cardEl.querySelector('.segment-text-edit');
+                    bySegId.set(m.segId, { cardEl: m.cardEl, oldText: ta ? ta.value : m.text });
+                }
+            });
+            let totalCount = 0;
+            for (const [segId, { cardEl, oldText }] of bySegId) {
+                let newText = '', rest = oldText, lower = rest.toLowerCase(), si;
+                while ((si = lower.indexOf(qLower)) !== -1) {
+                    newText += rest.slice(0, si) + r;
+                    totalCount++;
+                    rest = rest.slice(si + q.length);
+                    lower = rest.toLowerCase();
+                }
+                newText += rest;
+                try {
+                    const res = await fetch(`/api/segments/${segId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: newText }),
+                    });
+                    if (!res.ok) continue;
+                    const ta = cardEl.querySelector('.segment-text-edit');
+                    if (ta) { ta.value = newText; ta.dataset.originalText = newText; }
+                    const viewDiv = cardEl.querySelector('.segment-text');
+                    if (viewDiv) this.setSegmentTextContent(viewDiv, newText);
+                    this.redoStack = [];
+                    this.undoStack.push({ segmentId: segId, oldText, newText });
+                    if (this.undoStack.length > 20) this.undoStack.shift();
+                } catch (_) {}
+            }
+            window.showToast(`${totalCount} 件置換しました`);
+            this.onFindInput();
         },
 
         async _undoLastSave() {

@@ -2137,6 +2137,110 @@ a.history-item-filename:hover {
     background: #f8fafc;
 }
 
+/* ── 検索・置換バー ── */
+.find-replace-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    position: sticky;
+    top: 70px;
+    z-index: 55;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.find-replace-inputs {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.find-replace-input {
+    flex: 1;
+    min-width: 0;
+    max-width: 200px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    outline: none;
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+.find-replace-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+}
+
+.find-replace-count {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    min-width: 56px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.find-replace-nav {
+    display: flex;
+    gap: 2px;
+}
+
+.find-replace-nav-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    transition: background 0.12s;
+}
+
+.find-replace-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.find-replace-nav-btn:not(:disabled):hover { background: var(--color-hover); color: var(--color-text); }
+
+.find-replace-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    transition: background 0.12s;
+}
+
+.find-replace-close:hover { background: var(--color-hover); color: var(--color-text); }
+
+/* 検索ヒットのハイライト */
+mark.find-highlight {
+    background: rgba(253, 224, 71, 0.7);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+mark.find-highlight-active {
+    background: rgba(251, 146, 60, 0.85);
+    color: #7c2d12;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
 /* ── ショートカットヘルプポップオーバー ── */
 .shortcut-help {
     position: relative;
