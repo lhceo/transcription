@@ -368,6 +368,7 @@ async def run_polish(
     segments: list[dict],
     context_text: str,
     model_key: str = "haiku",
+    progress_callback=None,
 ) -> PolishResult:
     """整文を実行し、セグメントごとの提案テキストを返す。
 
@@ -397,6 +398,8 @@ async def run_polish(
         merged.update(suggestions)
         total_input += inp
         total_output += out
+        if progress_callback:
+            progress_callback(1, 1)
     else:
         # 必要最小限のバッチ数に分割
         n_batches = math.ceil(estimated_output / _SAFE_OUTPUT_TOKENS)
@@ -434,6 +437,8 @@ async def run_polish(
 
             total_input += inp
             total_output += out
+            if progress_callback:
+                progress_callback(i + 1, n_batches)
 
     cost = actual_cost_yen(total_input, total_output, model_key)
     return PolishResult(

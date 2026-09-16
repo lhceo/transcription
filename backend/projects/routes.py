@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio as _asyncio
 import logging
+import math as _math
+import time as _time
+import uuid as _uuid
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -15,7 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
-from backend.db import get_db
+from backend.db import SessionLocal, get_db
 from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_cost_summary
@@ -32,6 +36,10 @@ from backend.transcribe.polish import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 整文バックグラウンドジョブのインメモリストア
+# {job_id: {status, batch_done, batch_total, started_at, result?, error?}}
+_polish_jobs: dict[str, dict] = {}
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=_TEMPLATES_DIR)
@@ -1002,6 +1010,59 @@ async def polish_pickup(
     return JSONResponse({"words": words})
 
 
+async def _polish_bg_task(
+    job_id: str,
+    transcript_id: int,
+    user_id: int,
+    seg_dicts: list[dict],
+    context_text: str,
+    model_key: str,
+) -> None:
+    """整文をバックグラウンドで実行し、_polish_jobs に結果を書き込む。"""
+    import anthropic
+    from datetime import datetime
+    job = _polish_jobs[job_id]
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    def on_progress(done: int, total: int) -> None:
+        job["batch_done"] = done
+        job["batch_total"] = total
+
+    try:
+        result = await run_polish(client, seg_dicts, context_text, model_key, progress_callback=on_progress)
+
+        db = SessionLocal()
+        try:
+            log = PolishLog(
+                transcript_id=transcript_id,
+                model=model_key,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                cost_yen=result.cost_yen,
+                created_by_user_id=user_id,
+            )
+            db.add(log)
+            transcript = db.get(Transcript, transcript_id)
+            if transcript:
+                transcript.last_polished_at = datetime.now(_tz.utc)
+            db.commit()
+        finally:
+            db.close()
+
+        job["status"] = "done"
+        job["result"] = {
+            "suggestions": result.suggestions,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cost_yen": result.cost_yen,
+            "model_key": model_key,
+        }
+    except Exception as e:
+        logger.error("整文バックグラウンドジョブエラー [%s]: %s", job_id, e)
+        job["status"] = "error"
+        job["error"] = f"Claude API エラー: {e}"
+
+
 @router.post("/api/transcripts/{transcript_id}/polish/run")
 async def polish_run(
     transcript_id: int,
@@ -1009,7 +1070,7 @@ async def polish_run(
     db: Annotated[Session, Depends(get_db)],
     body: PolishRunRequest,
 ) -> JSONResponse:
-    """整文を実行し、セグメントごとの提案テキストを返す。DBは更新しない。"""
+    """整文ジョブを開始し job_id を即返す。進捗は /polish/status/{job_id} でポーリングする。"""
     if not settings.has_anthropic:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY が設定されていません")
 
@@ -1026,21 +1087,16 @@ async def polish_run(
 
     context_text = _build_transcript_context(transcript, db)
 
-    # ピックアップ後に追加登録された語句をコンテキストに追加
     if body.extra_vocabulary:
         sanitized_extra = [
             {"word": str(v.get("word") or "").strip()[:200], "meaning": str(v.get("meaning") or "").strip()[:500]}
             for v in body.extra_vocabulary[:30]
             if str(v.get("word") or "").strip()
         ]
-        extra_lines = "\n".join(
-            f"  - {v['word']}: {v['meaning']}"
-            for v in sanitized_extra
-        )
+        extra_lines = "\n".join(f"  - {v['word']}: {v['meaning']}" for v in sanitized_extra)
         if extra_lines:
             context_text += f"\n【追加固有名詞（今回登録）】\n{extra_lines}"
 
-    # 話者名マップを構築して整文コンテキストに渡す
     speakers_for_map = list(db.scalars(
         select(Speaker).where(Speaker.transcript_id == transcript_id)
     ))
@@ -1056,55 +1112,39 @@ async def polish_run(
         for s in segments
     ]
 
-    import anthropic
-    import asyncio as _asyncio
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    # バッチ数を事前推定（進捗表示用）
+    estimated_output = int(sum(estimate_tokens(s["text"]) for s in seg_dicts) * 1.2)
+    n_batches_est = max(1, _math.ceil(estimated_output / 7000))
 
-    result = None
-    last_exc: Exception | None = None
-    for _attempt in range(3):
-        try:
-            result = await run_polish(client, seg_dicts, context_text, model_key)
-            break
-        except anthropic.APIStatusError as e:
-            last_exc = e
-            if e.status_code in (429, 529) and _attempt < 2:
-                wait = 2 ** _attempt  # 1s, 2s
-                logger.warning("整文API一時エラー(試行%d): %s → %ds後リトライ", _attempt + 1, e, wait)
-                await _asyncio.sleep(wait)
-            else:
-                logger.error("整文API呼び出しエラー: %s", e)
-                raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
-        except Exception as e:
-            last_exc = e
-            logger.error("整文API呼び出しエラー: %s", e)
-            raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
-    if result is None:
-        raise HTTPException(status_code=502, detail=f"Claude API エラー（リトライ上限）: {last_exc}")
+    # 古いジョブを掃除（10分超）
+    cutoff = _time.time() - 600
+    for old_id in [k for k, v in list(_polish_jobs.items()) if v.get("started_at", 0) < cutoff]:
+        _polish_jobs.pop(old_id, None)
 
-    # コストログを記録
-    log = PolishLog(
-        transcript_id=transcript_id,
-        model=model_key,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        cost_yen=result.cost_yen,
-        created_by_user_id=user["id"],
-    )
-    db.add(log)
+    job_id = str(_uuid.uuid4())
+    _polish_jobs[job_id] = {
+        "status": "running",
+        "batch_done": 0,
+        "batch_total": n_batches_est,
+        "started_at": _time.time(),
+    }
 
-    # last_polished_at を更新
-    from datetime import datetime
-    transcript.last_polished_at = datetime.now(_tz.utc)
-    db.commit()
+    _asyncio.create_task(_polish_bg_task(job_id, transcript_id, user["id"], seg_dicts, context_text, model_key))
 
-    return JSONResponse({
-        "suggestions": result.suggestions,
-        "input_tokens": result.input_tokens,
-        "output_tokens": result.output_tokens,
-        "cost_yen": result.cost_yen,
-        "model_key": model_key,
-    })
+    return JSONResponse({"job_id": job_id, "segment_count": len(segments)}, status_code=202)
+
+
+@router.get("/api/transcripts/{transcript_id}/polish/status/{job_id}")
+async def polish_status(
+    transcript_id: int,
+    job_id: str,
+    user: CurrentUser,
+) -> JSONResponse:
+    """整文ジョブのステータスを返す。"""
+    job = _polish_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません（期限切れの可能性）")
+    return JSONResponse({k: v for k, v in job.items() if k != "started_at"})
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/accept")

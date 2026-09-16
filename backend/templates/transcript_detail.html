@@ -1354,7 +1354,11 @@
             <h2 class="polish-modal-title">整文中…</h2>
             <div class="polish-loading">
                 <div class="polish-spinner"></div>
-                <p>Claudeが文字起こしを整えています。しばらくお待ちください。</p>
+                <p x-show="polishProgress.total === 0">Claudeが文字起こしを整えています。しばらくお待ちください。</p>
+                <p x-show="polishProgress.total > 0">
+                    処理中 <strong x-text="polishProgress.done"></strong> / <span x-text="polishProgress.total"></span> バッチ完了
+                </p>
+                <p style="font-size:11px;color:#94a3b8;margin-top:4px">セグメント数が多い場合、数分かかります</p>
             </div>
         </div>
 
@@ -4339,6 +4343,7 @@ function polishModal() {
         suggestions: {},   // {segId: polishedText}
         totalChanged: 0,
         unknownCount: 0,
+        polishProgress: { done: 0, total: 0 },
 
         async open() {
             this.show = true;
@@ -4397,20 +4402,25 @@ function polishModal() {
 
         async runPolish() {
             this.step = 'running';
+            this.polishProgress = { done: 0, total: 0 };
             const extra = this.pickupWords
                 .filter(w => w.meaning.trim())
                 .map(w => ({ word: w.word, meaning: w.meaning.trim() }));
 
             try {
-                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/run', {
+                const startRes = await fetch('/api/transcripts/' + transcriptId + '/polish/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model_key: this.modelKey, extra_vocabulary: extra }),
                 });
-                if (!res.ok) throw new Error((await res.json()).detail || res.status);
-                const data = await res.json();
+                if (!startRes.ok) {
+                    const errJson = await startRes.json().catch(() => ({}));
+                    throw new Error(errJson.detail || startRes.status);
+                }
+                const { job_id } = await startRes.json();
 
-                // 結果を保持してモーダル内の確認ステップへ
+                // バックグラウンドジョブをポーリング
+                const data = await this._pollPolishJob(job_id);
                 this.suggestions = data.suggestions || {};
                 this.totalChanged = Object.keys(this.suggestions).length;
                 this.unknownCount = Object.values(this.suggestions).filter(t => t.includes('（？）')).length;
@@ -4422,12 +4432,27 @@ function polishModal() {
                     ? 'AIが混雑中です。しばらく待ってから再試行してください'
                     : msg.includes('rate_limit') || msg.includes('429')
                     ? 'リクエスト制限に達しました。少し待ってから再試行してください'
-                    : msg.includes('リトライ上限')
-                    ? 'AIが混雑中のため処理できませんでした。時間をおいて再試行してください'
-                    : `整文に失敗しました (${msg})`;
+                    : msg.includes('タイムアウト')
+                    ? '整文がタイムアウトしました。時間をおいて再試行してください'
+                    : '整文に失敗しました。時間をおいて再試行してください';
                 window.showToast(friendly, 'error');
                 this.step = 'confirm';
             }
+        },
+
+        async _pollPolishJob(jobId) {
+            for (let i = 0; i < 150; i++) {  // 最大5分 (150 × 2秒)
+                await new Promise(r => setTimeout(r, 2000));
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/status/' + jobId);
+                if (!res.ok) throw new Error('ステータス確認に失敗しました');
+                const data = await res.json();
+                if (data.batch_total > 0) {
+                    this.polishProgress = { done: data.batch_done, total: data.batch_total };
+                }
+                if (data.status === 'done') return data.result;
+                if (data.status === 'error') throw new Error(data.error || '整文中にエラーが発生しました');
+            }
+            throw new Error('整文がタイムアウトしました');
         },
 
         async applyAll() {
