@@ -955,7 +955,8 @@
                     </div>
 
                     {# diff 未対応 #}
-                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done" x-cloak style="display:none">
+                    <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'diff' && !reviewData[{{ seg.id }}].done">
+                    <div>
                         <div class="review-pending-header">
                             <span class="review-pending-badge diff-badge">整文あり</span>
                             <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
@@ -971,9 +972,11 @@
                             <button class="btn btn-sm btn-primary" @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
                         </div>
                     </div>
+                    </template>
 
                     {# unknown（？）補完 未対応 #}
-                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done" x-cloak style="display:none">
+                    <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
+                    <div>
                         <div class="review-pending-header">
                             <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
                             <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
@@ -1023,6 +1026,7 @@
                             <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
                         </div>
                     </div>
+                    </template>
                 </li>
             {% endfor %}
         </ol>
@@ -4412,7 +4416,15 @@ function polishModal() {
                 this.unknownCount = Object.values(this.suggestions).filter(t => t.includes('（？）')).length;
                 this.step = 'result';
             } catch (e) {
-                window.showToast('整文に失敗しました: ' + e.message, 'error');
+                const msg = e.message || '';
+                const friendly = msg.includes('overloaded') || msg.includes('529')
+                    ? 'AIが混雑中です。しばらく待ってから再試行してください'
+                    : msg.includes('rate_limit') || msg.includes('429')
+                    ? 'リクエスト制限に達しました。少し待ってから再試行してください'
+                    : msg.includes('リトライ上限')
+                    ? 'AIが混雑中のため処理できませんでした。時間をおいて再試行してください'
+                    : '整文に失敗しました。時間をおいて再試行してください';
+                window.showToast(friendly, 'error');
                 this.step = 'confirm';
             }
         },

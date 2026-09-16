@@ -1057,13 +1057,30 @@ async def polish_run(
     ]
 
     import anthropic
+    import asyncio as _asyncio
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    try:
-        result = await run_polish(client, seg_dicts, context_text, model_key)
-    except Exception as e:
-        logger.error("整文API呼び出しエラー: %s", e)
-        raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
+    result = None
+    last_exc: Exception | None = None
+    for _attempt in range(3):
+        try:
+            result = await run_polish(client, seg_dicts, context_text, model_key)
+            break
+        except anthropic.APIStatusError as e:
+            last_exc = e
+            if e.status_code in (429, 529) and _attempt < 2:
+                wait = 2 ** _attempt  # 1s, 2s
+                logger.warning("整文API一時エラー(試行%d): %s → %ds後リトライ", _attempt + 1, e, wait)
+                await _asyncio.sleep(wait)
+            else:
+                logger.error("整文API呼び出しエラー: %s", e)
+                raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
+        except Exception as e:
+            last_exc = e
+            logger.error("整文API呼び出しエラー: %s", e)
+            raise HTTPException(status_code=502, detail=f"Claude API エラー: {e}")
+    if result is None:
+        raise HTTPException(status_code=502, detail=f"Claude API エラー（リトライ上限）: {last_exc}")
 
     # コストログを記録
     log = PolishLog(
