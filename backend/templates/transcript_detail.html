@@ -883,7 +883,7 @@
                                   @keydown.escape.stop="cancelCommentEdit()"
                                   @compositionstart="$event.target._composing = true"
                                   @compositionend="$event.target._composing = false"
-                                  @keydown.enter.prevent="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) saveComment({{ seg.id }}, $el)"
+                                  @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
                         >{{ seg.comment or '' }}</textarea>
                         <div class="segment-comment-actions">
                             <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
@@ -3761,7 +3761,7 @@ function segmentsApp(transcriptId, historyNames) {
             commentTa.setAttribute('@keydown.escape.stop', 'cancelCommentEdit()');
             commentTa.setAttribute('@compositionstart', '$event.target._composing = true');
             commentTa.setAttribute('@compositionend', '$event.target._composing = false');
-            commentTa.setAttribute('@keydown.enter.prevent', `if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) saveComment(${newSeg.id}, $el)`);
+            commentTa.setAttribute('@keydown.enter', `if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment(${newSeg.id}, $el); }`);
 
             const commentActionsEl = document.createElement('div');
             commentActionsEl.className = 'segment-comment-actions';
