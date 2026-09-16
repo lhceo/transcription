@@ -4417,13 +4417,14 @@ function polishModal() {
                 this.step = 'result';
             } catch (e) {
                 const msg = e.message || '';
+                console.error('[整文エラー詳細]', msg);
                 const friendly = msg.includes('overloaded') || msg.includes('529')
                     ? 'AIが混雑中です。しばらく待ってから再試行してください'
                     : msg.includes('rate_limit') || msg.includes('429')
                     ? 'リクエスト制限に達しました。少し待ってから再試行してください'
                     : msg.includes('リトライ上限')
                     ? 'AIが混雑中のため処理できませんでした。時間をおいて再試行してください'
-                    : '整文に失敗しました。時間をおいて再試行してください';
+                    : `整文に失敗しました (${msg})`;
                 window.showToast(friendly, 'error');
                 this.step = 'confirm';
             }
