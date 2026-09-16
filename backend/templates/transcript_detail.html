@@ -1008,7 +1008,7 @@
                                     :value="bm.memo"
                                     placeholder="メモ（任意）"
                                     @change="saveBookmarkMemo(bm, $event.target.value)"
-                                    @keydown.enter.prevent="$event.target.blur()"
+                                    @keydown.enter="if (!$event.isComposing && !$event.target._composing) { $event.preventDefault(); $event.target.blur(); }"
                                     @compositionstart="$event.target._composing = true"
                                     @compositionend="$event.target._composing = false">
                                 <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
@@ -1601,11 +1601,18 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async saveBookmarkMemo(bm, memo) {
+            const prev = bm.memo;
             bm.memo = memo;
-            await fetch(`/api/segments/${bm.segId}/bookmark-memo`, {
-                method: 'PATCH', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ memo }),
-            });
+            try {
+                const res = await fetch(`/api/segments/${bm.segId}/bookmark-memo`, {
+                    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ memo }),
+                });
+                if (!res.ok) throw new Error(res.status);
+            } catch (e) {
+                bm.memo = prev; // ロールバック
+                window.showToast('メモの保存に失敗しました', 'error');
+            }
         },
 
         jumpToBookmark(bm) {
@@ -2746,6 +2753,10 @@ function segmentsApp(transcriptId, historyNames) {
         async deleteSegment(segmentId, cardEl) {
             const ok = await window.showConfirm('このブロックを削除しますか？', { title: '削除の確認', okLabel: '削除する' });
             if (!ok) return;
+            // autosave タイマーをキャンセル（削除後に PATCH が走って 404 になるのを防ぐ）
+            if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+            this.pendingSegments.delete(segmentId);
+            if (this.pendingSegments.size === 0) this.saveStatus = 'saved';
             try {
                 const res = await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete failed');
@@ -3085,6 +3096,7 @@ function segmentsApp(transcriptId, historyNames) {
                     this.redoStack = [];
                     window.showToast('分割を取り消しました');
                 } catch (e) {
+                    if (this.undoStack.length >= 20) this.undoStack.shift();
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
@@ -3144,6 +3156,7 @@ function segmentsApp(transcriptId, historyNames) {
                     this.redoStack = [];
                     window.showToast('結合を取り消しました');
                 } catch (err) {
+                    if (this.undoStack.length >= 20) this.undoStack.shift();
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
@@ -3172,6 +3185,7 @@ function segmentsApp(transcriptId, historyNames) {
                     if (this.redoStack.length > 20) this.redoStack.shift();
                     window.showToast('取り消しました');
                 } catch (e) {
+                    if (this.undoStack.length >= 20) this.undoStack.shift();
                     this.undoStack.push(entry);
                     window.showToast('取り消しに失敗しました', 'error');
                 }
@@ -3284,10 +3298,16 @@ function segmentsApp(transcriptId, historyNames) {
         // pending をまとめて保存（デバウンスタイマー発火時 / 再試行ボタン）
         async _flushPending() {
             if (this.pendingSegments.size === 0) return;
+            if (this._flushing) return; // 二重実行防止
+            this._flushing = true;
             this.saveStatus = 'saving';
             const toSave = new Map(this.pendingSegments);
-            for (const [segId] of toSave) {
-                await this._saveSegment(segId, null);
+            try {
+                for (const [segId] of toSave) {
+                    await this._saveSegment(segId, null);
+                }
+            } finally {
+                this._flushing = false;
             }
         },
 
@@ -3313,14 +3333,14 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         onSegmentKeydown(event) {
+            if (event.isComposing || event.currentTarget._composing) return; // IME変換中はキー処理をスキップ
+
             // Shift + Enter でセグメント分割
             if (event.key === 'Enter' && event.shiftKey) {
                 event.preventDefault();
                 this.splitSegmentAtCursor(event.currentTarget);
                 return;
             }
-
-            if (event.isComposing) return; // IME変換中はキー処理をスキップ
 
             const ta = event.currentTarget;
 
@@ -3419,7 +3439,7 @@ function segmentsApp(transcriptId, historyNames) {
                 let prevTextBefore = '';
                 if (prevCard) {
                     const prevTa0 = prevCard.querySelector('.segment-text-edit');
-                    prevTextBefore = prevTa0?.dataset?.originalText ?? prevTa0?.value ?? '';
+                    prevTextBefore = prevTa0?.dataset?.originalText ?? '';
                     const prevViewDiv = prevCard.querySelector('.segment-text');
                     const prevTextarea = prevCard.querySelector('.segment-text-edit');
                     if (prevViewDiv) this.setSegmentTextContent(prevViewDiv, data.prev_text);
@@ -3797,10 +3817,47 @@ function segmentsApp(transcriptId, historyNames) {
             commentEditWrap.appendChild(commentTa);
             commentEditWrap.appendChild(commentActionsEl);
 
+            // ミニタイムライン（クリックシーク）
+            const progressWrap = document.createElement('div');
+            progressWrap.className = 'segment-progress-wrap';
+            progressWrap.title = 'クリックでこの位置から再生';
+            progressWrap.addEventListener('click', (e) => this.seekFromSegmentBar(e));
+            const progressTrack = document.createElement('div');
+            progressTrack.className = 'segment-progress-track';
+            const progressBar = document.createElement('div');
+            progressBar.className = 'segment-progress-bar';
+            const progressThumb = document.createElement('div');
+            progressThumb.className = 'segment-progress-thumb';
+            progressTrack.appendChild(progressBar);
+            progressTrack.appendChild(progressThumb);
+            progressWrap.appendChild(progressTrack);
+
+            // 原文に戻す確認バー
+            const revertBar = document.createElement('div');
+            revertBar.className = 'revert-confirm-bar';
+            revertBar.setAttribute('x-show', `revertConfirmSegId === ${newSeg.id}`);
+            revertBar.style.display = 'none';
+            revertBar.setAttribute('@click.stop', '');
+            revertBar.innerHTML = `
+                <div style="width:100%">
+                    <div style="font-weight:600;margin-bottom:6px"
+                         x-text="revertConfirmType === 'polished' ? '整文前の文字起こしに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
+                    <div style="font-size:11px;color:#b91c1c;margin-bottom:4px">戻し先：</div>
+                    <div style="font-size:13px;color:#7f1d1d;background:#fff1f2;border:1px solid #fecaca;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px"
+                         data-revert-original="${(newSeg.original_asr_text || newSeg.text || '').replace(/"/g, '&quot;')}">${(newSeg.original_asr_text || newSeg.text || '')}</div>
+                    <div class="revert-confirm-actions">
+                        <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null">キャンセル</button>
+                        <button class="btn-revert" @click.stop="doRevert(${newSeg.id}, $el.closest('.segment-card'))">元に戻す</button>
+                    </div>
+                </div>
+            `;
+
             li.appendChild(header);
+            li.appendChild(progressWrap);
             li.appendChild(viewDiv);
             li.appendChild(overlayWrap);
             li.appendChild(splitBtn);
+            li.appendChild(revertBar);
             li.appendChild(commentWrap);
             li.appendChild(commentEditWrap);
 
@@ -3920,6 +3977,7 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         closeEditor() {
+            this._speakerApplying = false;
             this.editor.open = false;
             this.editor.segmentId = null;
             this.editor.speakerLabel = null;
@@ -3937,8 +3995,10 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async applyOnly() {
+            if (this._speakerApplying) return;
             const name = (this.editor.input || '').trim();
             if (!name) return;
+            this._speakerApplying = true;
             try {
                 const res = await fetch(`/api/segments/${this.editor.segmentId}`, {
                     method: 'PATCH',
@@ -4064,12 +4124,20 @@ function polishModal() {
                 if (action === 'scroll_mtg') {
                     window.dispatchEvent(new CustomEvent('open-mtg-section'));
                 } else if (action === 'scroll_speakers') {
+                    // セグメントリストが表示されていない場合（整文レビューモードなど）は何もしない
                     const firstBadge = document.querySelector('#segment-list .speaker-badge');
                     if (firstBadge) {
-                        firstBadge.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        firstBadge.style.outline = '2px solid #f59e0b';
-                        firstBadge.style.outlineOffset = '2px';
-                        setTimeout(() => { firstBadge.style.outline = ''; firstBadge.style.outlineOffset = ''; }, 1800);
+                        // バッジが折りたたみセクション内に隠れている場合は展開を試みる
+                        const section = firstBadge.closest('details, [x-show]');
+                        if (section && section.tagName === 'DETAILS' && !section.open) {
+                            section.open = true;
+                        }
+                        setTimeout(() => {
+                            firstBadge.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            firstBadge.style.outline = '2px solid #f59e0b';
+                            firstBadge.style.outlineOffset = '2px';
+                            setTimeout(() => { firstBadge.style.outline = ''; firstBadge.style.outlineOffset = ''; }, 1800);
+                        }, 80);
                     }
                 }
             }, 80);
@@ -4511,6 +4579,12 @@ function projectAssigner(transcriptId, initialProjectId) {
                 const res = await fetch('/api/projects-list');
                 if (res.ok) this.projects = await res.json();
             } catch (_) {}
+            // 他インスタンスの変更を受け取って同期する
+            window.addEventListener('project-assigned', (e) => {
+                if (e.detail.transcriptId === this.transcriptId) {
+                    this.projectId = e.detail.projectId;
+                }
+            });
         },
 
         get projectName() {
@@ -4531,6 +4605,10 @@ function projectAssigner(transcriptId, initialProjectId) {
                     this.projectId = pid;
                     const p = this.projects.find(p => p.id === pid);
                     window.showToast(pid ? `「${p?.name}」に追加しました` : 'プロジェクトから外しました', 'success');
+                    // 他インスタンスに変更を通知
+                    window.dispatchEvent(new CustomEvent('project-assigned', {
+                        detail: { transcriptId: this.transcriptId, projectId: pid }
+                    }));
                 }
             } catch (_) {
                 window.showToast('変更に失敗しました', 'error');
