@@ -1252,15 +1252,15 @@ body:has(.audio-player-fixed) {
     gap: 6px;
     padding: 7px 16px;
     border-radius: 8px;
-    border: 1.5px solid #e05;
-    background: #fff0f3;
-    color: #c0002a;
+    border: 1.5px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-muted);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.btn-cancel-upload:hover { background: #ffe0ea; border-color: #c0002a; }
+.btn-cancel-upload:hover { background: var(--color-hover); color: var(--color-text); }
 
 .hidden-file-input {
     display: none;
