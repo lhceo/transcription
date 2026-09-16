@@ -3116,6 +3116,22 @@ function segmentsApp(transcriptId, historyNames) {
                         const restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
                         prevCard.after(restoredCard);
                         if (window.Alpine) Alpine.initTree(restoredCard);
+                        // 元の話者（B）に戻す
+                        if (entry.currentSpeakerLabel) {
+                            restoredCard.dataset.speakerLabel = entry.currentSpeakerLabel;
+                            const badge = restoredCard.querySelector('.speaker-badge');
+                            if (badge) {
+                                badge.dataset.speakerLabel = entry.currentSpeakerLabel;
+                                badge.dataset.effectiveName = entry.currentDisplayName || entry.currentSpeakerLabel;
+                            }
+                            const badgeText = restoredCard.querySelector('.speaker-badge-text');
+                            if (badgeText) badgeText.textContent = entry.currentDisplayName || entry.currentSpeakerLabel;
+                            fetch(`/api/segments/${splitData.new.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ speaker_label: entry.currentSpeakerLabel }),
+                            }).catch(() => {});
+                        }
                         this.recolorByName();
                         // フォーカスを前カードの結合点へ
                         this.focusedEditingSegmentId = entry.prevSegId;
@@ -3413,8 +3429,10 @@ function segmentsApp(transcriptId, historyNames) {
                     prevCard.dataset.endSeconds = data.prev_end_seconds;
                 }
 
-                // 現カードを DOM から削除
+                // 現カードを DOM から削除（話者情報は削除前に取得）
                 const currentCard = textarea.closest('.segment-card');
+                const currentSpeakerLabel = currentCard?.dataset?.speakerLabel || '';
+                const currentDisplayName = currentCard?.querySelector('.speaker-badge-text')?.textContent?.trim() || '';
                 if (currentCard) currentCard.remove();
                 // 結合で消えたセグメントへのundoエントリを除去
                 this.undoStack = this.undoStack.filter(e =>
@@ -3428,6 +3446,8 @@ function segmentsApp(transcriptId, historyNames) {
                     prevTextBefore,
                     combinedText: data.prev_text,
                     currentText,
+                    currentSpeakerLabel,
+                    currentDisplayName,
                 });
                 if (this.undoStack.length > 20) this.undoStack.shift();
 
