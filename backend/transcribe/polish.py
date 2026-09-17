@@ -328,7 +328,8 @@ async def _run_polish_batch(
         context=context_text if context_text else "（コンテキスト情報なし）",
         segments_json=segments_json,
     )
-    message = await client.messages.create(
+    # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
+    async with client.messages.stream(
         model=model_id,
         max_tokens=8192,
         system=[
@@ -350,8 +351,11 @@ async def _run_polish_batch(
                 ],
             }
         ],
-    )
-    raw = message.content[0].text.strip()
+    ) as stream:
+        raw = await stream.get_final_text()
+        final_msg = await stream.get_final_message()
+
+    raw = raw.strip()
     try:
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         json_str = m.group(0) if m else raw
@@ -360,7 +364,7 @@ async def _run_polish_batch(
     except Exception:
         logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
         suggestions = {}
-    return suggestions, message.usage.input_tokens, message.usage.output_tokens
+    return suggestions, final_msg.usage.input_tokens, final_msg.usage.output_tokens
 
 
 async def run_polish(

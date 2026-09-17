@@ -1023,7 +1023,7 @@ async def _polish_bg_task(
         import anthropic
         from datetime import datetime
         job = _polish_jobs[job_id]
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=90.0)
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
         def on_progress(done: int, total: int) -> None:
             job["batch_done"] = done
