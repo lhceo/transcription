@@ -1022,16 +1022,11 @@ async def _polish_bg_task(
     """整文をバックグラウンドで実行し、_polish_jobs に結果を書き込む。"""
     try:
         import anthropic
-        import httpx
         from datetime import datetime
+        logger.info("整文BG開始 job=%s transcript=%s model=%s segs=%d", job_id, transcript_id, model_key, len(seg_dicts))
         job = _polish_jobs[job_id]
-        # read=None: ストリーミング中の読み取りタイムアウトを無効化。
-        # 一括タイムアウト(timeout=600)だと "Request timed out or interrupted" が発生する場合がある。
-        # 接続確立(connect)・書き込み(write)のみ上限を設け、読み取りは無制限にする。
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key,
-            timeout=httpx.Timeout(connect=30.0, read=None, write=60.0, pool=10.0),
-        )
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=3600.0)
+        logger.info("整文BG: Anthropicクライアント作成完了 job=%s", job_id)
 
         def on_progress(done: int, total: int) -> None:
             job["batch_done"] = done
