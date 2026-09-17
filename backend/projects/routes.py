@@ -28,6 +28,7 @@ from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage_usage import get_summary as get_storage_summary
 from backend.transcribe.polish import (
     MODELS as POLISH_MODELS,
+    _SAFE_OUTPUT_TOKENS as _POLISH_SAFE_TOKENS,
     build_context_text,
     estimate_tokens,
     estimate_cost,
@@ -1021,12 +1022,16 @@ async def _polish_bg_task(
     """整文をバックグラウンドで実行し、_polish_jobs に結果を書き込む。"""
     try:
         import anthropic
+        import httpx
         from datetime import datetime
         job = _polish_jobs[job_id]
-        # ストリーミング中に asyncio.wait_for でキャンセルすると
-        # SDK が "Request timed out or interrupted" を報告してしまうため
-        # wait_for は使わず、SDK レベルの timeout=600 に任せる
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
+        # read=None: ストリーミング中の読み取りタイムアウトを無効化。
+        # 一括タイムアウト(timeout=600)だと "Request timed out or interrupted" が発生する場合がある。
+        # 接続確立(connect)・書き込み(write)のみ上限を設け、読み取りは無制限にする。
+        client = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=httpx.Timeout(connect=30.0, read=None, write=60.0, pool=10.0),
+        )
 
         def on_progress(done: int, total: int) -> None:
             job["batch_done"] = done
@@ -1061,7 +1066,7 @@ async def _polish_bg_task(
             "model_key": model_key,
         }
     except Exception as e:
-        logger.error("整文バックグラウンドジョブエラー [%s]: %s", job_id, e)
+        logger.error("整文バックグラウンドジョブエラー [%s]: %s (type=%s)", job_id, e, type(e).__name__, exc_info=True)
         if job_id in _polish_jobs:
             _polish_jobs[job_id]["status"] = "error"
             _polish_jobs[job_id]["error"] = f"Claude API エラー: {e}"
@@ -1118,7 +1123,7 @@ async def polish_run(
 
     # バッチ数を事前推定（進捗表示用）
     estimated_output = int(sum(estimate_tokens(s["text"]) for s in seg_dicts) * 1.2)
-    n_batches_est = max(1, _math.ceil(estimated_output / 7000))
+    n_batches_est = max(1, _math.ceil(estimated_output / _POLISH_SAFE_TOKENS))
 
     # 古いジョブを掃除（10分超）
     cutoff = _time.time() - 600

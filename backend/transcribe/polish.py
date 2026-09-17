@@ -328,32 +328,37 @@ async def _run_polish_batch(
         context=context_text if context_text else "（コンテキスト情報なし）",
         segments_json=segments_json,
     )
-    # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
-    async with client.messages.stream(
-        model=model_id,
-        max_tokens=8192,
-        system=[
-            {
-                "type": "text",
-                "text": POLISH_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-            }
-        ],
-    ) as stream:
-        raw = await stream.get_final_text()
-        final_msg = await stream.get_final_message()
+    logger.info("整文バッチ開始: model=%s segs=%d prompt_chars=%d", model_id, len(segments), len(prompt))
+    try:
+        # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
+        async with client.messages.stream(
+            model=model_id,
+            max_tokens=8192,
+            system=[
+                {
+                    "type": "text",
+                    "text": POLISH_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                }
+            ],
+        ) as stream:
+            raw = await stream.get_final_text()
+            final_msg = await stream.get_final_message()
+    except Exception as e:
+        logger.error("整文バッチAPI呼び出し失敗: type=%s err=%s", type(e).__name__, e, exc_info=True)
+        raise
 
     raw = raw.strip()
     try:
