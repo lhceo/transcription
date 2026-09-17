@@ -4441,7 +4441,7 @@ function polishModal() {
         },
 
         async _pollPolishJob(jobId) {
-            for (let i = 0; i < 150; i++) {  // 最大5分 (150 × 2秒)
+            for (let i = 0; i < 240; i++) {  // 最大8分 (240 × 2秒)
                 await new Promise(r => setTimeout(r, 2000));
                 const res = await fetch('/api/transcripts/' + transcriptId + '/polish/status/' + jobId);
                 if (!res.ok) throw new Error('ステータス確認に失敗しました');

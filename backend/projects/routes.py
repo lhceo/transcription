@@ -1023,18 +1023,16 @@ async def _polish_bg_task(
         import anthropic
         from datetime import datetime
         job = _polish_jobs[job_id]
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # ストリーミング中に asyncio.wait_for でキャンセルすると
+        # SDK が "Request timed out or interrupted" を報告してしまうため
+        # wait_for は使わず、SDK レベルの timeout=600 に任せる
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
 
         def on_progress(done: int, total: int) -> None:
             job["batch_done"] = done
             job["batch_total"] = total
 
-        # バッチ数 × 90秒を上限とする（最低 3 分、最大 12 分）
-        timeout_secs = max(180, job.get("batch_total", 1) * 90)
-        result = await _asyncio.wait_for(
-            run_polish(client, seg_dicts, context_text, model_key, progress_callback=on_progress),
-            timeout=timeout_secs,
-        )
+        result = await run_polish(client, seg_dicts, context_text, model_key, progress_callback=on_progress)
 
         db = SessionLocal()
         try:
@@ -1062,11 +1060,6 @@ async def _polish_bg_task(
             "cost_yen": result.cost_yen,
             "model_key": model_key,
         }
-    except _asyncio.TimeoutError:
-        logger.error("整文バックグラウンドジョブ タイムアウト [%s]", job_id)
-        if job_id in _polish_jobs:
-            _polish_jobs[job_id]["status"] = "error"
-            _polish_jobs[job_id]["error"] = "整文がタイムアウトしました。セグメント数が多すぎる可能性があります"
     except Exception as e:
         logger.error("整文バックグラウンドジョブエラー [%s]: %s", job_id, e)
         if job_id in _polish_jobs:
