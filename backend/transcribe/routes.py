@@ -1061,6 +1061,8 @@ async def transcript_detail(
         )
     )
 
+    polished_count = sum(1 for s in segments if s.is_polished)
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1071,6 +1073,7 @@ async def transcript_detail(
             "is_admin": user["email"].lower() == settings.admin_email,
             "transcript": transcript,
             "segments": segments,
+            "polished_count": polished_count,
             "speakers": speakers,
             "speaker_name_map": speaker_name_map,
             "name_to_color": name_to_color,

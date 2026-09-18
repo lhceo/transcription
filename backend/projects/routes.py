@@ -759,6 +759,11 @@ class PolishAcceptRequest(BaseModel):
     accepted_texts: dict[int, str]
 
 
+class PolishRevertRequest(BaseModel):
+    """整文リバートリクエスト。segment_ids 省略で全件リバート。"""
+    segment_ids: list[int] | None = None
+
+
 def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
     t = db.get(Transcript, transcript_id)
     if not t or t.user_id != user_id or t.deleted_at is not None:
@@ -1174,6 +1179,54 @@ async def polish_accept(
 
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
+
+
+@router.get("/api/transcripts/{transcript_id}/polish/diff")
+async def polish_diff(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """採用済み整文の差分を返す。{seg_id: pre_polish_text} 形式。"""
+    _get_transcript_or_404(transcript_id, user["id"], db)
+    segs = list(db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id, Segment.is_polished == True)
+        .order_by(Segment.order_index)
+    ))
+    pre_polish_texts = {s.id: s.pre_polish_text for s in segs if s.pre_polish_text is not None}
+    return JSONResponse({"polished_count": len(pre_polish_texts), "pre_polish_texts": pre_polish_texts})
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/revert")
+async def polish_revert(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PolishRevertRequest,
+) -> JSONResponse:
+    """整文をリバートする。segment_ids 省略で全件、指定で部分リバート。"""
+    transcript = _get_transcript_or_404(transcript_id, user["id"], db)
+    q = select(Segment).where(Segment.transcript_id == transcript_id, Segment.is_polished == True)
+    if body.segment_ids:
+        q = q.where(Segment.id.in_(body.segment_ids))
+    segs = list(db.scalars(q))
+    reverted = 0
+    for seg in segs:
+        if seg.pre_polish_text is not None:
+            seg.text_content = seg.pre_polish_text
+            seg.is_edited = seg.pre_polish_text != (seg.original_asr_text or "")
+            seg.is_polished = False
+            seg.pre_polish_text = None
+            reverted += 1
+    if reverted > 0:
+        remaining = db.scalar(
+            select(func.count()).where(Segment.transcript_id == transcript_id, Segment.is_polished == True)
+        )
+        if remaining == 0:
+            transcript.last_polished_at = None
+        db.commit()
+    return JSONResponse({"reverted": reverted})
 
 
 # ── プロフィール ─────────────────────────────────────────────────────────────
