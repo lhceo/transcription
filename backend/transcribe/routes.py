@@ -7,6 +7,7 @@ AssemblyAI への送信・結果取得は Phase 4 で追加する。
 from __future__ import annotations
 
 import asyncio
+import difflib
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1063,6 +1064,18 @@ async def transcript_detail(
 
     polished_count = sum(1 for s in segments if s.is_polished)
 
+    def _polish_level(seg):
+        if not seg.is_polished or not seg.pre_polish_text:
+            return None
+        ratio = difflib.SequenceMatcher(None, seg.pre_polish_text, seg.text_content).quick_ratio()
+        change = 1.0 - ratio
+        if change < 0.12:
+            return "minor"
+        elif change < 0.35:
+            return "moderate"
+        return "major"
+    polish_levels = {s.id: _polish_level(s) for s in segments if s.is_polished}
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1074,6 +1087,7 @@ async def transcript_detail(
             "transcript": transcript,
             "segments": segments,
             "polished_count": polished_count,
+            "polish_levels": polish_levels,
             "speakers": speakers,
             "speaker_name_map": speaker_name_map,
             "name_to_color": name_to_color,

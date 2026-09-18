@@ -796,15 +796,21 @@
                               title="クリックで元に戻す">編集済み ↩</span>
                         {% endif %}
                         {% if seg.is_polished %}
-                        <span class="seg-badge seg-badge-polished seg-badge-revertable"
+                        {% set plevel = polish_levels.get(seg.id, 'minor') %}
+                        <span class="seg-badge seg-badge-polished seg-badge-polished-{{ plevel }} seg-badge-revertable"
                               x-show="!reviewMode"
-                              @click.stop="openRevertConfirm({{ seg.id }}, 'polished')"
-                              title="クリックで整文前に戻す">整文済み ↩</span>
+                              data-before="{{ (seg.pre_polish_text or '') | e }}"
+                              @click.stop="openRevertConfirm({{ seg.id }}, 'polished', $el.dataset.before)"
+                              title="クリックで整文前のテキストを確認">整文済み ↩</span>
                         {% endif %}
                         {% if '（？）' in seg.text_content %}
-                        <span class="seg-badge seg-badge-unresolved" x-show="!reviewMode">
+                        <span class="seg-badge seg-badge-unresolved seg-badge-unresolved-clickable"
+                              x-show="!reviewMode && !resolvedUnknowns[{{ seg.id }}]"
+                              @click.stop="resolveUnknown({{ seg.id }}, $el.closest('.segment-card'))"
+                              title="クリックで（？）を削除して解決済みにする">
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                             未解決あり
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.7"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </span>
                         {% endif %}
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
@@ -869,10 +875,66 @@
                     {# v1.1 Option C インラインエディタ #}
                     <div
                         class="segment-text"
-                        x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}])"
+                        x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}]) && !segFills[{{ seg.id }}]"
                         @click="seekToSegmentFromEvent($event)"
                         @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
+
+                    {# 穴埋めUI（（？）含むセグメント・通常モード） #}
+                    {% if '（？）' in seg.text_content %}
+                    <template x-if="segFills[{{ seg.id }}] && !editMode && !reviewMode">
+                        <div class="fill-in-standalone-area">
+                            <div style="font-size:11px;color:#b45309;margin-bottom:8px;display:flex;align-items:center;gap:4px">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                聞き取れなかった箇所があります。補完してください：
+                            </div>
+                            <div class="fill-in-area">
+                                <template x-for="(part, idx) in segFills[{{ seg.id }}].parts" :key="'sf-{{ seg.id }}-' + idx">
+                                    <span>
+                                        <span x-text="part"></span>
+                                        <template x-if="idx < segFills[{{ seg.id }}].fills.length">
+                                            <span>
+                                                <template x-if="segFills[{{ seg.id }}].activeFillIdx !== idx">
+                                                    <button class="fill-chip"
+                                                            :class="segFills[{{ seg.id }}].fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                            @click.stop="startSegFillEdit({{ seg.id }}, idx)">
+                                                        <template x-if="!segFills[{{ seg.id }}].fills[idx]">
+                                                            <span style="display:flex;align-items:center;gap:3px">
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                                補完してください
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="segFills[{{ seg.id }}].fills[idx]">
+                                                            <span style="display:flex;align-items:center;gap:4px">
+                                                                <span x-text="segFills[{{ seg.id }}].fills[idx]"></span>
+                                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                            </span>
+                                                        </template>
+                                                    </button>
+                                                </template>
+                                                <template x-if="segFills[{{ seg.id }}].activeFillIdx === idx">
+                                                    <span class="fill-chip-input-wrap">
+                                                        <input class="fill-chip-input"
+                                                               :id="'sf-{{ seg.id }}-' + idx"
+                                                               x-model="segFills[{{ seg.id }}].fills[idx]"
+                                                               @blur.stop="stopSegFillEdit({{ seg.id }})"
+                                                               @keydown.enter.stop="stopSegFillEdit({{ seg.id }})"
+                                                               @keydown.escape.stop="segFills[{{ seg.id }}].fills[idx] = ''; stopSegFillEdit({{ seg.id }})"
+                                                               @click.stop>
+                                                    </span>
+                                                </template>
+                                            </span>
+                                        </template>
+                                    </span>
+                                </template>
+                            </div>
+                            <div style="margin-top:8px;display:flex;gap:6px">
+                                <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="dismissSegFill({{ seg.id }})">後で</button>
+                                <button class="btn btn-sm btn-primary" @click.stop="saveSegFill({{ seg.id }}, $el.closest('.segment-card'))">確定して保存</button>
+                            </div>
+                        </div>
+                    </template>
+                    {% endif %}
 
                     {# 編集中オーバーレイカラオケ：textareaに背景ハイライトで再生位置を表示 #}
                     <div class="segment-text-overlay-wrap">
@@ -919,11 +981,15 @@
                          x-show="revertConfirmSegId === {{ seg.id }}" style="display:none" @click.stop>
                         <div style="width:100%">
                             <div style="font-weight:600;margin-bottom:6px"
-                                 x-text="revertConfirmType === 'polished' ? '整文前の文字起こしに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
-                            <div style="font-size:11px;color:#b91c1c;margin-bottom:4px">戻し先：</div>
-                            <div style="font-size:13px;color:#7f1d1d;background:#fff1f2;border:1px solid #fecaca;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px">{{ seg.original_asr_text or seg.text_content }}</div>
+                                 x-text="revertConfirmType === 'polished' ? '整文前のテキストに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
+                            <template x-if="revertConfirmType === 'polished' && revertConfirmBeforeText">
+                                <div>
+                                    <div style="font-size:11px;color:#6b7280;margin-bottom:4px">整文前（ユーザー編集後）のテキスト：</div>
+                                    <div style="font-size:13px;color:#374151;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px" x-text="revertConfirmBeforeText"></div>
+                                </div>
+                            </template>
                             <div class="revert-confirm-actions">
-                                <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null">キャンセル</button>
+                                <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null; revertConfirmBeforeText = ''">キャンセル</button>
                                 <button class="btn-revert" @click.stop="doRevert({{ seg.id }}, $el.closest('.segment-card'))">元に戻す</button>
                             </div>
                         </div>
@@ -1641,6 +1707,9 @@ function segmentsApp(transcriptId, historyNames) {
         reviewData: {},   // { [segId]: { state, done, polishedText, original, parts, fills, activeFillIdx, preview } }
         revertConfirmSegId: null,
         revertConfirmType: null,
+        revertConfirmBeforeText: '',
+        segFills: {},          // { [segId]: { parts, fills, activeFillIdx } } — （？）穴埋め用
+        resolvedUnknowns: {}, // { [segId]: true } — 未解決バッジを解除済みのセグメント
 
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
@@ -2012,7 +2081,8 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!card) return;
                 const segId = parseInt(card.dataset.segmentId, 10);
                 const type = badge.classList.contains('seg-badge-polished') ? 'polished' : 'edited';
-                this.openRevertConfirm(segId, type);
+                const beforeText = badge.dataset.before || '';
+                this.openRevertConfirm(segId, type, beforeText);
             });
         },
 
@@ -2036,12 +2106,14 @@ function segmentsApp(transcriptId, historyNames) {
 
         _buildUnknownSegments() {
             const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
-            this.unknownSegments = cards
-                .filter(card => {
+            const unknownCards = cards.filter(card => {
+                    const segId = parseInt(card.dataset.segmentId, 10);
+                    if (this.resolvedUnknowns[segId]) return false;  // 解除済みはスキップ
                     const ta = card.querySelector('.segment-text-edit');
                     const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
                     return text.includes('（？）');
-                })
+                });
+            this.unknownSegments = unknownCards
                 .map(card => {
                     const segId = parseInt(card.dataset.segmentId, 10);
                     const startSec = parseFloat(card.dataset.startSeconds || '0');
@@ -2050,6 +2122,20 @@ function segmentsApp(transcriptId, historyNames) {
                     const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
                     return { segId, timeLabel, excerpt: text };
                 });
+            // 穴埋めUIを初期化（既に入力済みのものは保持、新規のみ追加）
+            const newFills = {};
+            unknownCards.forEach(card => {
+                const segId = parseInt(card.dataset.segmentId, 10);
+                if (this.segFills[segId]) {
+                    newFills[segId] = this.segFills[segId];  // 既存の入力を保持
+                } else {
+                    const ta = card.querySelector('.segment-text-edit');
+                    const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
+                    const parts = text.split('（？）');
+                    newFills[segId] = { parts, fills: new Array(parts.length - 1).fill(''), activeFillIdx: null };
+                }
+            });
+            this.segFills = newFills;
             // 全件解消したら要確認タブを閉じる
             if (this.unknownSegments.length === 0 && this.sidebarTab === 'unknown') {
                 if (this.bookmarks.length > 0) this.sidebarTab = 'bookmarks';
@@ -2888,12 +2974,14 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── 整文インラインレビュー メソッド ───────────────────────────
 
-        openRevertConfirm(segId, type) {
+        openRevertConfirm(segId, type, beforeText = '') {
             if (this.revertConfirmSegId === segId && this.revertConfirmType === type) {
                 this.revertConfirmSegId = null;
+                this.revertConfirmBeforeText = '';
             } else {
                 this.revertConfirmSegId = segId;
                 this.revertConfirmType = type;
+                this.revertConfirmBeforeText = beforeText;
             }
         },
 
@@ -3030,6 +3118,89 @@ function segmentsApp(transcriptId, historyNames) {
         stopFillEdit(segId) {
             const d = this.reviewData[segId];
             if (d) d.activeFillIdx = null;
+        },
+
+        startSegFillEdit(segId, idx) {
+            const d = this.segFills[segId];
+            if (d) d.activeFillIdx = idx;
+            this.$nextTick(() => {
+                const el = document.getElementById('sf-' + segId + '-' + idx);
+                if (el) { el.focus(); el.select(); }
+            });
+        },
+
+        stopSegFillEdit(segId) {
+            const d = this.segFills[segId];
+            if (d) d.activeFillIdx = null;
+        },
+
+        dismissSegFill(segId) {
+            const d = this.segFills[segId];
+            if (!d) return;
+            delete this.segFills[segId];
+            this.segFills = { ...this.segFills };
+        },
+
+        async resolveUnknown(segId, cardEl) {
+            const inEdit = this.shouldShowTextarea(segId);
+            const ta = cardEl.querySelector('.segment-text-edit');
+            const textEl = cardEl.querySelector('.segment-text-remaining');
+
+            if (inEdit && ta) {
+                // 編集中：textareaから（？）を除去するだけ（保存は通常のblur保存に任せる）
+                ta.value = ta.value.replace(/（？）/g, '');
+                ta.dispatchEvent(new Event('input'));
+                this.fitToContent(ta);
+            } else {
+                // 通常モード：（？）を除去してDBへ保存
+                const currentText = textEl?.textContent || '';
+                const newText = currentText.replace(/（？）/g, '');
+                const res = await fetch(`/api/segments/${segId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text_content: newText }),
+                });
+                if (!res.ok) {
+                    window.showToast('保存できませんでした', 'error');
+                    return;
+                }
+                const textDiv = cardEl.querySelector('.segment-text');
+                if (textDiv) this.setSegmentTextContent(textDiv, newText);
+                if (ta) { ta.value = newText; ta.dataset.originalText = newText; this.fitToContent(ta); }
+            }
+
+            // バッジを消去・segFillsも除去
+            this.resolvedUnknowns = { ...this.resolvedUnknowns, [segId]: true };
+            delete this.segFills[segId];
+            this.segFills = { ...this.segFills };
+            this._buildUnknownSegments();
+        },
+
+        async saveSegFill(segId, cardEl) {
+            const d = this.segFills[segId];
+            if (!d) return;
+            let result = '';
+            d.parts.forEach((part, idx) => {
+                result += part;
+                if (idx < d.fills.length) result += (d.fills[idx] || '').trim() || '（？）';
+            });
+            const res = await fetch(`/api/segments/${segId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text_content: result }),
+            });
+            if (!res.ok) {
+                window.showToast('保存できませんでした', 'error');
+                return;
+            }
+            const textDiv = cardEl.querySelector('.segment-text');
+            if (textDiv) this.setSegmentTextContent(textDiv, result);
+            const ta = cardEl.querySelector('.segment-text-edit');
+            if (ta) { ta.value = result; ta.dataset.originalText = result; this.fitToContent(ta); }
+            delete this.segFills[segId];
+            this.segFills = { ...this.segFills };
+            this._buildUnknownSegments();
+            window.showToast('補完して保存しました');
         },
 
         cancelReview() {
@@ -4208,12 +4379,15 @@ function segmentsApp(transcriptId, historyNames) {
             revertBar.innerHTML = `
                 <div style="width:100%">
                     <div style="font-weight:600;margin-bottom:6px"
-                         x-text="revertConfirmType === 'polished' ? '整文前の文字起こしに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
-                    <div style="font-size:11px;color:#b91c1c;margin-bottom:4px">戻し先：</div>
-                    <div style="font-size:13px;color:#7f1d1d;background:#fff1f2;border:1px solid #fecaca;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px"
-                         data-revert-original="${(newSeg.original_asr_text || newSeg.text || '').replace(/"/g, '&quot;')}">${(newSeg.original_asr_text || newSeg.text || '')}</div>
+                         x-text="revertConfirmType === 'polished' ? '整文前のテキストに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
+                    <template x-if="revertConfirmType === 'polished' && revertConfirmBeforeText">
+                        <div>
+                            <div style="font-size:11px;color:#6b7280;margin-bottom:4px">整文前（ユーザー編集後）のテキスト：</div>
+                            <div style="font-size:13px;color:#374151;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px" x-text="revertConfirmBeforeText"></div>
+                        </div>
+                    </template>
                     <div class="revert-confirm-actions">
-                        <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null">キャンセル</button>
+                        <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null; revertConfirmBeforeText = ''">キャンセル</button>
                         <button class="btn-revert" @click.stop="doRevert(${newSeg.id}, $el.closest('.segment-card'))">元に戻す</button>
                     </div>
                 </div>
