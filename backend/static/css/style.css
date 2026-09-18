@@ -2793,12 +2793,15 @@ mark.find-highlight-active {
 }
 .review-progress-label { font-weight: 700; color: #b45309; }
 .review-progress-count { color: #92400e; }
+.review-progress-count.is-pending { color: #dc2626; font-weight: 700; }
 .review-progress-track {
-    flex: 1; height: 6px; background: #fde68a; border-radius: 3px; overflow: hidden; min-width: 60px;
+    flex: 1; height: 8px; background: #fecaca; border-radius: 4px; overflow: hidden; min-width: 60px;
+    transition: background .4s;
 }
-.review-progress-fill { height: 100%; background: #f59e0b; border-radius: 3px; transition: width .3s; }
+.review-progress-fill { height: 100%; background: #22c55e; border-radius: 4px; transition: width .3s, background .4s; }
 .review-progress-bar.review-done { background: #f0fdf4; border-color: #86efac; }
 .review-progress-bar.review-done .review-progress-label { color: #15803d; }
+.review-progress-bar.review-done .review-progress-track { background: #bbf7d0; }
 .review-progress-bar.review-done .review-progress-fill { background: #22c55e; }
 
 /* ── 整文レビュー：カード内 ── */

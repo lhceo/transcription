@@ -712,7 +712,8 @@
          :class="pendingReviewCount() === 0 ? 'review-done' : ''">
         <span class="review-progress-label"
               x-text="pendingReviewCount() === 0 ? '✓ レビュー完了' : (diffReviewMode ? '差分確認中' : '整文レビュー中')"></span>
-        <span class="review-progress-count" x-text="pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件 / ' + reviewTotalCount() + ' 件' : ''"></span>
+        <span class="review-progress-count" :class="pendingReviewCount() > 0 ? 'is-pending' : ''"
+              x-text="pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件 / ' + reviewTotalCount() + ' 件' : ''"></span>
         <div class="review-progress-track">
             <div class="review-progress-fill"
                  :style="'width:' + (reviewTotalCount() ? Math.round((reviewTotalCount()-pendingReviewCount())/reviewTotalCount()*100) : 100) + '%'"></div>
