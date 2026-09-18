@@ -2945,6 +2945,9 @@ function segmentsApp(transcriptId, historyNames) {
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
                 );
+                this._buildUnknownSegments();
+                this._buildSegmentComments();
+                this._renderEditedMarkers();
             } catch (e) {
                 window.showToast('削除に失敗しました。もう一度お試しください。', 'error');
             }
