@@ -4036,6 +4036,12 @@ function segmentsApp(transcriptId, historyNames) {
         // ── セグメント分割 ─────────────────────────────────────────
         async splitSegmentAtCursor(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
+
+            // 二重呼び出し防止（Shift+Enter 連打・ボタンとキーの競合対策）
+            if (!this._splittingIds) this._splittingIds = new Set();
+            if (this._splittingIds.has(segmentId)) return;
+            this._splittingIds.add(segmentId);
+
             const position = textarea.selectionStart;
             const original = textarea.value;
 
@@ -4123,6 +4129,8 @@ function segmentsApp(transcriptId, historyNames) {
                 });
             } catch (e) {
                 window.showToast('分割に失敗しました: ' + e.message, 'error');
+            } finally {
+                this._splittingIds.delete(segmentId);
             }
         },
 
