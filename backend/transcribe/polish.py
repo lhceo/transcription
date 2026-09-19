@@ -192,6 +192,75 @@ async def pickup_proper_nouns(
         return []
 
 
+# 全文サマリー先行抽出 ────────────────────────────────────────────────────────
+
+SUMMARY_SYSTEM = """あなたは日本語のMTG文字起こしを分析するアシスタントです。
+整文の前処理として、会議の全体像を把握するためのサマリーを作成します。
+
+【厳守事項】
+- 発言内容を推測・創作しない
+- テキストに明示されていることのみ箇条書きで列挙する
+- 200字以内に収める"""
+
+SUMMARY_USER_TEMPLATE = """以下のMTG文字起こし全文を読んで、整文アシスタントが「誰が・誰に・何を」を正確に補完できるよう、以下の4点を箇条書きで簡潔にまとめてください。
+
+1. 会議で扱われた主なトピック（最大5件）
+2. 登場する人物・組織と役割（テキストから読み取れるもの）
+3. 繰り返し言及されたキーワード・固有名詞
+4. 決定事項・アクション（明示されているもののみ）
+
+【文字起こし全文】
+{transcript_text}
+
+箇条書きのみで返してください。説明文・前置き不要。"""
+
+
+async def extract_meeting_summary(
+    client,
+    segments: list[dict],
+) -> str:
+    """整文前に全セグメントを軽量モデルで要約し、会議の全体像を返す。
+
+    各バッチのコンテキストに添付することで、バッチをまたぐ指示語・省略の
+    推察精度を向上させる。失敗しても整文は継続（空文字を返す）。
+    """
+    # 全セグメントを「話者: テキスト」形式で結合
+    lines = []
+    for s in segments:
+        speaker = s.get("speaker", "")
+        text = s.get("text", "")
+        lines.append(f"{speaker}: {text}" if speaker else text)
+    full_text = "\n".join(lines)
+
+    # 長すぎる場合は先頭・中間・末尾からサンプリング（Haikuの入力上限を考慮）
+    max_chars = 12000
+    if len(full_text) > max_chars:
+        chunk = max_chars // 3
+        mid = len(full_text) // 2
+        full_text = (
+            full_text[:chunk] + "\n…（中略）…\n" +
+            full_text[mid - chunk // 2: mid + chunk // 2] + "\n…（中略）…\n" +
+            full_text[-chunk:]
+        )
+
+    prompt = SUMMARY_USER_TEMPLATE.format(transcript_text=full_text)
+    logger.info("全文サマリー抽出開始: segs=%d chars=%d", len(segments), len(full_text))
+    try:
+        message = await client.messages.create(
+            model=MODELS["haiku"]["id"],
+            max_tokens=512,
+            system=SUMMARY_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=60.0,
+        )
+        summary = message.content[0].text.strip()
+        logger.info("全文サマリー抽出完了: %d字", len(summary))
+        return summary
+    except Exception as e:
+        logger.warning("全文サマリー抽出失敗（整文は継続）: %s", e)
+        return ""
+
+
 # 整文実行 ────────────────────────────────────────────────────────────────────
 
 POLISH_SYSTEM = """あなたは日本語のMTG文字起こし整文アシスタントです。
@@ -274,7 +343,7 @@ speakerに含まれる会社・役職・役割の情報を推察の補強に使�
 出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。"}"""
 
 POLISH_USER_TEMPLATE = """{context}
-
+{meeting_summary}
 【文字起こし（JSON形式）】
 ※ commentフィールドがある場合、それはユーザーが記録した補足メモです。整文の文脈理解に活用してください。
 {segments_json}
@@ -290,8 +359,8 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
-# 8192 制限に対して余裕を持たせた安全値（注釈追加で若干膨張するため）
-_SAFE_OUTPUT_TOKENS = 3500
+# max_tokens=8192 に対して JSON オーバーヘッド・注釈膨張を考慮した安全値
+_SAFE_OUTPUT_TOKENS = 6000
 # バッチ間のオーバーラップ（文脈保持のため前バッチ末尾を次バッチ先頭に重複させる）
 _OVERLAP_SEGMENTS = 5
 
@@ -309,6 +378,7 @@ async def _run_polish_batch(
     segments: list[dict],
     context_text: str,
     model_id: str,
+    meeting_summary: str = "",
 ) -> tuple[dict[int, str], int, int]:
     """セグメントのリストを1回のAPI呼び出しで整文し、(suggestions, input_tokens, output_tokens) を返す。"""
     segments_json = json.dumps(
@@ -324,8 +394,13 @@ async def _run_polish_batch(
         ensure_ascii=False,
         indent=2,
     )
+    summary_block = (
+        f"【会議全体のサマリー（整文の文脈理解に活用してください）】\n{meeting_summary}\n\n"
+        if meeting_summary else ""
+    )
     prompt = POLISH_USER_TEMPLATE.format(
         context=context_text if context_text else "（コンテキスト情報なし）",
+        meeting_summary=summary_block,
         segments_json=segments_json,
     )
     logger.info("整文バッチ開始: model=%s segs=%d prompt_chars=%d", model_id, len(segments), len(prompt))
@@ -393,6 +468,10 @@ async def run_polish(
     """
     model_id = MODELS.get(model_key, MODELS["haiku"])["id"]
 
+    # ── 全文サマリー先行抽出（バッチをまたぐ文脈補完の精度向上）──────────────
+    # 一括送信でも分割でも全バッチに同じサマリーを添付する
+    meeting_summary = await extract_meeting_summary(client, segments)
+
     # 出力トークンを概算（日本語 0.7 tok/char × 注釈膨張 1.2 倍）
     estimated_output = int(sum(estimate_tokens(s["text"]) for s in segments) * 1.2)
     logger.info("整文 出力トークン概算: %s segs → %s tok (threshold %s)", len(segments), estimated_output, _SAFE_OUTPUT_TOKENS)
@@ -403,7 +482,9 @@ async def run_polish(
 
     if estimated_output <= _SAFE_OUTPUT_TOKENS:
         # 一括送信
-        suggestions, inp, out = await _run_polish_batch(client, segments, context_text, model_id)
+        suggestions, inp, out = await _run_polish_batch(
+            client, segments, context_text, model_id, meeting_summary=meeting_summary
+        )
         merged.update(suggestions)
         total_input += inp
         total_output += out
@@ -433,7 +514,9 @@ async def run_polish(
                 else:
                     batch_segs.append(s)
 
-            suggestions, inp, out = await _run_polish_batch(client, batch_segs, context_text, model_id)
+            suggestions, inp, out = await _run_polish_batch(
+                client, batch_segs, context_text, model_id, meeting_summary=meeting_summary
+            )
 
             # オーバーラップ部分（前バッチが担当）は採用しない
             own_ids = {s["id"] for s in segments[own_start:own_end]}
