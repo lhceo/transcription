@@ -515,7 +515,7 @@
          x-data="segmentsApp(window.__SEGMENTS_INIT.transcriptId, window.__SEGMENTS_INIT.historyNames)">
 
     {# ──── ツールバー：編集モード切替＋エクスポート ──── #}
-    <div class="detail-toolbar" :class="editMode ? 'detail-toolbar-editing' : ''">
+    <div class="detail-toolbar" :class="editMode ? 'detail-toolbar-editing' : ''" x-show="!reviewMode" x-cloak>
         {# 左グループ: 編集トグル + 保存ステータスチップ #}
         <div class="toolbar-left">
             <button

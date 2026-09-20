@@ -2798,7 +2798,7 @@ mark.find-highlight-active {
 .polish-history-btn-revert:hover { background: #fef2f2; }
 
 .review-progress-bar {
-    position: sticky; top: 52px;
+    position: sticky; top: 8px;
     background: #fffbeb; border-bottom: 2px solid #fcd34d;
     padding: 8px 16px; display: flex; align-items: center; gap: 12px;
     font-size: 13px; z-index: 80; flex-wrap: wrap;
