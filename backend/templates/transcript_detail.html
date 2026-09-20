@@ -725,6 +725,9 @@
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
                 x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りをスキップして保存')"></button>
         <button class="btn btn-outline btn-sm" @click="cancelReview()" style="color:#64748b">キャンセル</button>
+        <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
+            グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
+        </span>
     </div>
 
     {# ──── セグメント一覧 ──── #}
@@ -1048,17 +1051,19 @@
                             <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
                         </div>
                         <div class="review-original-box">
-                            <span class="review-original-label" x-text="diffReviewMode ? '整文前（ユーザー編集後）' : '元の文字起こし'"></span>
+                            <span class="review-original-label" x-text="diffReviewMode ? 'あなたの文字起こし' : '元の文字起こし'"></span>
                             <span x-text="reviewData[{{ seg.id }}]?.original || ''"></span>
                         </div>
-                        <span class="review-edit-label" x-text="diffReviewMode ? '整文後（現在のテキスト・編集可）' : '整文後（編集可）'"></span>
-                        <textarea class="review-edit-textarea" x-model="reviewData[{{ seg.id }}].polishedText" rows="3" @click.stop></textarea>
+                        <div class="review-edit-section">
+                            <span class="review-edit-label" x-text="diffReviewMode ? 'AIの整文案（編集して調整可）' : '整文後（編集可）'"></span>
+                            <textarea class="review-edit-textarea" x-model="reviewData[{{ seg.id }}].polishedText" rows="3" @click.stop></textarea>
+                        </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b"
-                                    x-text="diffReviewMode ? '整文前に戻す' : 'スキップ'"
+                                    x-text="diffReviewMode ? '元に戻す' : 'スキップ'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
                             <button class="btn btn-sm btn-primary"
-                                    x-text="diffReviewMode ? '整文を採用' : '採用'"
+                                    x-text="diffReviewMode ? '採用' : '採用'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'accepted'"></button>
                         </div>
                     </div>

@@ -2828,17 +2828,29 @@ mark.find-highlight-active {
 .review-pending-badge.unknown-badge { background: #fef3c7; color: #b45309; }
 
 .review-original-box {
-    font-size: 13px; color: #94a3b8; background: #f8fafc;
-    border: 1px solid #e2e8f0; border-radius: 6px;
-    padding: 8px 12px; margin-bottom: 8px; line-height: 1.7;
+    font-size: 13px; color: #64748b; background: #f8fafc;
+    border: 1px solid #e2e8f0; border-left: 3px solid #94a3b8; border-radius: 6px;
+    padding: 8px 12px; margin-bottom: 10px; line-height: 1.7;
 }
 .review-original-label {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: .05em; color: #cbd5e1; display: block; margin-bottom: 3px;
+    display: inline-block; font-size: 10px; font-weight: 700;
+    color: #475569; background: #e2e8f0;
+    border-radius: 20px; padding: 2px 8px;
+    margin-bottom: 5px; letter-spacing: 0.02em;
+}
+.review-edit-section {
+    border-left: 3px solid #3b82f6; border-radius: 0 6px 6px 0;
+    padding-left: 10px; margin-bottom: 0;
 }
 .review-edit-label {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: .05em; color: #93c5fd; display: block; margin-bottom: 4px;
+    display: inline-block; font-size: 10px; font-weight: 700;
+    color: #1d4ed8; background: #dbeafe;
+    border-radius: 20px; padding: 2px 8px;
+    margin-bottom: 5px; letter-spacing: 0.02em;
+}
+.review-progress-hint {
+    font-size: 11px; color: #92400e; opacity: 0.85;
+    flex-basis: 100%; margin-top: 2px;
 }
 .review-edit-textarea {
     width: 100%; box-sizing: border-box; font-size: 14px; line-height: 1.7;
