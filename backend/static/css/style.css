@@ -2819,7 +2819,7 @@ mark.find-highlight-active {
 /* ── 整文レビュー：カード内 ── */
 .review-pending-header {
     display: flex; align-items: center; gap: 6px;
-    font-size: 11px; font-weight: 700; margin-bottom: 10px;
+    font-size: 11px; font-weight: 700; margin-top: 10px; margin-bottom: 10px;
 }
 .review-pending-badge {
     padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
