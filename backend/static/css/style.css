@@ -3259,6 +3259,7 @@ mark.find-highlight-active {
     max-height: calc(100vh - 90px);
     overflow: hidden;
     transition: width 0.2s ease;
+    z-index: 51; /* 分割ボタン(z:50)より上・検索バー(z:55)より下 */
 }
 .transcript-sidebar-col.sidebar-collapsed {
     width: 44px;

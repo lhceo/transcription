@@ -3625,6 +3625,9 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async _undoLastSave() {
+            if (this._isUndoing) return;
+            this._isUndoing = true;
+            try {
             const entry = this.undoStack.pop();
             if (!entry) return;
             if (entry.type === 'split') {
@@ -3699,10 +3702,13 @@ function segmentsApp(transcriptId, historyNames) {
                         if (prevViewDiv) this.setSegmentTextContent(prevViewDiv, splitData.current.text);
                         if (splitData.current.end_seconds !== undefined)
                             prevCard.dataset.endSeconds = String(splitData.current.end_seconds);
-                        // DOM: 復元したカードを挿入
-                        const restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
-                        prevCard.after(restoredCard);
-                        if (window.Alpine) Alpine.initTree(restoredCard);
+                        // DOM: 復元したカードを挿入（二重挿入防止）
+                        let restoredCard = document.getElementById(`segment-${splitData.new.id}`);
+                        if (!restoredCard) {
+                            restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
+                            prevCard.after(restoredCard);
+                            if (window.Alpine) Alpine.initTree(restoredCard);
+                        }
                         // 元の話者（B）に戻す
                         if (entry.currentSpeakerLabel) {
                             restoredCard.dataset.speakerLabel = entry.currentSpeakerLabel;
@@ -3763,6 +3769,7 @@ function segmentsApp(transcriptId, historyNames) {
                     window.showToast('取り消しに失敗しました', 'error');
                 }
             }
+            } finally { this._isUndoing = false; }
         },
 
         async _redoLastUndo() {
@@ -4129,9 +4136,15 @@ function segmentsApp(transcriptId, historyNames) {
                 }
 
                 // 新カードを DOM に挿入し Alpine でバインディングを初期化
-                const newCard = this.buildSegmentCardElement(data.new, currentCard);
-                currentCard.after(newCard);
-                if (window.Alpine) Alpine.initTree(newCard);
+                // 二重挿入防止: 同 ID のカードがすでにあれば挿入しない
+                let newCard = document.getElementById(`segment-${data.new.id}`);
+                if (newCard) {
+                    console.warn('[split] duplicate card prevented:', data.new.id);
+                } else {
+                    newCard = this.buildSegmentCardElement(data.new, currentCard);
+                    currentCard.after(newCard);
+                    if (window.Alpine) Alpine.initTree(newCard);
+                }
                 this.recolorByName();
 
                 // v1.1 Option C: 分割後は新カードを編集対象に切り替える
@@ -4152,7 +4165,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.undoStack.length > 20) this.undoStack.shift();
                 // $nextTick で表示が反映されてから focus
                 this.$nextTick(() => {
-                    const newTextarea = newCard.querySelector('.segment-text-edit');
+                    const newTextarea = newCard?.querySelector('.segment-text-edit');
                     if (newTextarea) {
                         this.fitToContent(newTextarea);
                         newTextarea.focus();
