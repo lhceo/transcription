@@ -199,10 +199,12 @@
 >
     <div class="player-inner">
     {# タイムライン #}
-    <div class="player-timeline" @click="seekFromClick($event)" title="クリックでシーク">
+    <div class="player-timeline"
+         @pointerdown.prevent="startTimelineDrag($event)"
+         title="クリック・ドラッグでシーク">
         <div class="player-timeline-track">
             <div class="player-timeline-fill" :style="'width:' + progressPercent + '%'"></div>
-            <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'"></div>
+            <div class="player-timeline-thumb" :style="'left:' + progressPercent + '%'" :class="{'is-dragging': timelineDragging}"></div>
             {# ブックマークマーカー（JS で動的に挿入） #}
             <div class="player-bookmark-markers" id="player-bookmark-markers"></div>
         </div>
@@ -1488,6 +1490,7 @@ function audioPlayer(transcriptId) {
         currentTime: 0,
         duration: 0,
         paused: true,
+        timelineDragging: false,
 
         get progressPercent() {
             return this.duration > 0 ? Math.min(100, (this.currentTime / this.duration) * 100) : 0;
@@ -1536,6 +1539,35 @@ function audioPlayer(transcriptId) {
             if (audio && this.duration > 0) {
                 audio.currentTime = ratio * this.duration;
             }
+        },
+
+        _seekToRatioFromTimeline(clientX) {
+            const track = document.querySelector('.player-timeline-track');
+            if (!track) return;
+            const rect = track.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            const audio = this.$refs.audioEl;
+            if (audio && this.duration > 0) {
+                audio.currentTime = ratio * this.duration;
+            }
+        },
+
+        startTimelineDrag(e) {
+            // pointerdown 即シーク（クリックとして機能）
+            this._seekToRatioFromTimeline(e.clientX);
+            this.timelineDragging = true;
+
+            const onMove = (ev) => {
+                if (!this.timelineDragging) return;
+                this._seekToRatioFromTimeline(ev.clientX);
+            };
+            const onUp = () => {
+                this.timelineDragging = false;
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
         },
 
         togglePlay() {

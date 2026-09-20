@@ -893,8 +893,15 @@ body:has(.audio-player-fixed) {
     transition: opacity 0.15s;
 }
 
-.player-timeline:hover .player-timeline-thumb {
+.player-timeline:hover .player-timeline-thumb,
+.player-timeline-thumb.is-dragging {
     opacity: 1;
+}
+.player-timeline-thumb.is-dragging {
+    width: 18px;
+    height: 18px;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
+    cursor: grabbing;
 }
 
 /* コントロール行 */
