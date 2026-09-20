@@ -882,7 +882,7 @@
 
                     {# 穴埋めUI（（？）含むセグメント・通常モード） #}
                     {% if '（？）' in seg.text_content %}
-                    <template x-if="segFills[{{ seg.id }}] && !editMode && !reviewMode">
+                    <template x-if="segFills[{{ seg.id }}] && !shouldShowTextarea({{ seg.id }}) && !reviewMode">
                         <div class="fill-in-standalone-area">
                             <div style="font-size:11px;color:#b45309;margin-bottom:8px;display:flex;align-items:center;gap:4px">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
