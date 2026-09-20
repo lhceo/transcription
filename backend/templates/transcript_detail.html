@@ -723,7 +723,7 @@
         <button class="btn btn-outline btn-sm" x-show="pendingReviewCount() > 0 && !diffReviewMode" @click="acceptAllReview()" style="white-space:nowrap">全採用</button>
         <button class="btn btn-primary btn-sm"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
-                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りをこのまま維持して保存' : '残りをスキップして保存')"></button>
+                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りをスキップして保存')"></button>
         <button class="btn btn-outline btn-sm" @click="cancelReview()" style="color:#64748b">キャンセル</button>
     </div>
 
@@ -1058,7 +1058,7 @@
                                     x-text="diffReviewMode ? '整文前に戻す' : 'スキップ'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
                             <button class="btn btn-sm btn-primary"
-                                    x-text="diffReviewMode ? 'このまま維持' : '採用'"
+                                    x-text="diffReviewMode ? '整文を採用' : '採用'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'accepted'"></button>
                         </div>
                     </div>
