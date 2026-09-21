@@ -1060,6 +1060,7 @@ async def _polish_bg_task(
         job["status"] = "done"
         job["result"] = {
             "suggestions": result.suggestions,
+            "flags": result.flags,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
             "cost_yen": result.cost_yen,

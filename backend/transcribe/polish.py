@@ -393,17 +393,23 @@ speakerに含まれる会社・役職・役割の情報を推察の補強に使�
 
 ステップ6: 判断できない箇所は原文のまま残す（推測で内容を書き換えない）
 
-ステップ7: 各セグメントを必ず同じJSON形式で返す
+ステップ7: 各セグメントをフラグ付きのJSON形式で返す
+以下の操作を行った場合、対応するフラグを付与すること:
+- 指示語（これ・それ・あれ・あの件等）を具体的な語句に置き換えた → type: "pronoun_resolved"
+- 省略された主語・目的語・間接目的語を（補完）形式で追加した → type: "subject_added"
+- テキストが意味不明・断片的で前後の文脈から内容を推察して書いた → type: "meaning_unclear"
+- 固有名詞辞書の読みをもとに表記を変換した → type: "proper_noun_fixed"
+noteには日本語で何を行ったか簡潔に説明すること。フラグがない場合はflags: []とすること。
 
 【整文例】
 入力: {"id": 1, "speaker": "市川 / ライオンハート / PM", "text": "えーと、それ、来週までにやっといて"}
-出力: {"id": 1, "text": "（見積書を）来週までにまとめておいてください。"}
+出力: {"id": 1, "text": "（見積書を）来週までにまとめておいてください。", "flags": [{"type": "pronoun_resolved", "note": "「それ」を文脈から「見積書」と推察し補完しました"}, {"type": "subject_added", "note": "「見積書を」を補完しました"}]}
 
 入力: {"id": 2, "speaker": "古瀬社長 / ライフバンク / 代表", "text": "あの件どうなってる？"}
-出力: {"id": 2, "text": "（村プロジェクトの補助金申請の件は）どうなっていますか？"}
+出力: {"id": 2, "text": "（村プロジェクトの補助金申請の件は）どうなっていますか？", "flags": [{"type": "pronoun_resolved", "note": "「あの件」を「村プロジェクトの補助金申請の件」に置き換えました"}]}
 
 入力: {"id": 3, "speaker": "蒲社長", "text": "えのさんが来週対応してくれるって言ってたよ"}
-出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。"}"""
+出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。", "flags": [{"type": "proper_noun_fixed", "note": "「えのさん」を固有名詞辞書をもとに「榎本計介（えのさん）」に展開しました"}]}"""
 
 POLISH_USER_TEMPLATE = """{context}
 {meeting_summary}
@@ -418,7 +424,7 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 推察できない箇所のみ （？） を挿入してください。
 
 必ず以下のJSON形式のみで返してください（前後に説明文を付けないこと。セグメント数・idは変えないこと）:
-{{"segments": [{{"id": <id>, "text": "<整文後のテキスト>"}}]}}"""
+{{"segments": [{{"id": <id>, "text": "<整文後のテキスト>", "flags": [{{"type": "<種別>", "note": "<説明>"}}]}}]}}"""
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
@@ -430,7 +436,8 @@ _OVERLAP_SEGMENTS = 5
 
 @dataclass
 class PolishResult:
-    suggestions: dict[int, str]  # segment_id -> 整文後テキスト
+    suggestions: dict[int, str]   # segment_id -> 整文後テキスト
+    flags: dict[int, list[dict]]  # segment_id -> [{type, note}]
     input_tokens: int
     output_tokens: int
     cost_yen: float
@@ -504,10 +511,12 @@ async def _run_polish_batch(
         json_str = m.group(0) if m else raw
         data = json.loads(json_str)
         suggestions = {s["id"]: s["text"] for s in data.get("segments", [])}
+        flags = {s["id"]: s["flags"] for s in data.get("segments", []) if s.get("flags")}
     except Exception:
         logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
         suggestions = {}
-    return suggestions, final_msg.usage.input_tokens, final_msg.usage.output_tokens
+        flags = {}
+    return suggestions, flags, final_msg.usage.input_tokens, final_msg.usage.output_tokens
 
 
 async def run_polish(
@@ -542,13 +551,15 @@ async def run_polish(
     total_input = 0
     total_output = 0
     merged: dict[int, str] = {}
+    merged_flags: dict[int, list[dict]] = {}
 
     if estimated_output <= _SAFE_OUTPUT_TOKENS:
         # 一括送信
-        suggestions, inp, out = await _run_polish_batch(
+        suggestions, flags, inp, out = await _run_polish_batch(
             client, segments, context_text, model_id, meeting_summary=meeting_summary
         )
         merged.update(suggestions)
+        merged_flags.update(flags)
         total_input += inp
         total_output += out
         if progress_callback:
@@ -577,7 +588,7 @@ async def run_polish(
                 else:
                     batch_segs.append(s)
 
-            suggestions, inp, out = await _run_polish_batch(
+            suggestions, batch_flags, inp, out = await _run_polish_batch(
                 client, batch_segs, context_text, model_id, meeting_summary=meeting_summary
             )
 
@@ -586,6 +597,9 @@ async def run_polish(
             for seg_id, text in suggestions.items():
                 if seg_id in own_ids:
                     merged[seg_id] = text
+            for seg_id, flag_list in batch_flags.items():
+                if seg_id in own_ids:
+                    merged_flags[seg_id] = flag_list
 
             # 次バッチのオーバーラップに使うため今バッチの整文済み結果を保持
             prev_suggestions = suggestions
@@ -598,6 +612,7 @@ async def run_polish(
     cost = actual_cost_yen(total_input, total_output, model_key)
     return PolishResult(
         suggestions=merged,
+        flags=merged_flags,
         input_tokens=total_input,
         output_tokens=total_output,
         cost_yen=cost,

@@ -598,18 +598,32 @@
                 {% if has_pickup_suggestions %}<span class="pickup-ready-dot" title="固有名詞候補あり"></span>{% endif %}
             </button>
 
-            <div class="export-menu" x-data="{ open: false }" @click.outside="open = false">
+            <div class="export-menu" x-data="{
+                open: false,
+                async doExport(url) {
+                    const unknowns = Array.from(document.querySelectorAll('#segment-list .segment-text-remaining'))
+                        .filter(el => el.textContent.includes('（？）'));
+                    if (unknowns.length > 0) {
+                        const ok = await window.showConfirm(
+                            `推察できなかった箇所（？）が ${unknowns.length}件 あります。内容が事実と異なる可能性があります。このままエクスポートしますか？`,
+                            { title: '要確認箇所があります', okLabel: 'このままエクスポート' }
+                        );
+                        if (!ok) return;
+                    }
+                    window.location.href = url;
+                }
+            }" @click.outside="open = false">
                 <button type="button" class="btn btn-secondary-outline" @click="open = !open" :aria-expanded="open">エクスポート ▾</button>
                 <div class="export-options" x-show="open" x-cloak @click="open = false">
-                    <a href="/api/transcripts/{{ transcript.id }}/export?format=txt" class="export-option">
+                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=txt')">
                         <strong>TXT</strong><span>テキスト形式（タイムスタンプ＋話者）</span>
-                    </a>
-                    <a href="/api/transcripts/{{ transcript.id }}/export?format=srt" class="export-option">
+                    </button>
+                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=srt')">
                         <strong>SRT</strong><span>字幕ファイル形式</span>
-                    </a>
-                    <a href="/api/transcripts/{{ transcript.id }}/export?format=json" class="export-option">
+                    </button>
+                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=json')">
                         <strong>JSON</strong><span>構造化データ（再利用向け）</span>
-                    </a>
+                    </button>
                     <div class="export-option export-option-coming-soon">
                         <strong>
                             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:3px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="#4285F4"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="none"/></svg>
@@ -728,6 +742,12 @@
         <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
             グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
         </span>
+        <div class="review-flag-nav" x-show="flagCount() > 0" x-cloak>
+            <span class="review-flag-nav-label">⚠️ 要確認</span>
+            <button class="review-flag-nav-btn" @click="navToFlag(-1)" title="前の要確認箇所">←</button>
+            <span class="review-flag-nav-count" x-text="flagNavDisplay()"></span>
+            <button class="review-flag-nav-btn" @click="navToFlag(1)" title="次の要確認箇所">→</button>
+        </div>
     </div>
 
     {# ──── セグメント一覧 ──── #}
@@ -1046,6 +1066,18 @@
                     {# diff 未対応 #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'diff' && !reviewData[{{ seg.id }}].done">
                     <div>
+                        <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
+                        <div class="review-flag-list">
+                            <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
+                                <span class="review-flag-badge"
+                                      :class="'review-flag-' + flagTypeRisk(flag.type)"
+                                      :title="flag.note"
+                                      x-text="flagTypeLabel(flag.type)"></span>
+                            </template>
+                            <span class="review-flag-note"
+                                  x-text="reviewData[{{ seg.id }}].flags.map(f => f.note).join(' / ')"></span>
+                        </div>
+                        </template>
                         <div class="review-pending-header">
                             <span class="review-pending-badge diff-badge">整文あり</span>
                             <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
@@ -1473,7 +1505,7 @@
             </div>
             <div class="polish-modal-actions">
                 <button class="btn btn-primary"
-                        @click="window.dispatchEvent(new CustomEvent('enter-review-mode', {detail:{suggestions}})); close()"
+                        @click="window.dispatchEvent(new CustomEvent('enter-review-mode', {detail:{suggestions, flags}})); close()"
                         :disabled="totalChanged === 0">
                     セグメントをレビューする
                 </button>
@@ -1741,7 +1773,9 @@ function segmentsApp(transcriptId, historyNames) {
         // ── 整文インラインレビュー ─────────────────────────────────
         reviewMode: false,
         diffReviewMode: false,  // true = 採用後の差分確認モード（スキップ=元に戻す）
-        reviewData: {},   // { [segId]: { state, done, polishedText, original, parts, fills, activeFillIdx, preview } }
+        reviewData: {},   // { [segId]: { state, done, polishedText, original, parts, fills, activeFillIdx, preview, flags } }
+        _flaggedSegIds: [],  // 要確認ナビゲーター: フラグ付きsegId (DOM順)
+        _flagNavIdx: 0,
         revertConfirmSegId: null,
         revertConfirmType: null,
         revertConfirmBeforeText: '',
@@ -2106,7 +2140,7 @@ function segmentsApp(transcriptId, historyNames) {
 
             // 整文インラインレビュー：polishModal からのイベントを受け取る
             window.addEventListener('enter-review-mode', (e) => {
-                this.enterReviewMode(e.detail.suggestions);
+                this.enterReviewMode(e.detail.suggestions, e.detail.flags || {});
             });
 
             // 動的生成バッジ（編集済み↩）のクリックを委譲で処理
@@ -3062,7 +3096,7 @@ function segmentsApp(transcriptId, historyNames) {
             this._buildUnknownSegments();
         },
 
-        enterReviewMode(suggestions) {
+        enterReviewMode(suggestions, flags = {}) {
             this.reviewData = {};
             const cards = document.querySelectorAll('#segment-list .segment-card');
             cards.forEach(card => {
@@ -3089,6 +3123,7 @@ function segmentsApp(transcriptId, historyNames) {
                     fills,
                     activeFillIdx: null,
                     preview: null,
+                    flags: flags[id] || [],
                 };
             });
 
@@ -3100,10 +3135,26 @@ function segmentsApp(transcriptId, historyNames) {
             this.editMode = false;
             this.focusedEditingSegmentId = null;
             this.reviewMode = true;
-            window.showToast(`整文完了（${count}箇所）。インラインでレビューしてください。`);
-            // Scroll to first pending
+
+            // 要確認ナビゲーター：フラグ付きセグメントをDOM順で収集
+            this._flaggedSegIds = Array.from(document.querySelectorAll('#segment-list .segment-card'))
+                .map(c => parseInt(c.dataset.segmentId, 10))
+                .filter(id => {
+                    const d = this.reviewData[id];
+                    return d && d.flags && d.flags.length > 0;
+                });
+            this._flagNavIdx = 0;
+
+            const flagCount = this._flaggedSegIds.length;
+            const msg = flagCount > 0
+                ? `整文完了（${count}箇所）。⚠️ 要確認フラグ ${flagCount}件。ナビゲーターで確認してください。`
+                : `整文完了（${count}箇所）。インラインでレビューしてください。`;
+            window.showToast(msg);
+
             this.$nextTick(() => {
-                const first = document.querySelector('.segment-card.review-pending-diff, .segment-card.review-pending-unknown');
+                const first = flagCount > 0
+                    ? document.getElementById(`segment-${this._flaggedSegIds[0]}`)
+                    : document.querySelector('.segment-card.review-pending-diff, .segment-card.review-pending-unknown');
                 if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
         },
@@ -3247,6 +3298,38 @@ function segmentsApp(transcriptId, historyNames) {
             this.reviewMode = false;
             this.diffReviewMode = false;
             this.reviewData = {};
+            this._flaggedSegIds = [];
+            this._flagNavIdx = 0;
+        },
+
+        flagCount() {
+            return this._flaggedSegIds.length;
+        },
+
+        flagNavDisplay() {
+            if (this._flaggedSegIds.length === 0) return '';
+            return `${this._flagNavIdx + 1} / ${this._flaggedSegIds.length}`;
+        },
+
+        navToFlag(delta) {
+            if (this._flaggedSegIds.length === 0) return;
+            this._flagNavIdx = (this._flagNavIdx + delta + this._flaggedSegIds.length) % this._flaggedSegIds.length;
+            const segId = this._flaggedSegIds[this._flagNavIdx];
+            const card = document.getElementById(`segment-${segId}`);
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        },
+
+        flagTypeLabel(type) {
+            return {
+                pronoun_resolved: '指示語補完',
+                subject_added:    '主語補完',
+                meaning_unclear:  '文意推察',
+                proper_noun_fixed:'固有名詞変換',
+            }[type] || type;
+        },
+
+        flagTypeRisk(type) {
+            return ['pronoun_resolved', 'subject_added', 'meaning_unclear'].includes(type) ? 'high' : 'mid';
         },
 
         async applyReview() {
@@ -3263,6 +3346,8 @@ function segmentsApp(transcriptId, historyNames) {
                 window.showToast('採用された変更はありません。レビューを終了します。', 'info');
                 this.reviewMode = false;
                 this.reviewData = {};
+                this._flaggedSegIds = [];
+                this._flagNavIdx = 0;
                 return;
             }
 
@@ -4701,6 +4786,7 @@ function polishModal() {
         estimate: null,
         pickupWords: [],   // [{word, meaning}]
         suggestions: {},   // {segId: polishedText}
+        flags: {},         // {segId: [{type, note}]}
         totalChanged: 0,
         unknownCount: 0,
         polishProgress: { done: 0, total: 0 },
@@ -4782,6 +4868,7 @@ function polishModal() {
                 // バックグラウンドジョブをポーリング
                 const data = await this._pollPolishJob(job_id);
                 this.suggestions = data.suggestions || {};
+                this.flags = data.flags || {};
                 this.totalChanged = Object.keys(this.suggestions).length;
                 this.unknownCount = Object.values(this.suggestions).filter(t => t.includes('（？）')).length;
                 this.step = 'result';
