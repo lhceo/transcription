@@ -724,7 +724,7 @@
         <button class="btn btn-primary btn-sm"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
                 x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りをスキップして保存')"></button>
-        <button class="btn btn-outline btn-sm" @click="cancelReview()" style="color:#64748b">キャンセル</button>
+        <button class="btn btn-outline btn-sm" @click="cancelReview()" style="color:#64748b" x-text="diffReviewMode ? '編集モードで確認する' : 'キャンセル'"></button>
         <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
             グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
         </span>
@@ -1001,7 +1001,7 @@
                     </div>
 
                     {# ── コメント表示 / 編集エリア ── #}
-                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})"
+                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }}) && !reviewMode"
                          x-cloak style="display:none;cursor:pointer"
                          @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集">
                         <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
@@ -4353,7 +4353,7 @@ function segmentsApp(transcriptId, historyNames) {
             // コメント表示エリア（Alpine x-show で管理）
             const commentWrap = document.createElement('div');
             commentWrap.className = 'segment-comment-wrap';
-            commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id})`);
+            commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id}) && !reviewMode`);
             commentWrap.style.display = 'none';
             commentWrap.style.cursor = 'pointer';
             commentWrap.title = 'クリックしてコメントを編集';
