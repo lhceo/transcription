@@ -2154,30 +2154,36 @@ a.history-item-filename:hover {
 }
 
 .export-options-config {
-    padding: 10px 14px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    padding: 10px 14px 10px;
+}
+.export-config-heading {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin: 0 0 6px;
 }
 .export-config-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: block;
     font-size: 13px;
-    color: var(--color-text-secondary, #64748b);
+    color: var(--color-text, #1e293b);
     cursor: pointer;
     user-select: none;
+    padding: 4px 0;
 }
 .export-config-label input[type="checkbox"] {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+    margin-right: 7px;
     cursor: pointer;
+    accent-color: #6d28d9;
 }
 .export-options-divider {
     height: 1px;
     background: var(--color-border);
-    margin: 0 14px;
+    margin: 2px 0 0;
 }
 
 /* ── 検索・置換バー ── */

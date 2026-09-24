@@ -625,13 +625,14 @@
                 <button type="button" class="btn btn-secondary-outline" @click="open = !open" :aria-expanded="open">エクスポート ▾</button>
                 <div class="export-options" x-show="open" x-cloak @click="open = false">
                     <div class="export-options-config" @click.stop>
+                        <p class="export-config-heading">含める情報</p>
                         <label class="export-config-label">
                             <input type="checkbox" x-model="includeVocab">
-                            <span>固有名詞一覧を含める</span>
+                            固有名詞一覧
                         </label>
                         <label class="export-config-label">
                             <input type="checkbox" x-model="includeMeta">
-                            <span>MTGメタ情報を含める</span>
+                            MTGメタ情報
                         </label>
                     </div>
                     <div class="export-options-divider"></div>
