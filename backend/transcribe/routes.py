@@ -1739,8 +1739,53 @@ def _resolve_speaker_name(seg: Segment, name_map: dict[str, str]) -> str:
     return name_map.get(seg.speaker_label, seg.speaker_label)
 
 
-def _build_export_txt(segments: list[Segment], name_map: dict[str, str], vocab_items: list[dict] | None = None) -> str:
+def _build_meta_block(transcript: "Transcript") -> list[str]:
+    """MTGメタ情報のテキスト行リストを返す（空の場合は空リスト）。"""
+    from datetime import timezone as _tz
     lines: list[str] = []
+    has_any = any([
+        transcript.meeting_date,
+        transcript.meeting_location,
+        transcript.overview,
+        transcript.meeting_purpose,
+        transcript.meeting_agenda,
+    ])
+    if not has_any:
+        return lines
+    lines.append("【MTG情報】")
+    if transcript.meeting_date:
+        dt = transcript.meeting_date
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        try:
+            import zoneinfo
+            jst = zoneinfo.ZoneInfo("Asia/Tokyo")
+            dt = dt.astimezone(jst)
+        except Exception:
+            pass
+        lines.append(f"日時: {dt.strftime('%Y年%m月%d日 %H:%M')}")
+    if transcript.meeting_location:
+        lines.append(f"場所: {transcript.meeting_location}")
+    if transcript.overview:
+        lines.append(f"概要: {transcript.overview}")
+    if transcript.meeting_purpose:
+        lines.append(f"目的: {transcript.meeting_purpose}")
+    if transcript.meeting_agenda:
+        lines.append("アジェンダ:")
+        lines.append(transcript.meeting_agenda)
+    return lines
+
+
+def _build_export_txt(
+    segments: list[Segment],
+    name_map: dict[str, str],
+    vocab_items: list[dict] | None = None,
+    meta_lines: list[str] | None = None,
+) -> str:
+    lines: list[str] = []
+    if meta_lines:
+        lines.extend(meta_lines)
+        lines.append("")
     for seg in segments:
         name = _resolve_speaker_name(seg, name_map)
         ts = _format_time_hms(seg.start_seconds)
@@ -1751,7 +1796,7 @@ def _build_export_txt(segments: list[Segment], name_map: dict[str, str], vocab_i
         lines.append("")
     if vocab_items:
         lines.append("")
-        lines.append("──── 固有名詞辞書 ────")
+        lines.append("──── 固有名詞一覧 ────")
         for v in vocab_items:
             entry = v["word"]
             if v.get("reading"):
@@ -1779,12 +1824,34 @@ def _build_export_srt(segments: list[Segment], name_map: dict[str, str]) -> str:
 
 
 def _build_export_json(
-    transcript: Transcript, segments: list[Segment], name_map: dict[str, str], vocab_items: list[dict] | None = None
+    transcript: Transcript,
+    segments: list[Segment],
+    name_map: dict[str, str],
+    vocab_items: list[dict] | None = None,
+    meta_lines: list[str] | None = None,
 ) -> str:
     import json
+    from datetime import timezone as _tz
+
+    meta: dict = {}
+    if meta_lines:
+        if transcript.meeting_date:
+            dt = transcript.meeting_date
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_tz.utc)
+            meta["meeting_date"] = dt.isoformat()
+        if transcript.meeting_location:
+            meta["meeting_location"] = transcript.meeting_location
+        if transcript.overview:
+            meta["overview"] = transcript.overview
+        if transcript.meeting_purpose:
+            meta["meeting_purpose"] = transcript.meeting_purpose
+        if transcript.meeting_agenda:
+            meta["meeting_agenda"] = transcript.meeting_agenda
 
     data = {
         "version": 1,
+        **({"meta": meta} if meta else {}),
         "transcript": {
             "id": transcript.id,
             "filename": transcript.original_filename,
@@ -1829,6 +1896,8 @@ async def export_transcript(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     format: str = "txt",
+    include_vocab: bool = True,
+    include_meta: bool = False,
 ) -> Response:
     """文字起こしを TXT / SRT / JSON でダウンロード。"""
     settings = load_settings()
@@ -1872,9 +1941,12 @@ async def export_transcript(
         if v.word.lower() not in existing_vocab_words:
             vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
 
+    meta_lines = _build_meta_block(transcript) if include_meta else None
+    export_vocab = (vocab_items or None) if include_vocab else None
+
     fmt = format.lower()
     if fmt == "txt":
-        content = _build_export_txt(segments, name_map, vocab_items or None)
+        content = _build_export_txt(segments, name_map, export_vocab, meta_lines)
         media_type = "text/plain; charset=utf-8"
         ext = "txt"
     elif fmt == "srt":
@@ -1882,7 +1954,7 @@ async def export_transcript(
         media_type = "application/x-subrip; charset=utf-8"
         ext = "srt"
     elif fmt == "json":
-        content = _build_export_json(transcript, segments, name_map, vocab_items or None)
+        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines)
         media_type = "application/json; charset=utf-8"
         ext = "json"
     else:

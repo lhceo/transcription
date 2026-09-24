@@ -2153,6 +2153,33 @@ a.history-item-filename:hover {
     background: #f8fafc;
 }
 
+.export-options-config {
+    padding: 10px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.export-config-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--color-text-secondary, #64748b);
+    cursor: pointer;
+    user-select: none;
+}
+.export-config-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.export-options-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: 0 14px;
+}
+
 /* ── 検索・置換バー ── */
 .find-replace-bar {
     display: flex;

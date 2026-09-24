@@ -600,7 +600,15 @@
 
             <div class="export-menu" x-data="{
                 open: false,
-                async doExport(url) {
+                includeVocab: true,
+                includeMeta: false,
+                async doExport(fmt) {
+                    const params = new URLSearchParams({
+                        format: fmt,
+                        include_vocab: this.includeVocab,
+                        include_meta: this.includeMeta,
+                    });
+                    const url = `/api/transcripts/{{ transcript.id }}/export?` + params.toString();
                     const unknowns = Array.from(document.querySelectorAll('#segment-list .segment-text-remaining'))
                         .filter(el => el.textContent.includes('（？）'));
                     if (unknowns.length > 0) {
@@ -611,17 +619,29 @@
                         if (!ok) return;
                     }
                     window.location.href = url;
+                    this.open = false;
                 }
             }" @click.outside="open = false">
                 <button type="button" class="btn btn-secondary-outline" @click="open = !open" :aria-expanded="open">エクスポート ▾</button>
                 <div class="export-options" x-show="open" x-cloak @click="open = false">
-                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=txt')">
+                    <div class="export-options-config" @click.stop>
+                        <label class="export-config-label">
+                            <input type="checkbox" x-model="includeVocab">
+                            <span>固有名詞一覧を含める</span>
+                        </label>
+                        <label class="export-config-label">
+                            <input type="checkbox" x-model="includeMeta">
+                            <span>MTGメタ情報を含める</span>
+                        </label>
+                    </div>
+                    <div class="export-options-divider"></div>
+                    <button type="button" class="export-option" @click="doExport('txt')">
                         <strong>TXT</strong><span>テキスト形式（タイムスタンプ＋話者）</span>
                     </button>
-                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=srt')">
+                    <button type="button" class="export-option" @click="doExport('srt')">
                         <strong>SRT</strong><span>字幕ファイル形式</span>
                     </button>
-                    <button type="button" class="export-option" @click="doExport('/api/transcripts/{{ transcript.id }}/export?format=json')">
+                    <button type="button" class="export-option" @click="doExport('json')">
                         <strong>JSON</strong><span>構造化データ（再利用向け）</span>
                     </button>
                     <div class="export-option export-option-coming-soon">
