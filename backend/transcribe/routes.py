@@ -1739,40 +1739,52 @@ def _resolve_speaker_name(seg: Segment, name_map: dict[str, str]) -> str:
     return name_map.get(seg.speaker_label, seg.speaker_label)
 
 
-def _build_meta_block(transcript: "Transcript") -> list[str]:
+def _build_meta_block(transcript: "Transcript", speakers: list | None = None) -> list[str]:
     """MTGメタ情報のテキスト行リストを返す（空の場合は空リスト）。"""
     from datetime import timezone as _tz
     lines: list[str] = []
-    has_any = any([
+    has_mtg = any([
         transcript.meeting_date,
         transcript.meeting_location,
         transcript.overview,
         transcript.meeting_purpose,
         transcript.meeting_agenda,
     ])
-    if not has_any:
-        return lines
-    lines.append("【MTG情報】")
-    if transcript.meeting_date:
-        dt = transcript.meeting_date
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=_tz.utc)
-        try:
-            import zoneinfo
-            jst = zoneinfo.ZoneInfo("Asia/Tokyo")
-            dt = dt.astimezone(jst)
-        except Exception:
-            pass
-        lines.append(f"日時: {dt.strftime('%Y年%m月%d日 %H:%M')}")
-    if transcript.meeting_location:
-        lines.append(f"場所: {transcript.meeting_location}")
-    if transcript.overview:
-        lines.append(f"概要: {transcript.overview}")
-    if transcript.meeting_purpose:
-        lines.append(f"目的: {transcript.meeting_purpose}")
-    if transcript.meeting_agenda:
-        lines.append("アジェンダ:")
-        lines.append(transcript.meeting_agenda)
+    if has_mtg:
+        lines.append("【MTG情報】")
+        if transcript.meeting_date:
+            dt = transcript.meeting_date
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_tz.utc)
+            try:
+                import zoneinfo
+                jst = zoneinfo.ZoneInfo("Asia/Tokyo")
+                dt = dt.astimezone(jst)
+            except Exception:
+                pass
+            lines.append(f"日時: {dt.strftime('%Y年%m月%d日 %H:%M')}")
+        if transcript.meeting_location:
+            lines.append(f"場所: {transcript.meeting_location}")
+        if transcript.overview:
+            lines.append(f"概要: {transcript.overview}")
+        if transcript.meeting_purpose:
+            lines.append(f"目的: {transcript.meeting_purpose}")
+        if transcript.meeting_agenda:
+            lines.append("アジェンダ:")
+            lines.append(transcript.meeting_agenda)
+    if speakers:
+        if lines:
+            lines.append("")
+        lines.append("【参加者】")
+        for s in speakers:
+            parts = [s.display_name]
+            if s.person:
+                if s.person.company:
+                    parts.append(s.person.company)
+                detail = s.person.job_title or s.person.role
+                if detail:
+                    parts.append(detail)
+            lines.append("  " + " / ".join(parts))
     return lines
 
 
@@ -1829,6 +1841,7 @@ def _build_export_json(
     name_map: dict[str, str],
     vocab_items: list[dict] | None = None,
     meta_lines: list[str] | None = None,
+    speakers: list | None = None,
 ) -> str:
     import json
     from datetime import timezone as _tz
@@ -1848,6 +1861,19 @@ def _build_export_json(
             meta["meeting_purpose"] = transcript.meeting_purpose
         if transcript.meeting_agenda:
             meta["meeting_agenda"] = transcript.meeting_agenda
+    if speakers and meta_lines:
+        participants = []
+        for s in speakers:
+            entry: dict = {"name": s.display_name}
+            if s.person:
+                if s.person.company:
+                    entry["company"] = s.person.company
+                if s.person.job_title:
+                    entry["job_title"] = s.person.job_title
+                if s.person.role:
+                    entry["role"] = s.person.role
+            participants.append(entry)
+        meta["participants"] = participants
 
     data = {
         "version": 1,
@@ -1941,7 +1967,7 @@ async def export_transcript(
         if v.word.lower() not in existing_vocab_words:
             vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
 
-    meta_lines = _build_meta_block(transcript) if include_meta else None
+    meta_lines = _build_meta_block(transcript, speakers if include_meta else None) if include_meta else None
     export_vocab = (vocab_items or None) if include_vocab else None
 
     fmt = format.lower()
@@ -1954,7 +1980,7 @@ async def export_transcript(
         media_type = "application/x-subrip; charset=utf-8"
         ext = "srt"
     elif fmt == "json":
-        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines)
+        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines, speakers if include_meta else None)
         media_type = "application/json; charset=utf-8"
         ext = "json"
     else:
