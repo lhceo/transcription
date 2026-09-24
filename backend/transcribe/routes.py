@@ -1897,7 +1897,7 @@ async def export_transcript(
     db: Annotated[Session, Depends(get_db)],
     format: str = "txt",
     include_vocab: bool = True,
-    include_meta: bool = False,
+    include_meta: bool = True,
 ) -> Response:
     """文字起こしを TXT / SRT / JSON でダウンロード。"""
     settings = load_settings()
