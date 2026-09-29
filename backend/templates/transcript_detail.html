@@ -501,11 +501,11 @@
                 </div>
             </div>
             <div class="form-actions">
-                <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving">
+                <span class="autosave-status autosave-saved" x-show="saved" x-cloak>✓ 保存しました</span>
+                <button class="btn btn-primary" @click="save()" :disabled="saving">
                     <span x-show="!saving">保存</span>
                     <span x-show="saving" x-cloak>保存中…</span>
                 </button>
-                <span class="autosave-status autosave-saved" x-show="saved" x-cloak>✓ 保存しました</span>
             </div>
         </div>
     </div>
