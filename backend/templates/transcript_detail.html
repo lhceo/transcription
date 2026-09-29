@@ -464,7 +464,7 @@
                     </div>
                     <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
                         <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: らいおんはーと）" maxlength="200">
-                        <input type="text" class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="意味・説明（例: クライアント企業名）">
+                        <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="意味・説明（例: クライアント企業名）" rows="2" style="resize:vertical"></textarea>
                     </div>
                     <template x-if="vocabulary.length === 0">
                         <p class="form-hint" style="margin-top:6px">まだ登録されていません</p>
@@ -488,7 +488,7 @@
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方">
-                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="意味・説明">
+                                    <textarea class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="意味・説明" rows="2" style="resize:vertical"></textarea>
                                     <div style="display:flex;gap:6px">
                                         <button type="button" class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
                                         <button type="button" class="btn btn-ghost btn-sm" @click="cancelEditVocab()">キャンセル</button>
@@ -1481,7 +1481,7 @@
                                 <template x-for="(w, i) in pickupWords" :key="i">
                                     <div class="pickup-row">
                                         <span class="pickup-word" x-text="w.word"></span>
-                                        <input type="text" class="form-input" x-model="w.meaning" placeholder="意味・説明（任意）">
+                                        <textarea class="form-input" x-model="w.meaning" placeholder="意味・説明（任意）" rows="2" style="resize:vertical"></textarea>
                                     </div>
                                 </template>
                             </div>

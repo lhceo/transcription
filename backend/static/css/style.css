@@ -5683,6 +5683,12 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     width: 100%;
     background: var(--color-surface);
     color: var(--color-text);
+    font-family: inherit;
+    box-sizing: border-box;
+}
+textarea.form-input-sm {
+    height: auto;
+    line-height: 1.5;
 }
 .form-input-sm:focus {
     outline: none;
