@@ -501,7 +501,6 @@
                 </div>
             </div>
             <div class="form-actions">
-                <span class="autosave-status autosave-saved" x-show="saved" x-cloak>✓ 保存しました</span>
                 <button class="btn btn-primary" @click="save()" :disabled="saving">
                     <span x-show="!saving">保存</span>
                     <span x-show="saving" x-cloak>保存中…</span>
@@ -5119,7 +5118,8 @@ function mtgInfo() {
                 if (!res.ok) throw new Error(res.status);
                 this._syncParticipants();
                 this.saved = true;
-                setTimeout(() => { this.saved = false; }, 3000);
+                setTimeout(() => { this.saved = false; }, 2000);
+                window.showToast('MTG情報を保存しました');
             } catch (e) {
                 window.showToast('保存に失敗しました', 'error');
             } finally {
