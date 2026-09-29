@@ -5700,7 +5700,8 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     box-sizing: border-box;
 }
 textarea.form-input-sm {
-    height: auto;
+    height: auto !important;
+    min-height: 54px;
     line-height: 1.5;
 }
 .form-input-sm:focus {
