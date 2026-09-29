@@ -5463,6 +5463,15 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     font-weight: 400;
     padding-left: 22px; /* カレンダーアイコン幅分インデント */
 }
+.mtg-autosave-status {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--color-text-muted, #64748b);
+    margin-left: 8px;
+}
+.mtg-autosave-saved {
+    color: #16a34a;
+}
 
 /* 編集モード開始ヒント（2秒で自動消滅） */
 .edit-mode-hint {
