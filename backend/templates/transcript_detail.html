@@ -3542,6 +3542,15 @@ function segmentsApp(transcriptId, historyNames) {
             clearTimeout(this._saveTimer);
             this._saveTimer = null;
 
+            // 保存が完了する前にビューに切り替わると元テキストが一瞬表示されて
+            // 「元に戻った」ように見えるため、blur 直後に現在値でビューを先行更新する
+            const currentText = t.value.trim();
+            if (currentText) {
+                const card = t.closest('.segment-card');
+                const viewDiv = card?.querySelector('.segment-text');
+                if (viewDiv) this.setSegmentTextContent(viewDiv, currentText);
+            }
+
             setTimeout(() => {
                 if (this.focusedEditingSegmentId === segmentId) {
                     this.focusedEditingSegmentId = null;
