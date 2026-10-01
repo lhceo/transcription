@@ -63,6 +63,15 @@
             </div>
         </div>
         <div class="history-item-meta">
+            {% if _shared_view is defined and _shared_view %}
+            <span class="history-item-shared-badge" title="{{ transcript.user.name }} さんが共有">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:10px;height:10px;vertical-align:-1px">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                {{ transcript.user.name }}
+            </span>
+            {% endif %}
             {# 完了以外のステータスだけバッジ表示。完了はリンクが青いので自明。 #}
             {% if transcript.status != 'completed' %}
             <span class="history-item-status status-{{ transcript.status }}">
