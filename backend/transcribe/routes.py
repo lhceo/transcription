@@ -1066,9 +1066,19 @@ async def transcript_detail(
 
     import json as _json
     quality_check_data: list[dict] = []
+    auto_merged_count: int = 0
+    quality_check_ran: bool = False
     if transcript.quality_check_result:
         try:
-            quality_check_data = _json.loads(transcript.quality_check_result)
+            parsed = _json.loads(transcript.quality_check_result)
+            if isinstance(parsed, list):
+                # 旧形式（issues配列のみ）との後方互換
+                quality_check_data = parsed
+                quality_check_ran = True
+            elif isinstance(parsed, dict):
+                quality_check_data = parsed.get("issues", [])
+                auto_merged_count = parsed.get("merged_count", 0)
+                quality_check_ran = not parsed.get("skipped", False)
         except Exception:
             pass
 
@@ -1108,6 +1118,8 @@ async def transcript_detail(
             "transcript_vocabulary": transcript_vocabulary,
             "has_pickup_suggestions": bool(transcript.pickup_suggestions),
             "quality_check_data": quality_check_data,
+            "auto_merged_count": auto_merged_count,
+            "quality_check_ran": quality_check_ran,
         },
     )
 

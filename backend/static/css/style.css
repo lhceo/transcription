@@ -2854,6 +2854,14 @@ mark.find-highlight-active {
     color: #c2410c; font-size: 11px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
 }
 .quality-dismiss-all-btn:hover { background: #ffedd5; }
+.quality-check-bar-ok {
+    background: #f0fdf4; border-bottom-color: #bbf7d0; color: #15803d;
+}
+.quality-check-bar-ok .quality-check-label strong { color: #16a34a; }
+
+.meta-merged-badge {
+    color: #6b7280; font-size: 11px;
+}
 
 .polish-history-bar {
     background: #f0f9ff; border-bottom: 1px solid #bae6fd;

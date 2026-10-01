@@ -85,7 +85,7 @@
             </span>
         {% endif %}
         <span class="meta-item">{{ speakers|length }}人の話者</span>
-        <span class="meta-item">{{ segments|length }} セグメント</span>
+        <span class="meta-item">{{ segments|length }} セグメント{% if auto_merged_count > 0 %}<span class="meta-merged-badge" title="自動結合で {{ auto_merged_count }} 件のセグメントをまとめました">・{{ auto_merged_count }}件を自動結合</span>{% endif %}</span>
         {% if transcript.cost_yen %}
             <span class="meta-item meta-cost">約 {{ transcript.cost_yen }} 円</span>
         {% endif %}
@@ -707,12 +707,20 @@
     {% endif %}
 
     {# ──── 品質チェックバー ──── #}
-    <div class="quality-check-bar" x-show="qualityIssueCount() > 0 && !reviewMode" x-cloak style="display:none">
+    {% if quality_check_ran or quality_check_data %}
+    <div class="quality-check-bar {{ 'quality-check-bar-ok' if quality_check_ran and not quality_check_data else '' }}"
+         x-show="!reviewMode"
+         x-cloak style="display:none"
+         :class="qualityIssueCount() === 0 ? 'quality-check-bar-ok' : ''">
         <span class="quality-check-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg x-show="qualityIssueCount() > 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg x-show="qualityIssueCount() === 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><polyline points="20 6 9 17 4 12"/></svg>
         </span>
-        <span class="quality-check-label">品質チェック：<strong x-text="qualityIssueCount() + '件'"></strong>の要確認</span>
-        <div class="quality-check-nav">
+        <span class="quality-check-label">
+            <span x-show="qualityIssueCount() > 0">品質チェック：<strong x-text="qualityIssueCount() + '件'"></strong>の要確認</span>
+            <span x-show="qualityIssueCount() === 0">品質チェック：問題なし</span>
+        </span>
+        <div class="quality-check-nav" x-show="qualityIssueCount() > 0">
             <button type="button" class="quality-nav-btn" @click="navQuality(-1)" title="前の要確認箇所">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
@@ -721,8 +729,9 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
         </div>
-        <button type="button" class="quality-dismiss-all-btn" @click="dismissAllQuality()">全て解決済みにする</button>
+        <button type="button" class="quality-dismiss-all-btn" x-show="qualityIssueCount() > 0" @click="dismissAllQuality()">全て解決済みにする</button>
     </div>
+    {% endif %}
 
     {# ──── 検索・置換バー ──── #}
     <div class="find-replace-bar" x-show="findReplace.open && editMode" x-cloak

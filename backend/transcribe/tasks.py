@@ -186,10 +186,23 @@ async def _mark_failed(transcript_id: int, error_message: str) -> None:
             db.commit()
 
 
-async def _run_quality_check(transcript_id: int) -> None:
-    """文字起こし完了後に品質チェックを実行してDBに保存する。"""
+async def _run_quality_check(transcript_id: int, merged_count: int = 0) -> None:
+    """文字起こし完了後に品質チェックを実行してDBに保存する。
+
+    quality_check_result の形式:
+      {"issues": [...], "merged_count": N}
+    """
     settings = load_settings()
     if not settings.has_anthropic:
+        # Anthropic キーがなくても結合件数だけ保存する
+        with SessionLocal() as db:
+            t = db.get(Transcript, transcript_id)
+            if t is not None:
+                t.quality_check_result = json.dumps(
+                    {"issues": [], "merged_count": merged_count, "skipped": True},
+                    ensure_ascii=False,
+                )
+                db.commit()
         return
     try:
         import anthropic
@@ -212,13 +225,16 @@ async def _run_quality_check(transcript_id: int) -> None:
         issues = await run_quality_check(client, seg_dicts)
         await client.aclose()
 
-        if issues is not None:
-            with SessionLocal() as db:
-                t = db.get(Transcript, transcript_id)
-                if t is not None:
-                    t.quality_check_result = json.dumps(issues, ensure_ascii=False)
-                    db.commit()
-            logger.info("品質チェック完了: transcript_id=%s issues=%s", transcript_id, len(issues))
+        with SessionLocal() as db:
+            t = db.get(Transcript, transcript_id)
+            if t is not None:
+                t.quality_check_result = json.dumps(
+                    {"issues": issues or [], "merged_count": merged_count},
+                    ensure_ascii=False,
+                )
+                db.commit()
+        logger.info("品質チェック完了: transcript_id=%s issues=%s merged=%s",
+                    transcript_id, len(issues or []), merged_count)
     except Exception:
         logger.exception("品質チェック失敗: transcript_id=%s", transcript_id)
 
@@ -368,16 +384,17 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
         _save_results_to_db(transcript_id, result)
 
         # 5b. 同一話者の連続短文セグメントを自動結合（ルールベース・失敗しても継続）
+        _merged_count = 0
         try:
-            _auto_merge_segments(transcript_id)
+            _merged_count = _auto_merge_segments(transcript_id)
         except Exception:
             logger.exception("自動結合に失敗: transcript_id=%s", transcript_id)
 
         # 5c. 固有名詞候補の自動ピックアップ（失敗しても全体の成功は妨げない）
         await _run_auto_pickup(transcript_id)
 
-        # 5d. 品質チェック自動実行（失敗しても全体の成功は妨げない）
-        await _run_quality_check(transcript_id)
+        # 5d. 品質チェック自動実行（結合件数も一緒に保存）
+        await _run_quality_check(transcript_id, merged_count=_merged_count)
 
         # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
         #    失敗時は移動せず、一時領域ごと削除される。
