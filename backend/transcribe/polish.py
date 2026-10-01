@@ -192,6 +192,58 @@ async def pickup_proper_nouns(
         return []
 
 
+# 品質チェック ────────────────────────────────────────────────────────────────
+
+QUALITY_CHECK_SYSTEM = """あなたは日本語の音声認識・文字起こしの品質チェッカーです。
+セグメントのリストを分析し、ユーザーが確認・修正すべき箇所を特定してください。
+
+チェック対象（優先度の高い順）:
+1. 固有名詞・社名・人名の音声認識誤り疑い（「クォーレ」→「クオーレ」のような読みの揺れ、同音異字の誤変換）
+2. 断片的すぎて意味が不明瞭なセグメント（孤立した短い発言で文脈がない等）
+3. 明らかに不自然な語句・前後の文脈と合わない変換
+
+報告しないもの:
+- フィラー（えー・あのー等）のみの発言
+- 文法的に問題ない短い相槌（「はい」「そうですね」「分かりました」等）
+- 内容的に問題ない普通の発言
+
+返却形式（JSONのみ、前後に説明文を付けない）:
+{"issues": [{"segment_id": N, "type": "proper_noun|fragment|unclear", "note": "確認してほしい理由（20字以内）"}]}
+issuesが0件の場合: {"issues": []}
+最大15件まで。"""
+
+
+async def run_quality_check(
+    client,
+    segments: list[dict],
+) -> list[dict]:
+    """文字起こしセグメントの品質チェックを実行し、問題箇所リストを返す。
+
+    Returns: [{"segment_id": int, "type": str, "note": str}]
+    """
+    lines = []
+    for s in segments:
+        lines.append(f'{{"segment_id": {s["id"]}, "speaker": {json.dumps(s.get("speaker", ""), ensure_ascii=False)}, "text": {json.dumps(s["text"], ensure_ascii=False)}}}')
+    segments_text = "[\n" + ",\n".join(lines) + "\n]"
+
+    prompt = f"以下の文字起こしセグメントをチェックしてください。\n\n{segments_text}"
+    try:
+        message = await client.messages.create(
+            model=MODELS["haiku"]["id"],
+            max_tokens=1024,
+            system=QUALITY_CHECK_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text.strip()
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        json_str = m.group(0) if m else text
+        data = json.loads(json_str)
+        return data.get("issues", [])
+    except Exception as e:
+        logger.warning("品質チェック失敗: %s", e)
+        return []
+
+
 # 全文サマリー先行抽出 ────────────────────────────────────────────────────────
 
 SUMMARY_SYSTEM = """あなたは日本語のMTG文字起こしを分析するアシスタントです。

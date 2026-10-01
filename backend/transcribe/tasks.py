@@ -28,6 +28,10 @@ from backend.transcribe.storage import cleanup_job_dir, move_to_storage
 from backend.transcribe.text_utils import normalize_japanese_text
 from sqlalchemy import select
 
+# 自動結合パラメーター
+_MERGE_MAX_GAP_SECONDS = 1.5   # 同一話者でこの間隔以内なら結合候補
+_MERGE_MIN_CHARS = 8            # このの文字数以下のセグメントはギャップ 3s 以内でも結合
+
 logger = logging.getLogger(__name__)
 
 # ポーリング間隔と最大時間
@@ -117,6 +121,61 @@ def _save_results_to_db(transcript_id: int, aai_result: dict) -> None:
         )
 
 
+def _auto_merge_segments(transcript_id: int) -> int:
+    """同一話者の連続短文セグメントをルールベースで結合する。
+
+    ルール（OR条件）:
+    - 同じ speaker_label かつ gap < _MERGE_MAX_GAP_SECONDS
+    - 同じ speaker_label かつ gap < 3s かつ どちらかが _MERGE_MIN_CHARS 文字未満
+
+    Returns: 結合した件数
+    """
+    with SessionLocal() as db:
+        segments = list(db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+        ))
+        if not segments:
+            return 0
+
+        merged_count = 0
+        i = 0
+        while i < len(segments) - 1:
+            curr = segments[i]
+            nxt = segments[i + 1]
+            gap = nxt.start_seconds - curr.end_seconds
+            curr_short = len(curr.text_content) < _MERGE_MIN_CHARS
+            nxt_short = len(nxt.text_content) < _MERGE_MIN_CHARS
+
+            should_merge = (
+                curr.speaker_label == nxt.speaker_label
+                and (
+                    gap < _MERGE_MAX_GAP_SECONDS
+                    or (gap < 3.0 and (curr_short or nxt_short))
+                )
+            )
+            if should_merge:
+                sep = '' if curr.text_content.rstrip() and curr.text_content.rstrip()[-1] in '。、！？!?…）」』' else ' '
+                curr.text_content = curr.text_content.rstrip() + sep + nxt.text_content.lstrip()
+                if curr.original_asr_text and nxt.original_asr_text:
+                    curr.original_asr_text = curr.original_asr_text.rstrip() + ' ' + nxt.original_asr_text.lstrip()
+                curr.end_seconds = nxt.end_seconds
+                db.delete(nxt)
+                segments.pop(i + 1)
+                merged_count += 1
+            else:
+                i += 1
+
+        for idx, seg in enumerate(segments):
+            seg.order_index = idx
+
+        db.commit()
+
+    logger.info("自動結合完了: transcript_id=%s 結合数=%s", transcript_id, merged_count)
+    return merged_count
+
+
 async def _mark_failed(transcript_id: int, error_message: str) -> None:
     """ジョブを failed 状態にマークする。"""
     with SessionLocal() as db:
@@ -125,6 +184,43 @@ async def _mark_failed(transcript_id: int, error_message: str) -> None:
             t.status = "failed"
             t.error_message = error_message
             db.commit()
+
+
+async def _run_quality_check(transcript_id: int) -> None:
+    """文字起こし完了後に品質チェックを実行してDBに保存する。"""
+    settings = load_settings()
+    if not settings.has_anthropic:
+        return
+    try:
+        import anthropic
+        from backend.transcribe.polish import run_quality_check
+
+        with SessionLocal() as db:
+            transcript = db.get(Transcript, transcript_id)
+            if transcript is None:
+                return
+            segments = list(db.scalars(
+                select(Segment)
+                .where(Segment.transcript_id == transcript_id)
+                .order_by(Segment.order_index)
+            ))
+            if not segments:
+                return
+            seg_dicts = [{"id": s.id, "speaker": s.speaker_label, "text": s.text_content} for s in segments]
+
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        issues = await run_quality_check(client, seg_dicts)
+        await client.aclose()
+
+        if issues is not None:
+            with SessionLocal() as db:
+                t = db.get(Transcript, transcript_id)
+                if t is not None:
+                    t.quality_check_result = json.dumps(issues, ensure_ascii=False)
+                    db.commit()
+            logger.info("品質チェック完了: transcript_id=%s issues=%s", transcript_id, len(issues))
+    except Exception:
+        logger.exception("品質チェック失敗: transcript_id=%s", transcript_id)
 
 
 async def _run_auto_pickup(transcript_id: int) -> None:
@@ -271,8 +367,17 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
         #    程度なので問題ない範囲）
         _save_results_to_db(transcript_id, result)
 
-        # 5b. 固有名詞候補の自動ピックアップ（失敗しても全体の成功は妨げない）
+        # 5b. 同一話者の連続短文セグメントを自動結合（ルールベース・失敗しても継続）
+        try:
+            _auto_merge_segments(transcript_id)
+        except Exception:
+            logger.exception("自動結合に失敗: transcript_id=%s", transcript_id)
+
+        # 5c. 固有名詞候補の自動ピックアップ（失敗しても全体の成功は妨げない）
         await _run_auto_pickup(transcript_id)
+
+        # 5d. 品質チェック自動実行（失敗しても全体の成功は妨げない）
+        await _run_quality_check(transcript_id)
 
         # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
         #    失敗時は移動せず、一時領域ごと削除される。

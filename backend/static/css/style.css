@@ -2576,6 +2576,12 @@ mark.find-highlight-active {
 .seg-badge-unresolved { background: #fef3c7; color: #b45309; }
 .seg-badge-unresolved-clickable { cursor: pointer; transition: background .15s, opacity .15s; }
 .seg-badge-unresolved-clickable:hover { background: #fde68a; }
+.seg-badge-quality {
+    background: #fff7ed; color: #c2410c; display: inline-flex; align-items: center; gap: 3px;
+    cursor: pointer; transition: background .15s; opacity: 0.75;
+}
+.seg-badge-quality:hover { background: #ffedd5; opacity: 1; }
+.segment-card:hover .seg-badge-quality { opacity: 1; }
 .seg-badge-revertable { cursor: pointer; transition: filter .15s, opacity .15s; opacity: 0.45; }
 .seg-badge-revertable:hover { filter: brightness(.92); opacity: 1; }
 .segment-card:hover .seg-badge-revertable { opacity: 1; }
@@ -2822,6 +2828,27 @@ mark.find-highlight-active {
 
 /* ── 整文レビュー：プログレスバー ── */
 /* ── 整文済みバー ── */
+.quality-check-bar {
+    background: #fff7ed; border-bottom: 1px solid #fed7aa;
+    padding: 7px 16px; display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: #c2410c;
+}
+.quality-check-icon { display: flex; align-items: center; }
+.quality-check-label strong { color: #ea580c; }
+.quality-check-nav { display: flex; align-items: center; gap: 4px; }
+.quality-nav-btn {
+    background: none; border: 1px solid #fdba74; border-radius: 4px;
+    color: #c2410c; width: 22px; height: 22px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.quality-nav-btn:hover { background: #ffedd5; }
+.quality-nav-count { font-size: 11px; color: #9a3412; min-width: 36px; text-align: center; }
+.quality-dismiss-all-btn {
+    margin-left: auto; background: none; border: 1px solid #fdba74; border-radius: 5px;
+    color: #c2410c; font-size: 11px; padding: 3px 10px; cursor: pointer; white-space: nowrap;
+}
+.quality-dismiss-all-btn:hover { background: #ffedd5; }
+
 .polish-history-bar {
     background: #f0f9ff; border-bottom: 1px solid #bae6fd;
     padding: 7px 16px; display: flex; align-items: center; gap: 10px;

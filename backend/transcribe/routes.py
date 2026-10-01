@@ -1064,6 +1064,14 @@ async def transcript_detail(
 
     polished_count = sum(1 for s in segments if s.is_polished)
 
+    import json as _json
+    quality_check_data: list[dict] = []
+    if transcript.quality_check_result:
+        try:
+            quality_check_data = _json.loads(transcript.quality_check_result)
+        except Exception:
+            pass
+
     def _polish_level(seg):
         if not seg.is_polished or not seg.pre_polish_text:
             return None
@@ -1099,6 +1107,7 @@ async def transcript_detail(
             "breadcrumb_project": breadcrumb_project,
             "transcript_vocabulary": transcript_vocabulary,
             "has_pickup_suggestions": bool(transcript.pickup_suggestions),
+            "quality_check_data": quality_check_data,
         },
     )
 

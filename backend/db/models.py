@@ -134,6 +134,8 @@ class Transcript(Base):
     )
     # 文字起こし完了後に自動ピックアップした固有名詞候補（JSON配列文字列）
     pickup_suggestions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 文字起こし完了後の品質チェック結果（JSON配列文字列: [{segment_id, type, note}]）
+    quality_check_result: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="transcripts")
     segments: Mapped[list["Segment"]] = relationship(

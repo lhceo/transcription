@@ -19,6 +19,7 @@
         {% endfor %}
     ];
     window.__PEOPLE_REGISTRY = {{ people_registry|tojson }};
+    window.__QUALITY_CHECK_DATA = {{ quality_check_data | tojson }};
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
@@ -694,6 +695,24 @@
     </div>
     {% endif %}
 
+    {# ──── 品質チェックバー ──── #}
+    <div class="quality-check-bar" x-show="qualityIssueCount() > 0 && !reviewMode" x-cloak style="display:none">
+        <span class="quality-check-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </span>
+        <span class="quality-check-label">品質チェック：<strong x-text="qualityIssueCount() + '件'"></strong>の要確認</span>
+        <div class="quality-check-nav">
+            <button type="button" class="quality-nav-btn" @click="navQuality(-1)" title="前の要確認箇所">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span class="quality-nav-count" x-text="qualityNavDisplay()"></span>
+            <button type="button" class="quality-nav-btn" @click="navQuality(1)" title="次の要確認箇所">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+        <button type="button" class="quality-dismiss-all-btn" @click="dismissAllQuality()">全て解決済みにする</button>
+    </div>
+
     {# ──── 検索・置換バー ──── #}
     <div class="find-replace-bar" x-show="findReplace.open && editMode" x-cloak
          @keydown.escape.stop="closeFindReplace()">
@@ -854,6 +873,16 @@
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.7"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </span>
                         {% endif %}
+                        {# 品質チェックバッジ（クリックで解決済みにする） #}
+                        <span class="seg-badge seg-badge-quality"
+                              x-show="!reviewMode && qualityIssues[{{ seg.id }}]"
+                              x-cloak
+                              :title="(qualityIssues[{{ seg.id }}]?.note || '要確認') + '（クリックで解決済みにする）'"
+                              @click.stop="dismissQuality({{ seg.id }})">
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <span x-text="qualityTypeLabel(qualityIssues[{{ seg.id }}]?.type)"></span>
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.6;flex-shrink:0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </span>
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
                             <button type="button"
@@ -1801,6 +1830,11 @@ function segmentsApp(transcriptId, historyNames) {
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
 
+        // ── 品質チェック ──────────────────────────────────────────
+        qualityIssues: {},     // { [segId]: { type, note } }
+        _qualityNavIds: [],    // DOM順のセグメントID一覧
+        _qualityNavIdx: 0,
+
         // コメント関連
         commentEditId: null,
         segComments: {},
@@ -1808,6 +1842,44 @@ function segmentsApp(transcriptId, historyNames) {
         sidebarCollapsed: true,
         segmentComments: [],   // [{segId, timeLabel, comment, excerpt}]
         unknownSegments: [],   // [{segId, timeLabel, excerpt}] — （？）含むセグメント
+
+        // ── 品質チェック ──────────────────────────────────────────
+        qualityIssueCount() {
+            return Object.keys(this.qualityIssues).length;
+        },
+        qualityNavDisplay() {
+            if (this._qualityNavIds.length === 0) return '';
+            const idx = this._qualityNavIds.indexOf(this._qualityNavIdx);
+            return (this._qualityNavIdx + 1) + ' / ' + this._qualityNavIds.length;
+        },
+        navQuality(dir) {
+            this._qualityNavIds = Array.from(document.querySelectorAll('#segment-list .segment-card'))
+                .map(c => parseInt(c.dataset.segmentId, 10))
+                .filter(id => this.qualityIssues[id]);
+            if (this._qualityNavIds.length === 0) return;
+            this._qualityNavIdx = ((this._qualityNavIdx + dir) + this._qualityNavIds.length) % this._qualityNavIds.length;
+            const id = this._qualityNavIds[this._qualityNavIdx];
+            const el = document.getElementById('segment-' + id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        },
+        dismissQuality(segId) {
+            const copy = { ...this.qualityIssues };
+            delete copy[segId];
+            this.qualityIssues = copy;
+            this._qualityNavIds = this._qualityNavIds.filter(id => id !== segId);
+            if (this._qualityNavIdx >= this._qualityNavIds.length) {
+                this._qualityNavIdx = Math.max(0, this._qualityNavIds.length - 1);
+            }
+        },
+        dismissAllQuality() {
+            this.qualityIssues = {};
+            this._qualityNavIds = [];
+            this._qualityNavIdx = 0;
+        },
+        qualityTypeLabel(type) {
+            const labels = { proper_noun: '固有名詞', fragment: '断片', unclear: '要確認' };
+            return labels[type] || '要確認';
+        },
 
         // ── ブックマーク ─────────────────────────────────────────
         async toggleBookmark(segId, card) {
@@ -2171,6 +2243,18 @@ function segmentsApp(transcriptId, historyNames) {
                 const beforeText = badge.dataset.before || '';
                 this.openRevertConfirm(segId, type, beforeText);
             });
+
+            // 品質チェックデータの初期化
+            const qcData = window.__QUALITY_CHECK_DATA || [];
+            this.qualityIssues = {};
+            qcData.forEach(issue => {
+                if (issue.segment_id) {
+                    this.qualityIssues[issue.segment_id] = { type: issue.type || 'unclear', note: issue.note || '要確認' };
+                }
+            });
+            this._qualityNavIds = Array.from(document.querySelectorAll('#segment-list .segment-card'))
+                .map(c => parseInt(c.dataset.segmentId, 10))
+                .filter(id => this.qualityIssues[id]);
         },
 
         // ── コメント機能 ─────────────────────────────────────────────
@@ -3969,6 +4053,8 @@ function segmentsApp(transcriptId, historyNames) {
                         this._renderEditedMarkers();
                     }
                 }
+                // 編集保存成功 → 品質バッジを解除（修正済みとみなす）
+                if (this.qualityIssues[segmentId]) this.dismissQuality(segmentId);
                 if (this.pendingSegments.size === 0) {
                     this.saveStatus = 'saved';
                     this._dismissSaveErrorToast();
