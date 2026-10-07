@@ -210,15 +210,31 @@ class AnthropicBalanceSummary:
     """Anthropic クレジット残高スナップショット。ヘッダーインジケーター用。"""
 
     remaining_yen: int
-    credit_yen: int    # 設定した購入額
+    credit_yen: int    # 設定した購入額 (JPY 換算)
     spent_yen: int     # SINCE 以降の消費額
-    alert_yen: int     # アラート閾値
+    alert_yen: int     # アラート閾値 (JPY 換算)
     is_configured: bool
     level: CostLevel   # "ok", "warning", "danger"
+    currency: str = "JPY"       # "USD" or "JPY"
+    usd_jpy_rate: float = 150.0
 
     @property
     def remaining_pretty(self) -> str:
+        if self.currency == "USD":
+            return f"${self.remaining_yen / self.usd_jpy_rate:.2f}"
         return f"¥{self.remaining_yen:,}"
+
+    @property
+    def credit_pretty(self) -> str:
+        if self.currency == "USD":
+            return f"${self.credit_yen / self.usd_jpy_rate:.2f}"
+        return f"¥{self.credit_yen:,}"
+
+    @property
+    def spent_pretty(self) -> str:
+        if self.currency == "USD":
+            return f"${self.spent_yen / self.usd_jpy_rate:.2f}"
+        return f"¥{self.spent_yen:,}"
 
     @property
     def is_low(self) -> bool:
@@ -246,6 +262,16 @@ def get_anthropic_balance_summary() -> AnthropicBalanceSummary:
     if not settings.has_anthropic_credit:
         return _unconfigured
 
+    # USD / JPY どちらで設定されているか判定し、内部は JPY に統一
+    rate = settings.usd_jpy_rate or 150.0
+    currency = settings.anthropic_credit_currency
+    if currency == "USD":
+        credit = int(settings.anthropic_credit_usd * rate)
+        alert = int(settings.anthropic_credit_alert_usd * rate)
+    else:
+        credit = settings.anthropic_credit_yen
+        alert = settings.anthropic_credit_alert_yen
+
     # SINCE をパース（未設定 = epoch = 全期間を集計対象）
     since_str = settings.anthropic_credit_since
     if since_str:
@@ -265,9 +291,7 @@ def get_anthropic_balance_summary() -> AnthropicBalanceSummary:
         logger.exception("Anthropic 残高集計失敗")
         return _unconfigured
 
-    credit = settings.anthropic_credit_yen
     remaining = max(0, credit - spent)
-    alert = settings.anthropic_credit_alert_yen
 
     if remaining < alert:
         level: CostLevel = "danger"
@@ -283,6 +307,8 @@ def get_anthropic_balance_summary() -> AnthropicBalanceSummary:
         alert_yen=alert,
         is_configured=True,
         level=level,
+        currency=currency,
+        usd_jpy_rate=rate,
     )
 
 

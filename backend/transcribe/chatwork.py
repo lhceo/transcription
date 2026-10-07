@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from backend.transcribe.cost import AnthropicBalanceSummary
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +44,14 @@ async def maybe_notify_low_anthropic_credit(remaining_yen: int) -> None:
     global _last_alert_ts
 
     from backend.config import load_settings
+    from backend.transcribe.cost import get_anthropic_balance_summary
     settings = load_settings()
 
     if not settings.has_chatwork or not settings.has_anthropic_credit:
         return
-    if remaining_yen >= settings.anthropic_credit_alert_yen:
+
+    balance = get_anthropic_balance_summary()
+    if not balance.is_low:
         return
 
     now = time.time()
@@ -52,16 +59,22 @@ async def maybe_notify_low_anthropic_credit(remaining_yen: int) -> None:
         logger.debug("Chatwork アラートスキップ（24h以内に送信済み）")
         return
 
-    alert_yen = settings.anthropic_credit_alert_yen
+    alert_pretty = _fmt_alert(balance)
     body = (
         "[info][title]⚠️ Noto: Anthropic API クレジット残高が少なくなっています[/title]"
-        f"現在の残高: ¥{remaining_yen:,}\n"
-        f"（残高が ¥{alert_yen:,} を下回りました）\n\n"
+        f"現在の残高: {balance.remaining_pretty}\n"
+        f"（残高が {alert_pretty} を下回りました）\n\n"
         "整文・品質チェック機能を継続するには、クレジットを追加してください。\n"
         "https://console.anthropic.com\n\n"
-        "追加後は Railway の環境変数 ANTHROPIC_CREDIT_YEN と ANTHROPIC_CREDIT_SINCE を更新してください。"
+        "追加後は Railway の環境変数 ANTHROPIC_CREDIT_USD（または YEN）と ANTHROPIC_CREDIT_SINCE を更新してください。"
         "[/info]"
     )
     await send_message(settings.chatwork_room_id, settings.chatwork_api_token, body)
     _last_alert_ts = now
-    logger.info("Chatwork 低残高通知送信: remaining=¥%d alert=¥%d", remaining_yen, alert_yen)
+    logger.info("Chatwork 低残高通知送信: remaining=%s alert=%s", balance.remaining_pretty, alert_pretty)
+
+
+def _fmt_alert(balance: "AnthropicBalanceSummary") -> str:
+    if balance.currency == "USD":
+        return f"${balance.alert_yen / balance.usd_jpy_rate:.2f}"
+    return f"¥{balance.alert_yen:,}"

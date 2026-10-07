@@ -143,7 +143,7 @@
                     >
                         <h4 class="header-indicator-popover-title">Anthropic クレジット残高</h4>
                         <p class="header-indicator-popover-value">{{ _ab.remaining_pretty }} 残</p>
-                        <p style="font-size:12px;color:#64748b;margin-top:4px">消費: ¥{{ "{:,}".format(_ab.spent_yen) }} / 購入: ¥{{ "{:,}".format(_ab.credit_yen) }}</p>
+                        <p style="font-size:12px;color:#64748b;margin-top:4px">消費: {{ _ab.spent_pretty }} / 購入: {{ _ab.credit_pretty }}</p>
                         {% if _ab.is_low %}
                         <p class="header-indicator-popover-hint hint-danger">残高が少なくなっています。Anthropic Console でクレジットを追加してください。</p>
                         {% elif _ab.level == "warning" %}

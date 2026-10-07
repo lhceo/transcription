@@ -91,14 +91,20 @@ class Settings:
     chatwork_api_token: str    # CHATWORK_API_TOKEN
     chatwork_room_id: str      # CHATWORK_ROOM_ID
 
-    # Anthropic クレジット残高管理。
-    # ANTHROPIC_CREDIT_YEN: クレジット購入時の金額(円)を手動設定。
-    # ANTHROPIC_CREDIT_SINCE: 上記を設定した日時 (ISO形式, 例: 2026-10-07T13:00:00Z)。
-    #   未設定の場合は全期間の整文コストを消費分として計算。
-    # ANTHROPIC_CREDIT_ALERT_YEN: アラート閾値(円)。デフォルト500。
-    anthropic_credit_yen: int       # 0 = 未設定
-    anthropic_credit_since: str     # ISO timestamp or empty
-    anthropic_credit_alert_yen: int # デフォルト 500
+    # Anthropic クレジット残高管理。USD と JPY のどちらかで設定する。
+    # USD を設定した場合は USD が優先される。
+    # ANTHROPIC_CREDIT_USD: 購入額(ドル)。例: 19.62
+    # ANTHROPIC_CREDIT_YEN: 購入額(円)。USD 未設定時に使用。
+    # ANTHROPIC_CREDIT_SINCE: 設定した日時 (ISO形式, 例: 2026-10-07T14:00:00Z)
+    # ANTHROPIC_CREDIT_ALERT_USD: USD アラート閾値。デフォルト 3.50
+    # ANTHROPIC_CREDIT_ALERT_YEN: JPY アラート閾値。デフォルト 500
+    # USD_JPY_RATE: USD→JPY 換算レート。デフォルト 150
+    anthropic_credit_usd: float      # 0.0 = 未設定
+    anthropic_credit_yen: int        # 0 = 未設定
+    anthropic_credit_since: str      # ISO timestamp or empty
+    anthropic_credit_alert_usd: float  # デフォルト 3.50
+    anthropic_credit_alert_yen: int    # デフォルト 500
+    usd_jpy_rate: float              # デフォルト 150.0
 
     # ストレージ上限 (バイト)。Railway Hobby Plan の 5 GB を default に。
     # GB は SI 表記 (10^9) で扱う。プラン変更や Pro 移行時にここを上げる。
@@ -153,7 +159,12 @@ class Settings:
     @property
     def has_anthropic_credit(self) -> bool:
         """Anthropic クレジット残高追跡が設定済みか。"""
-        return self.anthropic_credit_yen > 0
+        return self.anthropic_credit_usd > 0 or self.anthropic_credit_yen > 0
+
+    @property
+    def anthropic_credit_currency(self) -> str:
+        """設定されている通貨 ('USD' or 'JPY')。"""
+        return "USD" if self.anthropic_credit_usd > 0 else "JPY"
 
 
 def load_settings() -> Settings:
@@ -184,9 +195,12 @@ def load_settings() -> Settings:
         smtp_password=_env("SMTP_PASSWORD", ""),
         chatwork_api_token=_env("CHATWORK_API_TOKEN", ""),
         chatwork_room_id=_env("CHATWORK_ROOM_ID", ""),
+        anthropic_credit_usd=_safe_float(_env("ANTHROPIC_CREDIT_USD", "0")),
         anthropic_credit_yen=_safe_int(_env("ANTHROPIC_CREDIT_YEN", "0")),
         anthropic_credit_since=_env("ANTHROPIC_CREDIT_SINCE", ""),
+        anthropic_credit_alert_usd=_safe_float(_env("ANTHROPIC_CREDIT_ALERT_USD", "3.50")),
         anthropic_credit_alert_yen=_safe_int(_env("ANTHROPIC_CREDIT_ALERT_YEN", "500")),
+        usd_jpy_rate=_safe_float(_env("USD_JPY_RATE", "150")),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
         # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
         # Railway Hobby Plan (5 GB) と DECISIONS 2026-05-13 で確定した
@@ -213,6 +227,14 @@ def _safe_int(value: str) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
+def _safe_float(value: str) -> float:
+    """環境変数の値を float に変換する。無効値は 0.0 として扱う。"""
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _clamp_percent(value: str) -> int:
