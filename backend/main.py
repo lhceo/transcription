@@ -351,11 +351,13 @@ from backend.transcribe.cost import get_cost_summary  # noqa: E402
 from backend.transcribe.display import has_stored_audio, transcript_display_name  # noqa: E402
 from backend.transcribe.retention import expiry_status  # noqa: E402
 from backend.transcribe.storage_usage import get_summary as get_storage_summary  # noqa: E402
+from backend.transcribe.cost import get_anthropic_balance_summary  # noqa: E402
 templates.env.globals["display_name"] = transcript_display_name
 templates.env.globals["has_audio"] = has_stored_audio
 templates.env.globals["expiry_status"] = expiry_status
 templates.env.globals["storage_usage"] = get_storage_summary
 templates.env.globals["cost_usage"] = get_cost_summary
+templates.env.globals["anthropic_balance"] = get_anthropic_balance_summary
 
 # 認証ルート（/login, /auth/google, /auth/google/callback, /auth/logout）
 app.include_router(auth_router)

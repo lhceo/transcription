@@ -1066,6 +1066,17 @@ async def _polish_bg_task(
             "cost_yen": result.cost_yen,
             "model_key": model_key,
         }
+
+        # 整文完了後に Anthropic クレジット残高をチェックして低残高通知
+        try:
+            from backend.transcribe.cost import get_anthropic_balance_summary
+            from backend.transcribe.chatwork import maybe_notify_low_anthropic_credit
+            balance = get_anthropic_balance_summary()
+            if balance.is_configured:
+                await maybe_notify_low_anthropic_credit(balance.remaining_yen)
+        except Exception as _ce:
+            logger.warning("残高チェック失敗: %s", _ce)
+
     except Exception as e:
         logger.error("整文バックグラウンドジョブエラー [%s]: %s (type=%s)", job_id, e, type(e).__name__, exc_info=True)
         if job_id in _polish_jobs:

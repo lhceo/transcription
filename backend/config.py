@@ -87,6 +87,19 @@ class Settings:
     smtp_user: str
     smtp_password: str
 
+    # Chatwork 通知設定。未設定の場合は通知をスキップ。
+    chatwork_api_token: str    # CHATWORK_API_TOKEN
+    chatwork_room_id: str      # CHATWORK_ROOM_ID
+
+    # Anthropic クレジット残高管理。
+    # ANTHROPIC_CREDIT_YEN: クレジット購入時の金額(円)を手動設定。
+    # ANTHROPIC_CREDIT_SINCE: 上記を設定した日時 (ISO形式, 例: 2026-10-07T13:00:00Z)。
+    #   未設定の場合は全期間の整文コストを消費分として計算。
+    # ANTHROPIC_CREDIT_ALERT_YEN: アラート閾値(円)。デフォルト500。
+    anthropic_credit_yen: int       # 0 = 未設定
+    anthropic_credit_since: str     # ISO timestamp or empty
+    anthropic_credit_alert_yen: int # デフォルト 500
+
     # ストレージ上限 (バイト)。Railway Hobby Plan の 5 GB を default に。
     # GB は SI 表記 (10^9) で扱う。プラン変更や Pro 移行時にここを上げる。
     storage_limit_bytes: int
@@ -132,6 +145,16 @@ class Settings:
         """Anthropic API が設定済みか。未設定なら整文機能を無効化する。"""
         return bool(self.anthropic_api_key)
 
+    @property
+    def has_chatwork(self) -> bool:
+        """Chatwork 通知が設定済みか。"""
+        return bool(self.chatwork_api_token and self.chatwork_room_id)
+
+    @property
+    def has_anthropic_credit(self) -> bool:
+        """Anthropic クレジット残高追跡が設定済みか。"""
+        return self.anthropic_credit_yen > 0
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -159,6 +182,11 @@ def load_settings() -> Settings:
         admin_email=_env("ADMIN_EMAIL", "a.ichikawa@lionheart.co.jp").lower(),
         smtp_user=_env("SMTP_USER", ""),
         smtp_password=_env("SMTP_PASSWORD", ""),
+        chatwork_api_token=_env("CHATWORK_API_TOKEN", ""),
+        chatwork_room_id=_env("CHATWORK_ROOM_ID", ""),
+        anthropic_credit_yen=_safe_int(_env("ANTHROPIC_CREDIT_YEN", "0")),
+        anthropic_credit_since=_env("ANTHROPIC_CREDIT_SINCE", ""),
+        anthropic_credit_alert_yen=_safe_int(_env("ANTHROPIC_CREDIT_ALERT_YEN", "500")),
         monthly_cost_limit_yen=_safe_int(_env("MONTHLY_COST_LIMIT_YEN", "0")),
         # v1.0.2 自動削除 + ストレージ管理機能の設定。default は
         # Railway Hobby Plan (5 GB) と DECISIONS 2026-05-13 で確定した

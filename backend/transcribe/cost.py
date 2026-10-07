@@ -205,6 +205,87 @@ def get_cost_summary() -> CostSummary:
     )
 
 
+@dataclass(frozen=True)
+class AnthropicBalanceSummary:
+    """Anthropic クレジット残高スナップショット。ヘッダーインジケーター用。"""
+
+    remaining_yen: int
+    credit_yen: int    # 設定した購入額
+    spent_yen: int     # SINCE 以降の消費額
+    alert_yen: int     # アラート閾値
+    is_configured: bool
+    level: CostLevel   # "ok", "warning", "danger"
+
+    @property
+    def remaining_pretty(self) -> str:
+        return f"¥{self.remaining_yen:,}"
+
+    @property
+    def is_low(self) -> bool:
+        return self.is_configured and self.remaining_yen < self.alert_yen
+
+
+def anthropic_polish_cost_since(db: Session, since_dt: datetime) -> int:
+    """指定日時以降の整文コスト累計 (円) を返す。"""
+    total = db.scalar(
+        select(sa_func.coalesce(sa_func.sum(PolishLog.cost_yen), 0))
+        .where(PolishLog.created_at >= since_dt)
+    )
+    return int(total or 0)
+
+
+def get_anthropic_balance_summary() -> AnthropicBalanceSummary:
+    """Anthropic クレジット残高サマリを返す。テンプレートグローバルで使う。"""
+    settings = load_settings()
+
+    _unconfigured = AnthropicBalanceSummary(
+        remaining_yen=0, credit_yen=0, spent_yen=0,
+        alert_yen=500, is_configured=False, level="ok",
+    )
+
+    if not settings.has_anthropic_credit:
+        return _unconfigured
+
+    # SINCE をパース（未設定 = epoch = 全期間を集計対象）
+    since_str = settings.anthropic_credit_since
+    if since_str:
+        try:
+            since_dt = datetime.fromisoformat(since_str.replace("Z", "+00:00"))
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            since_dt = datetime.fromtimestamp(0, tz=timezone.utc)
+    else:
+        since_dt = datetime.fromtimestamp(0, tz=timezone.utc)
+
+    try:
+        with SessionLocal() as db:
+            spent = anthropic_polish_cost_since(db, since_dt)
+    except Exception:
+        logger.exception("Anthropic 残高集計失敗")
+        return _unconfigured
+
+    credit = settings.anthropic_credit_yen
+    remaining = max(0, credit - spent)
+    alert = settings.anthropic_credit_alert_yen
+
+    if remaining < alert:
+        level: CostLevel = "danger"
+    elif remaining < alert * 3:
+        level = "warning"
+    else:
+        level = "ok"
+
+    return AnthropicBalanceSummary(
+        remaining_yen=remaining,
+        credit_yen=credit,
+        spent_yen=spent,
+        alert_yen=alert,
+        is_configured=True,
+        level=level,
+    )
+
+
 def next_month_start_jst_text(now_utc: datetime | None = None) -> str:
     """次月の月初日時を「YYYY年MM月DD日 (X曜日)」風の日本語で返す。
 

@@ -115,6 +115,43 @@
                         {% endif %}
                     </div>
                 </div>
+                {# Anthropic クレジット残高インジケーター（管理者かつ設定済み時のみ表示）#}
+                {% set _ab = anthropic_balance() %}
+                {% if is_admin and _ab.is_configured %}
+                <div class="header-indicator" x-data="{ open: false }">
+                    <button
+                        type="button"
+                        class="header-indicator-btn header-indicator-credit status-{{ _ab.level }}"
+                        @click="open = !open"
+                        :aria-expanded="open.toString()"
+                        title="Anthropic クレジット残高"
+                    >
+                        <svg class="header-indicator-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.5 8.5c.5-1 1.5-1.5 2.5-1.5 1.7 0 3 1.3 3 3 0 2-3 3-3 5"></path>
+                            <circle cx="12" cy="19" r=".5" fill="currentColor"></circle>
+                        </svg>
+                        <span class="header-indicator-value">{{ _ab.remaining_pretty }}</span>
+                    </button>
+                    <div
+                        class="header-indicator-popover"
+                        x-show="open"
+                        x-cloak
+                        x-transition
+                        @click.outside="open = false"
+                        @keydown.escape.window="open = false"
+                    >
+                        <h4 class="header-indicator-popover-title">Anthropic クレジット残高</h4>
+                        <p class="header-indicator-popover-value">{{ _ab.remaining_pretty }} 残</p>
+                        <p style="font-size:12px;color:#64748b;margin-top:4px">消費: ¥{{ "{:,}".format(_ab.spent_yen) }} / 購入: ¥{{ "{:,}".format(_ab.credit_yen) }}</p>
+                        {% if _ab.is_low %}
+                        <p class="header-indicator-popover-hint hint-danger">残高が少なくなっています。Anthropic Console でクレジットを追加してください。</p>
+                        {% elif _ab.level == "warning" %}
+                        <p class="header-indicator-popover-hint hint-warning">残高が減ってきています。</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
                 {# v1.0.3: スマホ幅ではヘルプ + ユーザーメニューをハンバーガーに畳む。
                    ストレージ/コストインジケーターは状態確認の重要度が高いので
                    ハンバーガー外に残す。display: contents でフレックスレイアウトを
