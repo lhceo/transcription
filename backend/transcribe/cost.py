@@ -252,6 +252,18 @@ def anthropic_polish_cost_since(db: Session, since_dt: datetime) -> int:
 
 def get_anthropic_balance_summary() -> AnthropicBalanceSummary:
     """Anthropic クレジット残高サマリを返す。テンプレートグローバルで使う。"""
+    _unconfigured = AnthropicBalanceSummary(
+        remaining_yen=0, credit_yen=0, spent_yen=0,
+        alert_yen=500, is_configured=False, level="ok",
+    )
+    try:
+        return _get_anthropic_balance_summary_impl()
+    except Exception:
+        logger.exception("Anthropic 残高サマリ取得に失敗 (フォールバック)")
+        return _unconfigured
+
+
+def _get_anthropic_balance_summary_impl() -> AnthropicBalanceSummary:
     settings = load_settings()
 
     _unconfigured = AnthropicBalanceSummary(
