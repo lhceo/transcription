@@ -564,6 +564,9 @@ async def _run_polish_batch(
         data = json.loads(json_str)
         suggestions = {s["id"]: s["text"] for s in data.get("segments", [])}
         flags = {s["id"]: s["flags"] for s in data.get("segments", []) if s.get("flags")}
+        logger.info("整文バッチ完了: segs_in=%d suggestions=%d raw_len=%d", len(segments), len(suggestions), len(raw))
+        if len(suggestions) == 0 and len(segments) > 0:
+            logger.warning("整文バッチ: 提案が空 (0件). raw先頭=%s", raw[:300])
     except Exception:
         logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
         suggestions = {}
