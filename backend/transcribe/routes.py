@@ -224,6 +224,34 @@ async def smtp_test(
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+@router.get("/api/debug/send-test-mail")
+async def send_test_mail(
+    user: CurrentUser,
+    request: Request,
+) -> JSONResponse:
+    """テストメール送信（管理者のみ・自分のアドレス宛）。削除予定。"""
+    settings = load_settings()
+    if user["email"].lower() != settings.admin_email:
+        raise HTTPException(status_code=403)
+    if not settings.smtp_user or not settings.smtp_password:
+        return JSONResponse({"ok": False, "error": "SMTP未設定"})
+    import smtplib, ssl as _ssl
+    from email.mime.text import MIMEText
+    try:
+        msg = MIMEText("Noto SMTPテストメールです。", "plain", "utf-8")
+        msg["Subject"] = "[Noto] SMTPテスト"
+        msg["From"] = f"Noto <{settings.smtp_user}>"
+        msg["To"] = user["email"]
+        ctx = _ssl.create_default_context()
+        with smtplib.SMTP("smtp.gmail.com", 587) as s:
+            s.ehlo(); s.starttls(context=ctx)
+            s.login(settings.smtp_user, settings.smtp_password)
+            s.sendmail(settings.smtp_user, user["email"], msg.as_string())
+        return JSONResponse({"ok": True, "sent_to": user["email"]})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
 @router.post("/api/transcripts", status_code=status.HTTP_201_CREATED)
 async def create_transcript(
     request: Request,
