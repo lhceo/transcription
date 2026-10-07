@@ -223,7 +223,11 @@ async def lifespan(app: FastAPI):
 
     # 2b. B2 自動バックアップ (Tier 2)
     from backend.transcribe.b2_backup import backup_loop as b2_backup_loop
-    from backend.db.session import _DB_PATH as _B2_DB_PATH
+    from pathlib import Path as _BPath
+    if _db_path:
+        _B2_DB_PATH = _BPath(_db_path)
+    else:
+        from backend.db.session import _DB_PATH as _B2_DB_PATH
     b2_task = asyncio.create_task(b2_backup_loop(_B2_DB_PATH))
     b2_task.add_done_callback(_log_task_error)
     logger.info("B2バックアップタスク起動")
