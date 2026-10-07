@@ -480,8 +480,12 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
-# max_tokens=8192 に対して JSON オーバーヘッド・注釈膨張を考慮した安全値
-_SAFE_OUTPUT_TOKENS = 6000
+# max_tokens=8192 に対して安全マージンを確保。
+# 実測でテキストトークンの他に JSON 構造オーバーヘッドが大きいため低めに設定。
+_SAFE_OUTPUT_TOKENS = 4000
+# 1セグメントあたりの JSON 構造オーバーヘッド (tokens):
+# {"id":X,"text":"...","flags":[{"type":"Y","note":"Z"}]} のキー等 ≈ 40 tokens/seg
+_PER_SEG_JSON_OVERHEAD = 40
 # バッチ間のオーバーラップ（文脈保持のため前バッチ末尾を次バッチ先頭に重複させる）
 _OVERLAP_SEGMENTS = 5
 
@@ -599,8 +603,11 @@ async def run_polish(
     # 一括送信でも分割でも全バッチに同じサマリーを添付する
     meeting_summary = await extract_meeting_summary(client, segments)
 
-    # 出力トークンを概算（日本語 0.7 tok/char × 注釈膨張 1.2 倍）
-    estimated_output = int(sum(estimate_tokens(s["text"]) for s in segments) * 1.2)
+    # 出力トークンを概算（テキストトークン × 1.2 + JSON構造オーバーヘッド）
+    # _PER_SEG_JSON_OVERHEAD で {"id":X,"text":"...","flags":[...]} の固定部分を加算
+    estimated_output = int(
+        sum(estimate_tokens(s["text"]) * 1.2 + _PER_SEG_JSON_OVERHEAD for s in segments)
+    )
     logger.info("整文 出力トークン概算: %s segs → %s tok (threshold %s)", len(segments), estimated_output, _SAFE_OUTPUT_TOKENS)
 
     total_input = 0
