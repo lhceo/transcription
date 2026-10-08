@@ -22,7 +22,7 @@ from backend.config import APP_VERSION, load_settings
 from backend.db import SessionLocal, get_db
 from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User
 from datetime import timezone as _tz
-from backend.transcribe.cost import get_cost_summary
+from backend.transcribe.cost import get_anthropic_balance_summary, get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
 from backend.transcribe.retention import expiry_status
 from backend.transcribe.storage_usage import get_summary as get_storage_summary
@@ -49,6 +49,7 @@ templates.env.globals["has_audio"] = has_stored_audio
 templates.env.globals["expiry_status"] = expiry_status
 templates.env.globals["storage_usage"] = get_storage_summary
 templates.env.globals["cost_usage"] = get_cost_summary
+templates.env.globals["anthropic_balance"] = get_anthropic_balance_summary
 
 router = APIRouter()
 

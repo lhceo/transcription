@@ -27,6 +27,7 @@ from backend.db import get_db
 from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, TranscriptVocabulary, User
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
+    get_anthropic_balance_summary,
     get_cost_summary,
     next_month_start_jst_text,
     will_exceed_limit,
@@ -59,6 +60,7 @@ templates.env.globals["has_audio"] = has_stored_audio
 templates.env.globals["expiry_status"] = expiry_status
 templates.env.globals["storage_usage"] = get_storage_summary
 templates.env.globals["cost_usage"] = get_cost_summary
+templates.env.globals["anthropic_balance"] = get_anthropic_balance_summary
 
 router = APIRouter()
 
