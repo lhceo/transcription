@@ -207,6 +207,12 @@ class Segment(Base):
     bookmark_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # セグメントレビュー (collaboration v1)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -220,6 +226,7 @@ class Segment(Base):
     )
 
     transcript: Mapped["Transcript"] = relationship(back_populates="segments")
+    reviewed_by: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by_user_id])
 
     __table_args__ = (
         Index("ix_segments_transcript_order", "transcript_id", "order_index"),
@@ -330,6 +337,12 @@ class TranscriptShare(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
+
+    # コラボレーション機能 (collaboration v1)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="invited")
+    can_edit_segments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    can_edit_meeting_info: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    can_polish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     transcript: Mapped["Transcript"] = relationship(back_populates="shares")
     shared_with: Mapped["User"] = relationship(foreign_keys=[shared_with_user_id])

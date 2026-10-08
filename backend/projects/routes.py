@@ -706,8 +706,19 @@ async def update_transcript_metadata(
 ) -> JSONResponse:
     """MTG の OKF メタ情報（日時・場所・目的・アジェンダ）を更新する。"""
     transcript = db.get(Transcript, transcript_id)
-    if not transcript or transcript.user_id != user["id"]:
+    if not transcript or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+    # オーナーまたは can_edit_meeting_info=True の共有ユーザーのみ更新可
+    if transcript.user_id != user["id"]:
+        from backend.db.models import TranscriptShare
+        share = db.scalar(
+            select(TranscriptShare).where(
+                TranscriptShare.transcript_id == transcript_id,
+                TranscriptShare.shared_with_user_id == user["id"],
+            )
+        )
+        if share is None or not share.can_edit_meeting_info:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "MTG情報の編集権限がありません"})
 
     if body.meeting_date is not None:
         if body.meeting_date == "":

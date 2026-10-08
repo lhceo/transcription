@@ -82,19 +82,47 @@ def _is_owner(transcript: Transcript, user_id: int) -> bool:
 
 
 def _can_access(transcript: Transcript, user_id: int, db: Session) -> bool:
-    """オーナーまたは共有されたユーザーならアクセス可。"""
+    """オーナーまたは共有されたユーザーならアクセス可。
+    非オーナーが初アクセス時に status を 'accepted' に更新する。
+    """
     if _is_owner(transcript, user_id):
         return True
-    return db.scalar(
+    share = db.scalar(
         select(TranscriptShare).where(
             TranscriptShare.transcript_id == transcript.id,
             TranscriptShare.shared_with_user_id == user_id,
         )
-    ) is not None
+    )
+    if share is None:
+        return False
+    # 初めてアクセスした時に invited → accepted に更新
+    if share.status == "invited":
+        share.status = "accepted"
+        db.commit()
+    return True
+
+
+def _get_share(transcript_id: int, user_id: int, db: Session) -> "TranscriptShare | None":
+    """非オーナーの共有レコードを返す。オーナーは None。"""
+    return db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == user_id,
+        )
+    )
 
 
 class ShareBody(BaseModel):
     shared_with_user_id: int
+    can_edit_segments: bool = True
+    can_edit_meeting_info: bool = True
+    can_polish: bool = False
+
+
+class SharePermissionBody(BaseModel):
+    can_edit_segments: bool | None = None
+    can_edit_meeting_info: bool | None = None
+    can_polish: bool | None = None
 
 
 # ── 共有 API ─────────────────────────────────────────────────────────────────
@@ -114,7 +142,16 @@ async def list_shares(
         .where(TranscriptShare.transcript_id == transcript_id)
     ).all()
     return JSONResponse([
-        {"user_id": s.shared_with_user_id, "name": s.shared_with.name, "email": s.shared_with.email}
+        {
+            "user_id": s.shared_with_user_id,
+            "name": s.shared_with.name,
+            "email": s.shared_with.email,
+            "picture_url": s.shared_with.picture_url,
+            "status": s.status,
+            "can_edit_segments": s.can_edit_segments,
+            "can_edit_meeting_info": s.can_edit_meeting_info,
+            "can_polish": s.can_polish,
+        }
         for s in shares
     ])
 
@@ -147,6 +184,10 @@ async def add_share(
     share = TranscriptShare(
         transcript_id=transcript_id,
         shared_with_user_id=body.shared_with_user_id,
+        status="invited",
+        can_edit_segments=body.can_edit_segments,
+        can_edit_meeting_info=body.can_edit_meeting_info,
+        can_polish=body.can_polish,
     )
     db.add(share)
     db.commit()
@@ -189,6 +230,41 @@ async def remove_share(
         db.delete(share)
         db.commit()
     return JSONResponse({"ok": True})
+
+
+@router.patch("/api/transcripts/{transcript_id}/shares/{target_user_id}")
+async def update_share_permissions(
+    transcript_id: int,
+    target_user_id: int,
+    body: SharePermissionBody,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """共有権限を更新する（オーナーのみ）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404)
+    share = db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == target_user_id,
+        )
+    )
+    if share is None:
+        raise HTTPException(status_code=404, detail="共有レコードが見つかりません")
+    if body.can_edit_segments is not None:
+        share.can_edit_segments = body.can_edit_segments
+    if body.can_edit_meeting_info is not None:
+        share.can_edit_meeting_info = body.can_edit_meeting_info
+    if body.can_polish is not None:
+        share.can_polish = body.can_polish
+    db.commit()
+    return JSONResponse({
+        "ok": True,
+        "can_edit_segments": share.can_edit_segments,
+        "can_edit_meeting_info": share.can_edit_meeting_info,
+        "can_polish": share.can_polish,
+    })
 
 
 @router.get("/api/users")
@@ -1065,6 +1141,53 @@ async def transcript_detail(
 
     polished_count = sum(1 for s in segments if s.is_polished)
 
+    # コラボレーション: 共有情報・権限・レビュー済みセグメント
+    shares_data: list[dict] = []
+    if is_owner:
+        shares_list = db.scalars(
+            select(TranscriptShare)
+            .where(TranscriptShare.transcript_id == transcript_id)
+        ).all()
+        shares_data = [
+            {
+                "user_id": s.shared_with_user_id,
+                "name": s.shared_with.name,
+                "email": s.shared_with.email,
+                "picture_url": s.shared_with.picture_url,
+                "status": s.status,
+                "can_edit_segments": s.can_edit_segments,
+                "can_edit_meeting_info": s.can_edit_meeting_info,
+                "can_polish": s.can_polish,
+            }
+            for s in shares_list
+        ]
+
+    # 現在のユーザーの権限（非オーナーの場合）
+    current_user_permissions = {
+        "can_edit_segments": True,
+        "can_edit_meeting_info": True,
+        "can_polish": False,
+    }
+    if not is_owner:
+        share_rec = _get_share(transcript_id, user["id"], db)
+        if share_rec:
+            current_user_permissions = {
+                "can_edit_segments": share_rec.can_edit_segments,
+                "can_edit_meeting_info": share_rec.can_edit_meeting_info,
+                "can_polish": share_rec.can_polish,
+            }
+
+    # レビュー済みセグメントマップ
+    reviewed_segments: dict[int, dict] = {}
+    for seg in segments:
+        if seg.reviewed_by_user_id is not None:
+            reviewer = db.get(User, seg.reviewed_by_user_id)
+            reviewed_segments[seg.id] = {
+                "reviewer_name": reviewer.name if reviewer else None,
+                "reviewer_picture": reviewer.picture_url if reviewer else None,
+                "reviewed_at": seg.reviewed_at.isoformat() if seg.reviewed_at else None,
+            }
+
     import json as _json
     quality_check_data: list[dict] = []
     auto_merged_count: int = 0
@@ -1121,6 +1244,9 @@ async def transcript_detail(
             "quality_check_data": quality_check_data,
             "auto_merged_count": auto_merged_count,
             "quality_check_ran": quality_check_ran,
+            "shares_data": shares_data,
+            "current_user_permissions": current_user_permissions,
+            "reviewed_segments": reviewed_segments,
         },
     )
 
@@ -1250,6 +1376,12 @@ async def update_segment(
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
+    # 非オーナーのセグメント編集権限チェック
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "セグメントの編集権限がありません"})
+
     # text 更新
     if "text" in payload:
         new_text = (payload.get("text") or "").strip()
@@ -1260,6 +1392,9 @@ async def update_segment(
             )
         segment.text_content = new_text
         segment.is_edited = True
+        # テキスト変更時はレビューをリセット
+        segment.reviewed_by_user_id = None
+        segment.reviewed_at = None
 
     # display_name 個別上書き（カード単位の話者変更）
     if "display_name" in payload:
@@ -1646,6 +1781,116 @@ async def update_segment_comment(
     segment.comment = comment_text or None
     db.commit()
     return JSONResponse({"ok": True, "comment": segment.comment})
+
+
+# ── セグメントレビュー ─────────────────────────────────────────────────────
+
+
+@router.post("/api/segments/{segment_id}/review")
+async def mark_segment_reviewed(
+    segment_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメントをレビュー済みにする。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+    segment.reviewed_by_user_id = user["id"]
+    segment.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(segment)
+
+    reviewer = db.get(User, user["id"])
+    return JSONResponse({
+        "reviewed_by_user_id": segment.reviewed_by_user_id,
+        "reviewed_at": segment.reviewed_at.isoformat() if segment.reviewed_at else None,
+        "reviewer_name": reviewer.name if reviewer else None,
+        "reviewer_picture": reviewer.picture_url if reviewer else None,
+    })
+
+
+@router.delete("/api/segments/{segment_id}/review")
+async def unmark_segment_reviewed(
+    segment_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """セグメントのレビューを解除する。"""
+    segment = db.get(Segment, segment_id)
+    if segment is None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    transcript = db.get(Transcript, segment.transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+    segment.reviewed_by_user_id = None
+    segment.reviewed_at = None
+    db.commit()
+    return JSONResponse({
+        "reviewed_by_user_id": None,
+        "reviewed_at": None,
+        "reviewer_name": None,
+        "reviewer_picture": None,
+    })
+
+
+# ── プレゼンス（リアルタイム編集中表示） ─────────────────────────────────
+
+
+class PresenceBody(BaseModel):
+    segment_id: int | None = None
+
+
+@router.post("/api/transcripts/{transcript_id}/presence")
+async def update_presence(
+    transcript_id: int,
+    body: PresenceBody,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """プレゼンスを更新する（編集開始・継続・終了）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    from backend.transcribe.presence import update as presence_update, clear as presence_clear
+
+    db_user = db.get(User, user["id"])
+    if body.segment_id is None:
+        presence_clear(transcript_id, user["id"])
+    else:
+        presence_update(
+            transcript_id=transcript_id,
+            user_id=user["id"],
+            user_name=db_user.name if db_user else user.get("name", ""),
+            picture_url=db_user.picture_url if db_user else None,
+            segment_id=body.segment_id,
+        )
+    return JSONResponse({"ok": True})
+
+
+@router.get("/api/transcripts/{transcript_id}/presence")
+async def get_presence(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """現在編集中のユーザー一覧を返す（自分を除く）。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    from backend.transcribe.presence import get_active
+
+    active = get_active(transcript_id)
+    # 自分自身は除外
+    active = [p for p in active if p["user_id"] != user["id"]]
+    return JSONResponse(active)
 
 
 # ── 固有名詞辞書（個別音声） ───────────────────────────────────────────

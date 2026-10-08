@@ -7432,3 +7432,221 @@ body:has(.multi-float-bar:not([style*="none"])) {
 [data-theme="dark"] .overlay-current {
     background: rgba(234, 179, 8, 0.35);
 }
+
+/* ─── コラボレーション機能 ─────────────────────────────────────── */
+
+/* セグメントレビュー（チェック済み）ボタン */
+.seg-review-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--color-border, #e2e8f0);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-muted, #94a3b8);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.seg-review-btn svg {
+    width: 11px;
+    height: 11px;
+}
+.seg-review-btn:hover {
+    border-color: #16a34a;
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.06);
+}
+.seg-review-btn.is-reviewed {
+    border-color: #16a34a;
+    background: #16a34a;
+    color: #fff;
+}
+[data-theme="dark"] .seg-review-btn {
+    border-color: var(--color-border, #334155);
+    color: var(--color-text-muted, #64748b);
+}
+[data-theme="dark"] .seg-review-btn:hover {
+    border-color: #22c55e;
+    color: #22c55e;
+}
+[data-theme="dark"] .seg-review-btn.is-reviewed {
+    border-color: #16a34a;
+    background: #16a34a;
+    color: #fff;
+}
+
+/* レビュアーのアバター（20px 丸） */
+.seg-reviewer-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #16a34a;
+    flex-shrink: 0;
+}
+
+/* 「○○さんが編集中」オーバーレイ */
+.seg-editing-overlay {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    color: var(--color-primary, #3b82f6);
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    border-radius: 10px;
+    padding: 1px 7px;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    animation: editing-pulse 2s ease-in-out infinite;
+}
+@keyframes editing-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+[data-theme="dark"] .seg-editing-overlay {
+    background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
+}
+
+/* 共有ステータスバッジ */
+.share-status-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+.share-status-accepted {
+    background: #dcfce7;
+    color: #166534;
+}
+.share-status-invited {
+    background: #fef3c7;
+    color: #92400e;
+}
+[data-theme="dark"] .share-status-accepted {
+    background: rgba(22, 101, 52, 0.25);
+    color: #86efac;
+}
+[data-theme="dark"] .share-status-invited {
+    background: rgba(146, 64, 14, 0.25);
+    color: #fcd34d;
+}
+
+/* 共有メンバーのアバター */
+.share-member-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+.share-member-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.share-member-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-primary, #3b82f6);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* 権限トグル（コンパクトなラベル付きチェックボックス） */
+.share-permissions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    width: 100%;
+}
+.share-permission-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-text-muted, #64748b);
+    cursor: pointer;
+    user-select: none;
+}
+.share-permission-toggle input[type="checkbox"] {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--color-primary, #3b82f6);
+    cursor: pointer;
+}
+.share-permission-toggle:hover {
+    color: var(--color-text, #0f172a);
+}
+
+/* チェック済み進捗バー */
+.review-check-progress-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: var(--radius, 8px);
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #166534;
+}
+.review-check-icon {
+    display: flex;
+    align-items: center;
+    color: #16a34a;
+    flex-shrink: 0;
+}
+.review-check-label {
+    white-space: nowrap;
+}
+.review-check-track {
+    flex: 1;
+    height: 4px;
+    background: #dcfce7;
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 40px;
+}
+.review-check-fill {
+    height: 100%;
+    background: #16a34a;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+[data-theme="dark"] .review-check-progress-bar {
+    background: rgba(22, 101, 52, 0.12);
+    border-color: rgba(22, 163, 74, 0.25);
+    color: #86efac;
+}
+[data-theme="dark"] .review-check-track {
+    background: rgba(22, 163, 74, 0.15);
+}
+[data-theme="dark"] .review-check-fill {
+    background: #22c55e;
+}
+
+/* 共有メンバーカードのスタイル更新（既存の .share-member を拡張） */
+.share-member {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 8px 10px;
+}
