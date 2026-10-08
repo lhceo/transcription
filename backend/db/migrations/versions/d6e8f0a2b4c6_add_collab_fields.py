@@ -23,10 +23,17 @@ def upgrade() -> None:
     with op.batch_alter_table('segments') as batch_op:
         batch_op.add_column(sa.Column('reviewed_by_user_id', sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True))
+        batch_op.create_foreign_key(
+            'fk_segments_reviewed_by_user_id',
+            'users',
+            ['reviewed_by_user_id'], ['id'],
+            ondelete='SET NULL',
+        )
 
 
 def downgrade() -> None:
     with op.batch_alter_table('segments') as batch_op:
+        batch_op.drop_constraint('fk_segments_reviewed_by_user_id', type_='foreignkey')
         batch_op.drop_column('reviewed_at')
         batch_op.drop_column('reviewed_by_user_id')
 

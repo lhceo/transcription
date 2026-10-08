@@ -87,6 +87,31 @@ Notta（年20万円規模の有料サービス）からの脱却が動機。
 4. **設計判断は `docs/DECISIONS.md` に記録**
 5. **実装の進捗は `docs/ROADMAP.md` に追記**
 
+## DBスキーマ変更の鉄則（2026-10-08 制定 — 本番500の教訓）
+
+**新しいカラム / テーブルを追加するときは、以下の6点を必ず同一コミットに含める。**  
+1つでも別コミットにすると本番が起動不能になる可能性がある。
+
+| # | 何をする | ファイル |
+|---|---|---|
+| ① | ORM モデルにカラム定義を追加 | `backend/db/models.py` |
+| ② | スキーマ修復ループに ADD COLUMN を追加（REFERENCES なし） | `backend/main.py` |
+| ③ | `_REPAIR_HEAD` を新しいマイグレーション ID に更新 | `backend/main.py` |
+| ④ | `_MIGRATION_CHAIN` 末尾に新 ID を追加 | `backend/main.py` |
+| ⑤ | マイグレーションファイルを新規作成 | `backend/db/migrations/versions/` |
+| ⑥ | コード変更（routes.py、テンプレート等） | 各ファイル |
+
+**マイグレーションファイル作成の注意点：**
+- `batch_alter_table` 内で FK を追加するときは `batch_op.create_foreign_key('名前付き', ...)` を使う
+  - `sa.ForeignKey(...)` をインラインで書くと `ValueError: Constraint must have a name` で alembic がクラッシュする
+- 参考：`d3e5f7a9b1c2_add_person_id_to_speakers.py` が正しいパターン
+
+**やってはいけないこと（今回の失敗パターン）：**
+- `_REPAIR_HEAD` を更新するコミットと、マイグレーションファイルのコミットを分ける
+  → alembic が "No such revision" でクラッシュ → サーバー起動不能
+- スキーマ修復の ADD COLUMN に `REFERENCES ... ON DELETE SET NULL` を付ける
+  → SQLite バージョン依存で失敗しうる（しかも例外が握りつぶされる）
+
 ## 詳しい情報
 
 - **設計の全決定**: `docs/DESIGN.md`（A〜F の全6カテゴリ）

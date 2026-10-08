@@ -99,8 +99,13 @@ async def lifespan(app: FastAPI):
             ]:
                 try:
                     _cu.execute(_sql)
-                except Exception:
-                    pass
+                    logger.debug("schema repair 追加: %s", _sql[12:50])
+                except Exception as _col_e:
+                    _msg = str(_col_e).lower()
+                    if "duplicate column" in _msg or "already exists" in _msg:
+                        logger.debug("schema repair スキップ（既存）: %s", _sql[12:50])
+                    else:
+                        logger.warning("schema repair 予期せぬエラー: %s | %s", _sql[12:50], _col_e)
             _cu.execute(
                 "CREATE TABLE IF NOT EXISTS transcript_shares("
                 "id INTEGER NOT NULL,"
@@ -209,6 +214,18 @@ async def lifespan(app: FastAPI):
             else:
                 logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
             _co.commit()
+            # 重要カラムの存在を検証（不足があれば ERROR ログ → Railway で即確認できる）
+            for _tbl, _col in [
+                ("segments", "reviewed_by_user_id"),
+                ("segments", "reviewed_at"),
+                ("transcript_shares", "status"),
+                ("transcript_shares", "can_edit_segments"),
+            ]:
+                _cols = {r[1] for r in _cu.execute(f"PRAGMA table_info({_tbl})").fetchall()}
+                if _col in _cols:
+                    logger.debug("カラム確認OK: %s.%s", _tbl, _col)
+                else:
+                    logger.error("カラム不足: %s.%s が存在しません", _tbl, _col)
             _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
             _co.close()
             logger.info("スキーマ修復完了")
