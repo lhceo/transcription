@@ -137,8 +137,7 @@ async def lifespan(app: FastAPI):
                 pass
             try:
                 _cu.execute(
-                    "ALTER TABLE speakers ADD COLUMN person_id INTEGER "
-                    "REFERENCES people(id) ON DELETE SET NULL"
+                    "ALTER TABLE speakers ADD COLUMN person_id INTEGER"
                 )
             except Exception:
                 pass
@@ -195,7 +194,10 @@ async def lifespan(app: FastAPI):
             _row = _cu.execute("SELECT version_num FROM alembic_version").fetchone()
             _cur_ver = _row[0] if _row else None
             if _ver_idx(_cur_ver) < _ver_idx(_REPAIR_HEAD):
-                _cu.execute("UPDATE alembic_version SET version_num=?", (_REPAIR_HEAD,))
+                if _cur_ver is None:
+                    _cu.execute("INSERT INTO alembic_version (version_num) VALUES (?)", (_REPAIR_HEAD,))
+                else:
+                    _cu.execute("UPDATE alembic_version SET version_num=?", (_REPAIR_HEAD,))
                 logger.info("alembic_version 更新: %s → %s", _cur_ver, _REPAIR_HEAD)
             else:
                 logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
