@@ -2750,6 +2750,26 @@ mark.find-highlight-active {
     white-space: pre-wrap;
     word-break: break-word;
 }
+/* 折りたたみ時: 3行で切る */
+.comment-item-text.is-collapsed {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.comment-item-toggle {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #b45309;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.comment-item-toggle:hover { color: #92400e; }
 .comment-item-excerpt {
     font-size: 11px;
     color: var(--color-text-muted);
@@ -4251,7 +4271,7 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     right: -148px;
     top: var(--split-cursor-top, 40px);
     width: 136px;
-    z-index: 50;
+    z-index: 52; /* サイドバー(z:51)より上に出てクリックを確保 */
     display: none; /* JS (syncSegmentDisplay) が flex で表示 */
     flex-direction: column;
     align-items: center;

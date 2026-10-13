@@ -2008,8 +2008,17 @@ def _resolve_speaker_name(seg: Segment, name_map: dict[str, str]) -> str:
     return name_map.get(seg.speaker_label, seg.speaker_label)
 
 
-def _build_meta_block(transcript: "Transcript", speakers: list | None = None) -> list[str]:
-    """MTGメタ情報のテキスト行リストを返す（空の場合は空リスト）。"""
+def _build_meta_block(
+    transcript: "Transcript",
+    speakers: list | None = None,
+    segments: list | None = None,
+) -> list[str]:
+    """MTGメタ情報のテキスト行リストを返す（空の場合は空リスト）。
+
+    speakers が渡された場合、【参加者】セクションを追加する。
+    segments が渡された場合、セグメント側の display_name を優先して話者名を解決する。
+    これにより個別リネームのみ行った場合も正しい名前がエクスポートされる。
+    """
     from datetime import timezone as _tz
     lines: list[str] = []
     has_mtg = any([
@@ -2042,11 +2051,24 @@ def _build_meta_block(transcript: "Transcript", speakers: list | None = None) ->
             lines.append("アジェンダ:")
             lines.append(transcript.meeting_agenda)
     if speakers:
+        # セグメントの display_name（個別リネーム済み）で Speaker.display_name を上書き。
+        # 各 speaker_label で最も多く使われている display_name を採用する。
+        effective: dict[str, str] = {s.speaker_label: s.display_name for s in speakers}
+        if segments:
+            from collections import Counter
+            _counts: dict[str, Counter] = {}
+            for seg in segments:
+                if seg.display_name:
+                    _counts.setdefault(seg.speaker_label, Counter())[seg.display_name] += 1
+            for label, counter in _counts.items():
+                if counter:
+                    effective[label] = counter.most_common(1)[0][0]
+
         if lines:
             lines.append("")
         lines.append("【参加者】")
         for s in speakers:
-            parts = [s.display_name]
+            parts = [effective.get(s.speaker_label, s.display_name)]
             if s.person:
                 if s.person.company:
                     parts.append(s.person.company)
@@ -2236,7 +2258,7 @@ async def export_transcript(
         if v.word.lower() not in existing_vocab_words:
             vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
 
-    meta_lines = _build_meta_block(transcript, speakers if include_meta else None) if include_meta else None
+    meta_lines = _build_meta_block(transcript, speakers if include_meta else None, segments if include_meta else None) if include_meta else None
     export_vocab = (vocab_items or None) if include_vocab else None
 
     fmt = format.lower()
