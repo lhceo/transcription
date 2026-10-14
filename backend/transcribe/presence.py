@@ -60,5 +60,4 @@ def get_active(transcript_id: int) -> list[dict]:
             "segment_id": info["segment_id"],
         }
         for uid, info in bucket.items()
-        if info["segment_id"] is not None  # セグメント編集中のみ返す
     ]

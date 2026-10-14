@@ -7543,6 +7543,103 @@ body:has(.multi-float-bar:not([style*="none"])) {
     background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
 }
 
+/* セグメント内編集中オーバーレイ — ミニアバター */
+.presence-mini-avatar,
+.presence-mini-initials {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.presence-mini-initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--color-primary, #6366f1);
+}
+
+/* オンラインユーザーストリップ */
+.online-users-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+.online-strip-label {
+    font-size: 11px;
+    color: var(--color-text-muted, #9ca3af);
+    flex-shrink: 0;
+}
+.online-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    cursor: default;
+}
+.online-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--color-border);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.3s;
+}
+.online-avatar-initials {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--color-primary, #6366f1);
+}
+/* 編集中のユーザーにはリングアニメーション */
+.online-avatar.is-editing-now {
+    border-color: var(--color-primary, #6366f1);
+    animation: online-editing-ring 1.5s ease-in-out infinite;
+}
+@keyframes online-editing-ring {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 50%, transparent); }
+    50%       { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 0%, transparent); }
+}
+/* グリーンドット（オンライン表示） */
+.online-avatar-dot {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 1.5px solid var(--color-surface, #fff);
+}
+.online-avatar-dot.is-active {
+    background: var(--color-primary, #6366f1);
+    animation: dot-pulse 1.5s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%       { transform: scale(1.4); opacity: 0.7; }
+}
+
+/* ヘッダーアバター — プロフィール写真なしユーザーのイニシャル fallback */
+.user-avatar-initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--color-primary, #6366f1);
+    user-select: none;
+}
+
 /* 共有ステータスバッジ */
 .share-status-badge {
     display: inline-block;

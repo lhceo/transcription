@@ -263,6 +263,8 @@
                             <button type="button" class="user-menu-trigger" @click="open = !open" :aria-expanded="open.toString()">
                                 {% if user.picture %}
                                 <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+                                {% else %}
+                                <span class="user-avatar user-avatar-initials">{{ user.name[:1] }}</span>
                                 {% endif %}
                                 <span class="user-name">{{ user.name }}</span>
                                 <svg class="user-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -284,6 +286,8 @@
                                 <div class="user-menu-mobile-profile">
                                     {% if user.picture %}
                                     <img src="{{ user.picture }}" alt="" class="user-avatar" referrerpolicy="no-referrer">
+                                    {% else %}
+                                    <span class="user-avatar user-avatar-initials">{{ user.name[:1] }}</span>
                                     {% endif %}
                                     <span class="user-name">{{ user.name }}</span>
                                 </div>

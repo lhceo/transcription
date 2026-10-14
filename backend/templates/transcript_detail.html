@@ -23,6 +23,7 @@
     window.__SHARES_DATA = {{ shares_data | tojson }};
     window.__REVIEWED_SEGMENTS = {{ reviewed_segments | tojson }};
     window.__CURRENT_USER_PERMISSIONS = {{ current_user_permissions | tojson }};
+    window.__CURRENT_USER_ID = {{ user['id'] }};
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
@@ -93,6 +94,26 @@
             <span class="meta-item meta-cost">約 {{ transcript.cost_yen }} 円</span>
         {% endif %}
         <span class="meta-item">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
+    </div>
+
+    {# オンラインユーザー表示（他ユーザーがページを開いている場合） #}
+    <div class="online-users-strip" x-show="onlineUsers.length > 0" x-cloak>
+        <span class="online-strip-label">オンライン：</span>
+        <template x-for="u in onlineUsers" :key="u.user_id">
+            <span class="online-avatar-wrap"
+                  :title="u.name + (u.segment_id != null ? ' さんが編集中' : ' さんが閲覧中')">
+                <template x-if="u.picture_url">
+                    <img :src="u.picture_url"
+                         :class="{'online-avatar': true, 'is-editing-now': u.segment_id != null}"
+                         :alt="u.name" referrerpolicy="no-referrer">
+                </template>
+                <template x-if="!u.picture_url">
+                    <span :class="{'online-avatar': true, 'online-avatar-initials': true, 'is-editing-now': u.segment_id != null}"
+                          x-text="u.name.charAt(0)"></span>
+                </template>
+                <span class="online-avatar-dot" :class="u.segment_id != null ? 'is-active' : ''"></span>
+            </span>
+        </template>
     </div>
 
     {# 共有されたファイルのバナー（非オーナー向け） #}
@@ -980,8 +1001,19 @@
                         {# 編集中オーバーレイ（他ユーザーが編集中） #}
                         <template x-if="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0">
                             <span class="seg-editing-overlay" x-show="!reviewMode"
-                                  :title="presenceData[{{ seg.id }}].map(p => p.name).join(', ') + ' が編集中'"
-                                  x-text="presenceData[{{ seg.id }}][0].name + ' さんが編集中'"></span>
+                                  :title="presenceData[{{ seg.id }}].map(p => p.name).join(', ') + ' が編集中'">
+                                <template x-if="presenceData[{{ seg.id }}][0].picture_url">
+                                    <img :src="presenceData[{{ seg.id }}][0].picture_url"
+                                         class="presence-mini-avatar"
+                                         :alt="presenceData[{{ seg.id }}][0].name"
+                                         referrerpolicy="no-referrer">
+                                </template>
+                                <template x-if="!presenceData[{{ seg.id }}][0].picture_url">
+                                    <span class="presence-mini-initials"
+                                          x-text="presenceData[{{ seg.id }}][0].name.charAt(0)"></span>
+                                </template>
+                                <span x-text="presenceData[{{ seg.id }}][0].name + ' さんが編集中'"></span>
+                            </span>
                         </template>
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
@@ -1950,6 +1982,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── コラボレーション ─────────────────────────────────────
         presenceData: {},      // {segment_id: [{user_id, name, picture_url}]}
+        onlineUsers: [],       // [{user_id, name, picture_url, segment_id}] — 自分以外のオンラインユーザー
         _presenceInterval: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
         reviewedCount: 0,
@@ -2185,12 +2218,25 @@ function segmentsApp(transcriptId, historyNames) {
 
         async refreshPresence() {
             try {
+                // ハートビート: 自分の現在の状態を送信（閲覧中 or 編集中）
+                await fetch(`/api/transcripts/${this.transcriptId}/presence`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ segment_id: this.focusedEditingSegmentId }),
+                });
+
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/presence`);
                 if (!res.ok) return;
                 const active = await res.json();
-                // segment_id でグループ化
+                const myId = window.__CURRENT_USER_ID;
+
+                // 自分以外のユーザーを onlineUsers に格納
+                this.onlineUsers = active.filter(p => p.user_id !== myId);
+
+                // segment_id でグループ化（編集中インジケーター用）
                 const grouped = {};
                 for (const p of active) {
+                    if (p.user_id === myId) continue;
                     if (p.segment_id != null) {
                         if (!grouped[p.segment_id]) grouped[p.segment_id] = [];
                         grouped[p.segment_id].push(p);
