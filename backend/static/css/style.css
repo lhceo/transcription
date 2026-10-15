@@ -2693,7 +2693,7 @@ mark.find-highlight-active {
     padding: 0 6px;
     font-weight: 700;
 }
-.unknown-list { list-style: none; padding: 0; margin: 0; }
+.unknown-list { list-style: none; padding: 0 0 4px; margin: 0; }
 .unknown-item {
     padding: 10px 14px;
     border-bottom: 1px solid var(--color-border);
@@ -2737,7 +2737,7 @@ mark.find-highlight-active {
     padding: 0 6px;
     font-weight: 700;
 }
-.comment-list { list-style: none; padding: 0; margin: 0; }
+.comment-list { list-style: none; padding: 0 0 4px; margin: 0; }
 .comment-item {
     display: flex;
     align-items: flex-start;
@@ -3423,9 +3423,13 @@ mark.find-highlight-active {
     flex-shrink: 0;
 }
 /* 固定音声プレイヤーがある場合、プレイヤー分だけ下限を上げてスクロール可能にする */
+/* player height ≈89px + box-shadow ≈24px + 余裕 = 120px */
 body:has(.audio-player-fixed) .transcript-sidebar-col,
 body:has(.audio-player-fixed) .sidebar-panel-content {
-    max-height: calc(100vh - 72px - 108px);
+    max-height: calc(100vh - 72px - 120px);
+}
+body:has(.audio-player-fixed) .sidebar-panel-content {
+    padding-bottom: 8px;
 }
 @media (max-width: 640px) {
     .transcript-body-layout { flex-direction: column; }
@@ -3470,7 +3474,7 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
 }
 .bookmark-list {
     list-style: none;
-    padding: 0;
+    padding: 0 0 4px;
     margin: 0;
 }
 .bookmark-item {
