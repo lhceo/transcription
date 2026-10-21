@@ -2355,6 +2355,27 @@ function segmentsApp(transcriptId, historyNames) {
                 );
                 if (card) this._updateSplitBtnPos(card);
             });
+            // 整文レビュー途中で閉じた場合の復元
+            this.$nextTick(() => {
+                if (this._tryRestoreReviewProgress()) {
+                    const pending = Object.values(this.reviewData).filter(d => !d.done).length;
+                    const total = Object.keys(this.reviewData).length;
+                    window.showToast(
+                        `前回の整文レビューを復元しました（未確認 ${pending} / ${total} 件）。完了後に「完了・保存」を押してください。`,
+                        'info'
+                    );
+                }
+            });
+            // ページ離脱・タブ非表示時に自動保存
+            window.addEventListener('beforeunload', () => {
+                if (this.reviewMode) this._saveReviewProgress();
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden' && this.reviewMode) {
+                    this._saveReviewProgress();
+                }
+            });
+
             // Cmd+Shift+H で検索・置換バーを開閉
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'h' && e.shiftKey && (e.ctrlKey || e.metaKey) && this.editMode) {
@@ -3496,6 +3517,73 @@ function segmentsApp(transcriptId, historyNames) {
                     : document.querySelector('.segment-card.review-pending-diff, .segment-card.review-pending-unknown');
                 if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
+            // 整文レビュー状態を localStorage に保存（ページを閉じても復元できるよう）
+            this._saveReviewProgress();
+        },
+
+        // ── 整文レビュー進捗の localStorage 保存・復元 ─────────────────
+
+        _saveReviewProgress() {
+            const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            if (!tId || !this.reviewMode || Object.keys(this.reviewData).length === 0) return;
+            try {
+                const saved = Object.fromEntries(
+                    Object.entries(this.reviewData).map(([id, d]) => [id, {
+                        state: d.state,
+                        done: d.done,
+                        polishedText: d.polishedText,
+                        original: d.original,
+                        flags: d.flags || [],
+                    }])
+                );
+                localStorage.setItem(`noto-review-${tId}`, JSON.stringify({
+                    t: Date.now(),
+                    data: saved,
+                    diff: this.diffReviewMode,
+                }));
+            } catch (e) {}
+        },
+
+        _clearReviewProgress() {
+            const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            if (!tId) return;
+            try { localStorage.removeItem(`noto-review-${tId}`); } catch (e) {}
+        },
+
+        _tryRestoreReviewProgress() {
+            const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            if (!tId) return false;
+            try {
+                const raw = localStorage.getItem(`noto-review-${tId}`);
+                if (!raw) return false;
+                const { t, data, diff } = JSON.parse(raw);
+                // 24時間以上経過した保存データは破棄
+                if (Date.now() - t > 24 * 3600 * 1000) {
+                    localStorage.removeItem(`noto-review-${tId}`);
+                    return false;
+                }
+                if (!data || Object.keys(data).length === 0) return false;
+
+                this.reviewData = {};
+                for (const [id, d] of Object.entries(data)) {
+                    const intId = parseInt(id, 10);
+                    let parts = null, fills = null;
+                    if (d.state === 'unknown' && d.polishedText) {
+                        parts = d.polishedText.split('（？）');
+                        fills = new Array(parts.length - 1).fill('');
+                    }
+                    this.reviewData[intId] = { ...d, parts, fills, activeFillIdx: null, preview: null };
+                }
+                this.diffReviewMode = diff || false;
+                this.reviewMode = true;
+                this._flaggedSegIds = Object.entries(data)
+                    .filter(([, d]) => d.flags && d.flags.length > 0)
+                    .map(([id]) => parseInt(id, 10));
+                this._flagNavIdx = 0;
+                return true;
+            } catch (e) {
+                return false;
+            }
         },
 
         reviewTotalCount() {
@@ -3517,6 +3605,7 @@ function segmentsApp(transcriptId, historyNames) {
                     }
                 }
             });
+            this._saveReviewProgress();
         },
 
         _buildUnknownPreview(d) {
@@ -3639,6 +3728,7 @@ function segmentsApp(transcriptId, historyNames) {
             this.reviewData = {};
             this._flaggedSegIds = [];
             this._flagNavIdx = 0;
+            this._clearReviewProgress();
         },
 
         flagCount() {
@@ -3698,6 +3788,7 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({ accepted_texts }),
                 });
                 if (!res.ok) throw new Error(res.status);
+                this._clearReviewProgress();
                 window.showToast('保存しました。ページを更新します。');
                 setTimeout(() => location.reload(), 800);
             } catch (e) {
@@ -3770,6 +3861,7 @@ function segmentsApp(transcriptId, historyNames) {
                     body: JSON.stringify({ segment_ids: revertIds }),
                 });
                 if (!res.ok) throw new Error(res.status);
+                this._clearReviewProgress();
                 window.showToast('保存しました。ページを更新します。');
                 setTimeout(() => location.reload(), 800);
             } catch (e) {
