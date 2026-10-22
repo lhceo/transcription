@@ -63,9 +63,13 @@ def transcript_expires_at(transcript: Any) -> datetime | None:
     """文字起こしの自動削除予定日時を返す。
 
     - 完了 (`completed_at` あり) かつ retention_days > 0 のときだけ値を返す
+    - プロジェクトに属している場合は自動削除対象外 → None
     - 未完了 / 自動削除無効化時は None
     - SQLite からの naive datetime は UTC として扱う
     """
+    # プロジェクトに入っているデータは自動削除しない
+    if getattr(transcript, "project_id", None) is not None:
+        return None
     completed_at = getattr(transcript, "completed_at", None)
     if completed_at is None:
         return None
@@ -150,12 +154,15 @@ def scan_and_delete_expired(*, dry_run: bool = False) -> int:
     deleted = 0
 
     with SessionLocal() as db:
-        # 期限切れの "completed" 文字起こしを取得 (failed / processing は対象外)
+        # 期限切れの "completed" 文字起こしを取得
+        # - failed / processing は対象外
+        # - プロジェクトに属しているものは自動削除対象外
         stmt = (
             select(Transcript)
             .where(Transcript.status == "completed")
             .where(Transcript.completed_at.is_not(None))
             .where(Transcript.completed_at < cutoff)
+            .where(Transcript.project_id.is_(None))
         )
         candidates = list(db.scalars(stmt))
         logger.info(
