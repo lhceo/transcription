@@ -2790,6 +2790,77 @@ mark.find-highlight-active {
     white-space: nowrap;
 }
 
+/* コメント → プロジェクト辞書登録ボタン */
+.comment-pv-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    transition: color .15s, border-color .15s, background .15s;
+}
+.comment-pv-btn:hover,
+.comment-pv-btn.is-open {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.comment-pv-btn svg { width: 12px; height: 12px; }
+
+/* インライン登録フォーム（li 内で flex-wrap して下に展開） */
+.comment-item {
+    flex-wrap: wrap;
+}
+.comment-pv-form {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.comment-pv-form-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-primary);
+    margin: 0;
+}
+.comment-pv-input,
+.comment-pv-textarea {
+    font-size: 12px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    font-family: inherit;
+}
+.comment-pv-input:focus,
+.comment-pv-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.comment-pv-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
 /* サイドバータブ切り替え */
 /* ── サイドバー Activity Bar ── */
 .sidebar-activity-bar {

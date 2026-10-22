@@ -1397,7 +1397,7 @@
                 </div>
                 <ul class="comment-list">
                     <template x-for="c in segmentComments" :key="c.segId">
-                        <li class="comment-item" x-data="{ collapsed: true }">
+                        <li class="comment-item" x-data="{ collapsed: true, pvForm: false, pvWord: '', pvMeaning: '', pvSaving: false }">
                             <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="flex:1;min-width:0;cursor:pointer">
                                 <div class="comment-item-time" x-text="c.timeLabel"></div>
                                 <div class="comment-item-text" :class="collapsed ? 'is-collapsed' : ''" x-text="c.comment"></div>
@@ -1408,9 +1408,50 @@
                                 </template>
                                 <div class="comment-item-excerpt" x-text="c.excerpt"></div>
                             </div>
+                            {# プロジェクト辞書登録ボタン（プロジェクト所属時のみ） #}
+                            <template x-if="(window.__TRANSCRIPT_INIT || {}).projectId">
+                                <button type="button"
+                                        class="comment-pv-btn"
+                                        :class="pvForm ? 'is-open' : ''"
+                                        @click.stop="pvForm = !pvForm; if (pvForm) { pvWord = ''; pvMeaning = c.comment; }"
+                                        title="プロジェクト辞書に登録"
+                                        aria-label="プロジェクト辞書に登録">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                </button>
+                            </template>
                             <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
+                            {# インライン登録フォーム #}
+                            <template x-if="pvForm">
+                                <div class="comment-pv-form" @click.stop>
+                                    <p class="comment-pv-form-label">プロジェクト辞書に登録</p>
+                                    <input type="text" class="comment-pv-input" x-model="pvWord"
+                                           placeholder="単語・固有名詞"
+                                           @keydown.enter.prevent="if (!$event.isComposing && pvWord.trim()) $dispatch('pv-save')"
+                                           @keydown.escape.stop="pvForm = false">
+                                    <textarea class="comment-pv-textarea" x-model="pvMeaning"
+                                              placeholder="説明（任意）" rows="2"
+                                              @keydown.escape.stop="pvForm = false"></textarea>
+                                    <div class="comment-pv-actions">
+                                        <button type="button" class="btn btn-primary btn-small"
+                                                :disabled="!pvWord.trim() || pvSaving"
+                                                @click.stop="
+                                                    pvSaving = true;
+                                                    fetch('/api/projects/' + (window.__TRANSCRIPT_INIT || {}).projectId + '/vocabulary', {
+                                                        method: 'POST',
+                                                        headers: {'Content-Type': 'application/json'},
+                                                        body: JSON.stringify({ word: pvWord.trim(), meaning: pvMeaning.trim() || null })
+                                                    }).then(r => {
+                                                        if (r.ok) { window.showToast('プロジェクト辞書に登録しました'); pvForm = false; }
+                                                        else { window.showToast('登録に失敗しました', 'error'); }
+                                                    }).catch(() => window.showToast('登録に失敗しました', 'error'))
+                                                    .finally(() => pvSaving = false);
+                                                ">登録</button>
+                                        <button type="button" class="btn-link" @click.stop="pvForm = false">キャンセル</button>
+                                    </div>
+                                </div>
+                            </template>
                         </li>
                     </template>
                 </ul>
