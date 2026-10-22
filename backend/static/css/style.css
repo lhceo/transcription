@@ -6563,9 +6563,11 @@ textarea.form-input-sm {
 }
 
 /* 固有名詞ピックアップ */
-.pickup-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-.pickup-row { display: flex; align-items: center; gap: 10px; }
-.pickup-word { font-weight: 600; font-size: 14px; min-width: 80px; }
+.pickup-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.pickup-row { display: flex; flex-direction: column; gap: 4px; }
+.pickup-word-header { display: flex; flex-direction: column; gap: 2px; }
+.pickup-word { font-weight: 600; font-size: 14px; }
+.pickup-context { font-size: 11px; color: #94a3b8; font-style: italic; line-height: 1.4; }
 
 /* diffレビュー */
 .polish-diff-view { display: flex; flex-direction: column; max-height: 80vh; }

@@ -192,6 +192,35 @@ async def pickup_proper_nouns(
         return []
 
 
+def extract_word_contexts(words: list[str], transcript_text: str) -> list[dict]:
+    """各単語の初出文脈（前後の文）を抽出する。
+
+    Returns:
+        [{"word": str, "context": str | None}, ...]
+    """
+    # セグメント区切りは改行、文区切りは。！？
+    sentences = re.split(r'(?<=[。！？])|(?<=\n)', transcript_text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    results = []
+    for word in words:
+        context: str | None = None
+        for sentence in sentences:
+            if word in sentence:
+                idx = sentence.index(word)
+                start = max(0, idx - 25)
+                end = min(len(sentence), idx + len(word) + 25)
+                snippet = sentence[start:end].strip()
+                if start > 0:
+                    snippet = "…" + snippet
+                if end < len(sentence):
+                    snippet = snippet + "…"
+                context = snippet
+                break
+        results.append({"word": word, "context": context})
+    return results
+
+
 # 品質チェック ────────────────────────────────────────────────────────────────
 
 QUALITY_CHECK_SYSTEM = """あなたは日本語の音声認識・文字起こしの品質チェッカーです。

@@ -1682,7 +1682,10 @@
                             <div class="pickup-list">
                                 <template x-for="(w, i) in pickupWords" :key="i">
                                     <div class="pickup-row">
-                                        <span class="pickup-word" x-text="w.word"></span>
+                                        <div class="pickup-word-header">
+                                            <span class="pickup-word" x-text="w.word"></span>
+                                            <span class="pickup-context" x-show="w.context" x-text="w.context"></span>
+                                        </div>
                                         <textarea class="form-input" x-model="w.meaning" placeholder="意味・説明（任意）" rows="2" style="resize:vertical"></textarea>
                                     </div>
                                 </template>
@@ -5323,7 +5326,11 @@ function polishModal() {
                 const res = await fetch('/api/transcripts/' + transcriptId + '/polish/pickup', { method: 'POST' });
                 if (res.ok) {
                     const data = await res.json();
-                    this.pickupWords = (data.words || []).map(w => ({ word: w, meaning: '' }));
+                    this.pickupWords = (data.words || []).map(w =>
+                        typeof w === 'string'
+                            ? { word: w, meaning: '', context: null }
+                            : { word: w.word, meaning: '', context: w.context || null }
+                    );
                 }
             } catch (e) { /* ignore */ }
             this.loading = false;

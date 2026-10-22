@@ -33,6 +33,7 @@ from backend.transcribe.polish import (
     estimate_tokens,
     estimate_cost,
     pickup_proper_nouns,
+    extract_word_contexts,
     run_polish,
 )
 
@@ -986,23 +987,28 @@ async def polish_pickup(
 
     transcript = _get_transcript_or_404(transcript_id, user["id"], db)
 
-    # 文字起こし完了時に自動ピックアップ済みの候補があれば返してクリア（API呼び出しを節約）
-    if transcript.pickup_suggestions:
-        import json as _json_pickup
-        try:
-            words = _json_pickup.loads(transcript.pickup_suggestions)
-        except Exception:
-            words = []
-        transcript.pickup_suggestions = None
-        db.commit()
-        return JSONResponse({"words": words})
-
     segments = list(db.scalars(
         select(Segment)
         .where(Segment.transcript_id == transcript_id)
         .order_by(Segment.order_index)
     ))
     full_text = "\n".join(s.text_content for s in segments)
+
+    # 文字起こし完了時に自動ピックアップ済みの候補があれば返してクリア（API呼び出しを節約）
+    if transcript.pickup_suggestions:
+        import json as _json_pickup
+        try:
+            raw = _json_pickup.loads(transcript.pickup_suggestions)
+        except Exception:
+            raw = []
+        transcript.pickup_suggestions = None
+        db.commit()
+        # 旧フォーマット（文字列リスト）と新フォーマット（dictリスト）の両対応
+        if raw and isinstance(raw[0], str):
+            word_items = extract_word_contexts(raw, full_text)
+        else:
+            word_items = raw
+        return JSONResponse({"words": word_items})
 
     # 登録済み語句（PJT辞書 + 個別辞書の両方）
     registered: list[str] = []
@@ -1024,8 +1030,9 @@ async def polish_pickup(
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     words = await pickup_proper_nouns(client, full_text, registered)
+    word_items = extract_word_contexts(words, full_text)
 
-    return JSONResponse({"words": words})
+    return JSONResponse({"words": word_items})
 
 
 async def _polish_bg_task(
