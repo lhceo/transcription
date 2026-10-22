@@ -4931,6 +4931,11 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     border: 1px solid #fca5a5;
     color: #991b1b;
 }
+.toast-warning {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+}
 
 .toast-icon {
     flex-shrink: 0;

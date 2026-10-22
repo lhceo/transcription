@@ -2028,6 +2028,7 @@ function segmentsApp(transcriptId, historyNames) {
         presenceData: {},      // {segment_id: [{user_id, name, picture_url}]}
         onlineUsers: [],       // [{user_id, name, picture_url, segment_id}] — 自分以外のオンラインユーザー
         _presenceInterval: null,
+        _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
         reviewedCount: 0,
         canEditSegments: true,
@@ -2300,6 +2301,16 @@ function segmentsApp(transcriptId, historyNames) {
             } catch (e) {}
         },
 
+        _releaseEditLock() {
+            if (this.focusedEditingSegmentId === null) return;
+            const card = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
+            const ta = card?.querySelector('.segment-text-edit');
+            if (ta) ta.blur();
+            this.focusedEditingSegmentId = null;
+            this.updatePresence(null);
+            window.showToast('5分間操作がなかったため、編集ロックを解除しました');
+        },
+
         // ── セグメント編集モード開始/終了時にプレゼンス更新 ──────
 
         progressPct() {
@@ -2348,6 +2359,9 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!this.editMode && this.focusedEditingSegmentId !== null) {
                     this.endEditingCurrentSegment();
                 }
+                if (!this.editMode) {
+                    clearTimeout(this._editInactivityTimer);
+                }
             });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
@@ -2363,6 +2377,11 @@ function segmentsApp(transcriptId, historyNames) {
                 }
                 // プレゼンス更新（編集開始/終了）
                 this.updatePresence(this.focusedEditingSegmentId);
+                // 不活動タイマーをリセット（セグメント切り替え・フォーカス開始時）
+                clearTimeout(this._editInactivityTimer);
+                if (this.focusedEditingSegmentId !== null) {
+                    this._editInactivityTimer = setTimeout(() => this._releaseEditLock(), 5 * 60 * 1000);
+                }
             });
             // サイドバー折り畳み状態を復元（未設定時はデフォルト折りたたみ）
             this.sidebarCollapsed = localStorage.getItem('noto-sidebar-collapsed') !== 'false';
@@ -2384,6 +2403,13 @@ function segmentsApp(transcriptId, historyNames) {
             this._presenceInterval = setInterval(() => this.refreshPresence(), 5000);
             // 初回取得
             this.refreshPresence();
+            // タイプするたびに不活動タイマーをリセット
+            document.getElementById('segment-list')?.addEventListener('input', (e) => {
+                if (e.target.closest('.segment-text-edit') && this.focusedEditingSegmentId !== null) {
+                    clearTimeout(this._editInactivityTimer);
+                    this._editInactivityTimer = setTimeout(() => this._releaseEditLock(), 5 * 60 * 1000);
+                }
+            });
 
             // v1.1: 音声プレイヤーの timeupdate にフックして同期ハイライトを開始
             this.setupAudioSync();
@@ -2923,6 +2949,12 @@ function segmentsApp(transcriptId, historyNames) {
             if (this.editMode) {
                 // v1.1 Option C: この segment を編集対象に
                 const cardId = parseInt(card.dataset.segmentId, 10);
+                // 他ユーザーが編集中の場合はブロック
+                const lockers = this.presenceData[cardId] || [];
+                if (lockers.length > 0) {
+                    window.showToast(`${lockers[0].name} さんが編集中のため編集できません`, 'warning');
+                    return;
+                }
                 // 別の segment の textarea が編集中なら先に blur して save
                 if (this.focusedEditingSegmentId !== null && this.focusedEditingSegmentId !== cardId) {
                     const prevCard = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
