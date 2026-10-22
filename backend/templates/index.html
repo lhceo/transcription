@@ -711,6 +711,11 @@ function uploadForm() {
                 this.reset();
                 const empty = document.querySelector('.history-empty');
                 if (empty) empty.remove();
+                // プロジェクトが選択されていたら完了後にそのプロジェクトページへ戻る
+                const projectSel = document.querySelector('[name="project_id"]');
+                if (projectSel && projectSel.value) {
+                    window.location.href = '/projects/' + projectSel.value;
+                }
                 return;
             }
             let serverMessage = '';
@@ -1162,6 +1167,13 @@ function projectSelector() {
                     this.projects = await res.json();
                 }
             } catch (_) { /* プロジェクト機能はオプション */ }
+            // URL パラメータ ?project=ID でプロジェクトを事前選択
+            const params = new URLSearchParams(window.location.search);
+            const preselect = params.get('project');
+            if (preselect && this.projects.some(p => String(p.id) === preselect)) {
+                this.selectedId = preselect;
+                await this.onProjectChange();
+            }
         },
 
         async onProjectChange() {

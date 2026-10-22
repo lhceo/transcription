@@ -51,7 +51,7 @@
             <div class="pjt-section-header">
                 <h2 class="pjt-section-title">音声データ</h2>
                 <div style="display:flex;gap:8px;align-items:center;position:relative">
-                    <a href="/" class="btn btn-outline btn-sm">＋ アップロード</a>
+                    <a href="/?project={{ project.id }}" class="btn btn-outline btn-sm">＋ アップロード</a>
                     <div x-data="transcriptAdder({{ project.id }})">
                         <button class="btn btn-outline btn-sm" @click="toggle()" type="button">既存データを追加</button>
                         <div class="pjt-add-existing-dropdown" x-show="open" x-cloak @click.outside="open=false">
@@ -256,6 +256,25 @@
                         </template>
                     </ul>
                 </template>
+
+                {# 音声データ由来の語彙（読み取り専用） #}
+                {% if transcript_vocab_items %}
+                <div style="margin-top:12px;">
+                    <p style="font-size:11px; font-weight:600; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">音声データ由来</p>
+                    <ul class="pjt-vocab-list">
+                        {% for v in transcript_vocab_items %}
+                        <li class="pjt-vocab-item" style="opacity:0.75;">
+                            <div class="pjt-vocab-word">
+                                <span>{{ v.word }}</span>
+                                {% if v.reading %}<span class="pjt-vocab-reading text-muted">({{ v.reading }})</span>{% endif %}
+                            </div>
+                            {% if v.meaning %}<span class="pjt-vocab-meaning text-muted">{{ v.meaning }}</span>{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <p class="text-muted" style="font-size:11px; margin-top:6px;">この語彙は各音声データの固有名詞辞書から自動収集されています。整文・エクスポートに有効です。</p>
+                </div>
+                {% endif %}
             </section>
 
 

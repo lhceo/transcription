@@ -339,12 +339,32 @@ async def project_detail_page(
     # 社内ユーザー一覧（メンバー追加用）
     all_users = list(db.scalars(select(User).order_by(User.name)))
 
+    # プロジェクト内の音声データ由来の固有名詞（表示用・重複除去済み）
+    project_vocab_words = {v.word.lower() for v in proj.vocabulary}
+    all_transcript_vocab = list(db.scalars(
+        select(TranscriptVocabulary)
+        .join(Transcript, TranscriptVocabulary.transcript_id == Transcript.id)
+        .where(
+            Transcript.project_id == project_id,
+            Transcript.deleted_at.is_(None),
+        )
+        .order_by(TranscriptVocabulary.word)
+    ))
+    seen_words: set[str] = set()
+    transcript_vocab_items: list[dict] = []
+    for v in all_transcript_vocab:
+        key = v.word.lower()
+        if key not in seen_words and key not in project_vocab_words:
+            seen_words.add(key)
+            transcript_vocab_items.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
+
     ctx = _common_ctx(user, db)
     ctx.update({
         "project": proj,
         "related_transcripts": related_transcripts,
         "all_users": all_users,
         "member_display_name": _member_display_name,
+        "transcript_vocab_items": transcript_vocab_items,
     })
     return templates.TemplateResponse(request, "project_detail.html", ctx)
 
@@ -901,15 +921,30 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
             f"[{a.title}]\n{a.processed_summary}" for a in mtg_attachments
         ]
 
-    # 個別音声の固有名詞辞書をプロジェクト辞書にマージ（重複はスキップ）
-    transcript_vocab_rows = list(db.scalars(
-        select(TranscriptVocabulary).where(TranscriptVocabulary.transcript_id == transcript.id)
-    ))
     existing_words = {v["word"].lower() for v in vocabulary}
-    for v in transcript_vocab_rows:
-        if v.word.lower() not in existing_words:
-            vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
-            existing_words.add(v.word.lower())
+    # プロジェクト内の全音声データの固有名詞辞書をマージ（重複はスキップ）
+    # プロジェクト未所属の場合は現在の音声データのみ対象
+    if transcript.project_id:
+        sibling_vocab_rows = list(db.scalars(
+            select(TranscriptVocabulary)
+            .join(Transcript, TranscriptVocabulary.transcript_id == Transcript.id)
+            .where(
+                Transcript.project_id == transcript.project_id,
+                Transcript.deleted_at.is_(None),
+            )
+        ))
+        for v in sibling_vocab_rows:
+            if v.word.lower() not in existing_words:
+                vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
+                existing_words.add(v.word.lower())
+    else:
+        transcript_vocab_rows = list(db.scalars(
+            select(TranscriptVocabulary).where(TranscriptVocabulary.transcript_id == transcript.id)
+        ))
+        for v in transcript_vocab_rows:
+            if v.word.lower() not in existing_words:
+                vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
+                existing_words.add(v.word.lower())
 
     # 常用語辞書（ユーザー全体）をマージ（重複はスキップ）
     user_vocab_rows = list(db.scalars(
