@@ -1440,6 +1440,11 @@ async def delete_segment(
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
     db.delete(segment)
     db.commit()
     return JSONResponse({"deleted": segment_id})
@@ -1548,6 +1553,11 @@ async def split_segment(
     transcript = db.get(Transcript, segment.transcript_id)
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
     raw_position = payload.get("position")
     try:
@@ -1780,7 +1790,18 @@ async def update_segment_comment(
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
     comment_text = (body.get("comment") or "").strip()
+
+    # Clearing another user's comment is not allowed for non-owners
+    if not comment_text and segment.comment and segment.comment_author_user_id not in (None, user["id"]):
+        if not _is_owner(transcript, user["id"]):
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
     segment.comment = comment_text or None
+    if segment.comment:
+        segment.comment_author_user_id = user["id"]
+    elif not _is_owner(transcript, user["id"]):
+        # Non-owner clearing their own comment - clear author too
+        segment.comment_author_user_id = None
     db.commit()
     return JSONResponse({"ok": True, "comment": segment.comment})
 
@@ -1907,7 +1928,7 @@ async def add_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声に固有名詞を追加する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
     word = str(payload.get("word") or "").strip()[:200]
@@ -1917,7 +1938,8 @@ async def add_transcript_vocabulary(
     reading = str(payload.get("reading") or "").strip()[:200] or None
 
     vocab = TranscriptVocabulary(
-        transcript_id=transcript_id, word=word, meaning=meaning, reading=reading
+        transcript_id=transcript_id, word=word, meaning=meaning, reading=reading,
+        created_by_user_id=user["id"]
     )
     db.add(vocab)
     db.commit()
@@ -1937,11 +1959,14 @@ async def delete_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声の固有名詞を削除する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     vocab = db.get(TranscriptVocabulary, vocab_id)
     if vocab is None or vocab.transcript_id != transcript_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    # Non-owners can only delete their own vocabulary
+    if not _is_owner(transcript, user["id"]) and vocab.created_by_user_id not in (None, user["id"]):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
     db.delete(vocab)
     db.commit()
     return JSONResponse({"ok": True})
@@ -1957,11 +1982,14 @@ async def update_transcript_vocabulary(
 ) -> JSONResponse:
     """個別音声の固有名詞を更新する。"""
     transcript = db.get(Transcript, transcript_id)
-    if transcript is None or not _is_owner(transcript, user["id"]) or transcript.deleted_at is not None:
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
     vocab = db.get(TranscriptVocabulary, vocab_id)
     if vocab is None or vocab.transcript_id != transcript_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    # Non-owners can only edit their own vocabulary
+    if not _is_owner(transcript, user["id"]) and vocab.created_by_user_id not in (None, user["id"]):
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
     word = str(payload.get("word") or "").strip()[:200]
     if not word:

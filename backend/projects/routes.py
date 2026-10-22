@@ -516,7 +516,8 @@ async def add_vocabulary(
         raise HTTPException(status_code=400, detail="単語は必須です")
     meaning = body.meaning.strip() if body.meaning else None
     reading = body.reading.strip() if body.reading else None
-    vocab = ProjectVocabulary(project_id=project_id, word=word, meaning=meaning, reading=reading)
+    vocab = ProjectVocabulary(project_id=project_id, word=word, meaning=meaning, reading=reading,
+                               created_by_user_id=user["id"])
     db.add(vocab)
     db.commit()
     db.refresh(vocab)
@@ -535,6 +536,10 @@ async def delete_vocabulary(
     vocab = db.get(ProjectVocabulary, vocab_id)
     if not vocab or vocab.project_id != project_id:
         raise HTTPException(status_code=404, detail="単語が見つかりません")
+    # Only project owner or vocab creator can delete
+    project = db.get(Project, project_id)
+    if project.created_by_user_id != user["id"] and vocab.created_by_user_id not in (None, user["id"]):
+        raise HTTPException(status_code=403, detail="削除権限がありません")
     db.delete(vocab)
     db.commit()
     return JSONResponse({"ok": True})
@@ -553,6 +558,10 @@ async def update_vocabulary(
     vocab = db.get(ProjectVocabulary, vocab_id)
     if not vocab or vocab.project_id != project_id:
         raise HTTPException(status_code=404, detail="単語が見つかりません")
+    # Only project owner or vocab creator can update
+    project = db.get(Project, project_id)
+    if project.created_by_user_id != user["id"] and vocab.created_by_user_id not in (None, user["id"]):
+        raise HTTPException(status_code=403, detail="編集権限がありません")
     fields = body.model_fields_set
     if 'word' in fields:
         word = (body.word or "").strip()

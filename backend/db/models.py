@@ -213,6 +213,11 @@ class Segment(Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    comment_author_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    comment_author: Mapped["User | None"] = relationship(foreign_keys=[comment_author_user_id])
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -435,6 +440,9 @@ class ProjectVocabulary(Base):
     word: Mapped[str] = mapped_column(String(200), nullable=False)
     meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
     reading: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -455,6 +463,9 @@ class TranscriptVocabulary(Base):
     word: Mapped[str] = mapped_column(String(200), nullable=False)
     meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
     reading: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
