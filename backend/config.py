@@ -167,16 +167,25 @@ class Settings:
         return "USD" if self.anthropic_credit_usd > 0 else "JPY"
 
 
+_DEFAULT_SESSION_SECRET = "dev-only-insecure-secret-change-me"
+
+
 def load_settings() -> Settings:
+    env = _env("APP_ENV", "development")
+    session_secret = _env("SESSION_SECRET", _DEFAULT_SESSION_SECRET)
+
+    # 本番環境でデフォルトのシークレットが使われていたら起動を止める
+    if env.lower() == "production" and session_secret == _DEFAULT_SESSION_SECRET:
+        raise RuntimeError(
+            "本番環境で SESSION_SECRET がデフォルト値のままです。"
+            "Railway の環境変数に安全なランダム文字列を設定してください。"
+        )
+
     return Settings(
-        env=_env("APP_ENV", "development"),
+        env=env,
         host=_env("APP_HOST", "127.0.0.1"),
         port=int(_env("APP_PORT", "8000")),
-        # 開発用デフォルト。本番では .env か Railway の環境変数で必ず上書きする。
-        session_secret=_env(
-            "SESSION_SECRET",
-            "dev-only-insecure-secret-change-me",
-        ),
+        session_secret=session_secret,
         allowed_email_domains=tuple(
             d.strip().lower()
             for d in _env("ALLOWED_EMAIL_DOMAINS", "").split(",")

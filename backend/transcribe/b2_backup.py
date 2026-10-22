@@ -21,7 +21,7 @@ import logging
 import os
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -183,7 +183,7 @@ async def backup_loop(db_path: Path) -> None:
         # 次の 02:00 UTC まで待つ
         next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
         if next_run <= now:
-            next_run = next_run.replace(day=next_run.day + 1)
+            next_run = next_run + timedelta(days=1)
         wait_secs = (next_run - now).total_seconds()
         logger.info("B2バックアップ: 次回実行まで %.0f 秒", wait_secs)
         await asyncio.sleep(wait_secs)

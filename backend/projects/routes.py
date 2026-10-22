@@ -375,8 +375,32 @@ async def delete_project(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """プロジェクトを削除する。"""
+    """プロジェクトを削除する。
+
+    project_id の FK は ON DELETE SET NULL のため、削除前に紐付き transcripts の
+    project_id を NULL にするとリテンション免除が外れてしまう。
+    そのため transcripts の deleted_at を現在時刻に設定してから削除する代わりに、
+    紐付き transcript の completed_at を NULL にリセットして60日カウンターを維持
+    するのではなく、project_id を維持したまま project 行を DELETE する。
+    SQLite の ON DELETE SET NULL が走る前に completed_at をリセットして
+    リテンション対象外フラグ相当を維持する必要がある。
+
+    最もシンプルで安全な方法: 紐付き transcripts の project_id を None に
+    セットする前に completed_at を現在時刻でリセットし、60日の猶予を与える。
+    """
     proj = _get_project_or_404(project_id, user["id"], db)
+
+    # 紐付き transcripts の completed_at をリセット（60日猶予を与える）
+    # ON DELETE SET NULL で project_id が NULL になる前に実施
+    linked_transcripts = list(db.scalars(
+        select(Transcript).where(Transcript.project_id == project_id)
+    ))
+    from datetime import datetime, timezone as _tz2
+    now = datetime.now(_tz2.utc)
+    for t in linked_transcripts:
+        t.completed_at = now
+    db.flush()
+
     db.delete(proj)
     db.commit()
     return JSONResponse({"ok": True})

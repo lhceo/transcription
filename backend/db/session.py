@@ -27,6 +27,18 @@ import os
 
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{_DB_PATH}")
 
+# SQLite の実ファイルパス（バックアップや直接アクセス用）
+# DATABASE_URL が sqlite:/// で始まる場合はそこからパスを取得する
+# それ以外（postgres等）の場合は None
+def _resolve_db_path() -> Path | None:
+    url = DATABASE_URL
+    if url.startswith("sqlite:///"):
+        p = url[len("sqlite:///"):]
+        return Path(p) if p else None
+    return None
+
+RESOLVED_DB_PATH: Path | None = _resolve_db_path()
+
 
 # SQLite の場合は同一スレッドチェックを無効化する必要がある（FastAPI は
 # スレッドプールで動くため）。Postgres などの場合は不要。

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import logging
 import smtplib
 import ssl
@@ -69,16 +70,20 @@ async def send_share_notification(
         "---\nNoto"
     )
 
+    esc_sharer = _html.escape(sharer_name)
+    esc_title = _html.escape(transcript_title)
+    esc_url = _html.escape(transcript_url)
+
     body_html = f"""<!DOCTYPE html>
 <html lang="ja">
 <body style="font-family:sans-serif;color:#1e293b;max-width:480px;margin:0 auto;padding:24px">
   <p style="margin-bottom:16px">
-    <strong>{sharer_name}</strong> さんがあなたと文字起こしを共有しました。
+    <strong>{esc_sharer}</strong> さんがあなたと文字起こしを共有しました。
   </p>
   <div style="background:#f8fafc;border-radius:8px;padding:16px 20px;margin-bottom:20px">
-    <p style="margin:0;font-weight:600">「{transcript_title}」</p>
+    <p style="margin:0;font-weight:600">「{esc_title}」</p>
   </div>
-  <a href="{transcript_url}"
+  <a href="{esc_url}"
      style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;
             padding:10px 20px;border-radius:8px;font-weight:600">
     文字起こしを確認する →

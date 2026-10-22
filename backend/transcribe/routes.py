@@ -358,7 +358,13 @@ async def create_transcript(
     parsed_project_id: int | None = None
     if project_id:
         try:
-            parsed_project_id = int(project_id)
+            _pid = int(project_id)
+            _proj = db.get(Project, _pid)
+            if _proj is None or _proj.created_by_user_id != user["id"]:
+                raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "このプロジェクトにアクセスできません"})
+            parsed_project_id = _pid
+        except HTTPException:
+            raise
         except (TypeError, ValueError):
             pass
 
@@ -647,7 +653,13 @@ async def create_transcript_multi(
     parsed_project_id: int | None = None
     if project_id:
         try:
-            parsed_project_id = int(project_id)
+            _pid = int(project_id)
+            _proj = db.get(Project, _pid)
+            if _proj is None or _proj.created_by_user_id != user["id"]:
+                raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "このプロジェクトにアクセスできません"})
+            parsed_project_id = _pid
+        except HTTPException:
+            raise
         except (TypeError, ValueError):
             pass
 
@@ -1622,10 +1634,28 @@ async def split_segment(
         .values(order_index=Segment.order_index + 1)
     )
 
+    # original_asr_text / pre_polish_text を文字数比率で分割（revert が正しく動くよう）
+    orig_asr = segment.original_asr_text or ""
+    pre_polish = segment.pre_polish_text or ""
+    if orig_asr:
+        asr_pos = max(0, min(int(len(orig_asr) * ratio), len(orig_asr)))
+        orig_asr_before = orig_asr[:asr_pos].rstrip() or None
+        orig_asr_after = orig_asr[asr_pos:].lstrip() or None
+    else:
+        orig_asr_before = orig_asr_after = None
+    if pre_polish:
+        pp_pos = max(0, min(int(len(pre_polish) * ratio), len(pre_polish)))
+        pre_polish_before = pre_polish[:pp_pos].rstrip() or None
+        pre_polish_after = pre_polish[pp_pos:].lstrip() or None
+    else:
+        pre_polish_before = pre_polish_after = None
+
     # 現セグメントを更新（前半テキスト）
     segment.text_content = before or "（無音）"
     segment.end_seconds = split_time
     segment.is_edited = True
+    segment.original_asr_text = orig_asr_before
+    segment.pre_polish_text = pre_polish_before
 
     # 新セグメントを追加（後半テキスト）
     # 元セグメントの effective_name を引き継ぐ（speakers テーブルがデフォルト名のまま
@@ -1648,6 +1678,8 @@ async def split_segment(
         display_name=inherited_display_name,
         text_content=after or "（無音）",
         is_edited=True,
+        original_asr_text=orig_asr_after,
+        pre_polish_text=pre_polish_after,
     )
 
     db.add(new_segment)
@@ -1709,6 +1741,11 @@ async def merge_segment_with_prev(
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "セグメントの編集権限がありません"})
+
     # 直前のセグメントを取得（order_index が 1 つ小さいもの）
     prev = db.scalars(
         select(Segment)
@@ -1734,6 +1771,17 @@ async def merge_segment_with_prev(
     prev.text_content = merged_text
     prev.end_seconds = segment.end_seconds
     prev.is_edited = True
+    # original_asr_text と pre_polish_text も結合して revert が正しく動くようにする
+    if prev.original_asr_text is not None or segment.original_asr_text is not None:
+        prev_asr = (prev.original_asr_text or "").rstrip()
+        seg_asr = (segment.original_asr_text or "").lstrip()
+        sep = '' if prev_asr.endswith(("。", "、", "！", "？", ".", "!")) else ' '
+        prev.original_asr_text = (prev_asr + sep + seg_asr).strip()
+    if prev.pre_polish_text is not None or segment.pre_polish_text is not None:
+        prev_pp = (prev.pre_polish_text or "").rstrip()
+        seg_pp = (segment.pre_polish_text or "").lstrip()
+        sep = '' if prev_pp.endswith(("。", "、", "！", "？", ".", "!")) else ' '
+        prev.pre_polish_text = (prev_pp + sep + seg_pp).strip() or None
 
     db.delete(segment)
     db.commit()
@@ -1763,6 +1811,11 @@ async def revert_segment_to_original(
     transcript = db.get(Transcript, segment.transcript_id)
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "セグメントの編集権限がありません"})
 
     if segment.pre_polish_text:
         # 整文済みセグメント：整文直前の状態（ユーザーの承認・編集済みテキスト）に戻す
@@ -2444,6 +2497,11 @@ async def rename_segments_by_effective_name(
     transcript = db.get(Transcript, transcript_id)
     if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "セグメントの編集権限がありません"})
 
     from_name = (payload.get("from_name") or "").strip()
     to_name = (payload.get("to_name") or "").strip()

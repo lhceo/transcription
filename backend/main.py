@@ -74,177 +74,184 @@ async def lifespan(app: FastAPI):
         try:
             _co = _sq3.connect(_db_path)
             _cu = _co.cursor()
-            for _sql in [
-                "ALTER TABLE transcripts ADD COLUMN meeting_date DATETIME",
-                "ALTER TABLE transcripts ADD COLUMN meeting_location VARCHAR(200)",
-                "ALTER TABLE transcripts ADD COLUMN meeting_purpose TEXT",
-                "ALTER TABLE transcripts ADD COLUMN meeting_agenda TEXT",
-                "ALTER TABLE transcripts ADD COLUMN last_polished_at DATETIME",
-                "ALTER TABLE transcripts ADD COLUMN meeting_participants TEXT",
-                "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
-                "ALTER TABLE project_vocabulary ADD COLUMN meaning TEXT",
-                "ALTER TABLE segments ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE segments ADD COLUMN bookmark_memo TEXT",
-                "ALTER TABLE segments ADD COLUMN is_polished INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE segments ADD COLUMN comment TEXT",
-                "ALTER TABLE segments ADD COLUMN pre_polish_text TEXT",
-                "ALTER TABLE transcripts ADD COLUMN pickup_suggestions TEXT",
-                "ALTER TABLE transcripts ADD COLUMN quality_check_result TEXT",
-                "ALTER TABLE transcript_shares ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'invited'",
-                "ALTER TABLE transcript_shares ADD COLUMN can_edit_segments INTEGER NOT NULL DEFAULT 1",
-                "ALTER TABLE transcript_shares ADD COLUMN can_edit_meeting_info INTEGER NOT NULL DEFAULT 1",
-                "ALTER TABLE transcript_shares ADD COLUMN can_polish INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE segments ADD COLUMN reviewed_by_user_id INTEGER",
-                "ALTER TABLE segments ADD COLUMN reviewed_at DATETIME",
-                "ALTER TABLE segments ADD COLUMN comment_author_user_id INTEGER",
-                "ALTER TABLE transcript_vocabulary ADD COLUMN created_by_user_id INTEGER",
-                "ALTER TABLE project_vocabulary ADD COLUMN created_by_user_id INTEGER",
-            ]:
+            # 新規DBの場合はコアテーブルが存在しないのでスキーマ修復をスキップ
+            # （Alembicが初回マイグレーションを正常に実行できるようにするため）
+            _tables = {r[0] for r in _cu.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            _skip = "users" not in _tables or "transcripts" not in _tables
+            if _skip:
+                logger.info("新規DBのためスキーマ修復スキップ（Alembicに任せる）")
+                _co.close()
+                _co = None
+            if not _skip:
+                for _sql in [
+                    "ALTER TABLE transcripts ADD COLUMN meeting_date DATETIME",
+                    "ALTER TABLE transcripts ADD COLUMN meeting_location VARCHAR(200)",
+                    "ALTER TABLE transcripts ADD COLUMN meeting_purpose TEXT",
+                    "ALTER TABLE transcripts ADD COLUMN meeting_agenda TEXT",
+                    "ALTER TABLE transcripts ADD COLUMN last_polished_at DATETIME",
+                    "ALTER TABLE transcripts ADD COLUMN meeting_participants TEXT",
+                    "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
+                    "ALTER TABLE project_vocabulary ADD COLUMN meaning TEXT",
+                    "ALTER TABLE segments ADD COLUMN is_bookmarked INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE segments ADD COLUMN bookmark_memo TEXT",
+                    "ALTER TABLE segments ADD COLUMN is_polished INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE segments ADD COLUMN comment TEXT",
+                    "ALTER TABLE segments ADD COLUMN pre_polish_text TEXT",
+                    "ALTER TABLE transcripts ADD COLUMN pickup_suggestions TEXT",
+                    "ALTER TABLE transcripts ADD COLUMN quality_check_result TEXT",
+                    "ALTER TABLE transcript_shares ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'invited'",
+                    "ALTER TABLE transcript_shares ADD COLUMN can_edit_segments INTEGER NOT NULL DEFAULT 1",
+                    "ALTER TABLE transcript_shares ADD COLUMN can_edit_meeting_info INTEGER NOT NULL DEFAULT 1",
+                    "ALTER TABLE transcript_shares ADD COLUMN can_polish INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE segments ADD COLUMN reviewed_by_user_id INTEGER",
+                    "ALTER TABLE segments ADD COLUMN reviewed_at DATETIME",
+                    "ALTER TABLE segments ADD COLUMN comment_author_user_id INTEGER",
+                    "ALTER TABLE transcript_vocabulary ADD COLUMN created_by_user_id INTEGER",
+                    "ALTER TABLE project_vocabulary ADD COLUMN created_by_user_id INTEGER",
+                ]:
+                    try:
+                        _cu.execute(_sql)
+                        logger.debug("schema repair 追加: %s", _sql[12:50])
+                    except Exception as _col_e:
+                        _msg = str(_col_e).lower()
+                        if "duplicate column" in _msg or "already exists" in _msg:
+                            logger.debug("schema repair スキップ（既存）: %s", _sql[12:50])
+                        else:
+                            logger.warning("schema repair 予期せぬエラー: %s | %s", _sql[12:50], _col_e)
+                _cu.execute(
+                    "CREATE TABLE IF NOT EXISTS transcript_shares("
+                    "id INTEGER NOT NULL,"
+                    "transcript_id INTEGER NOT NULL,"
+                    "shared_with_user_id INTEGER NOT NULL,"
+                    "created_at DATETIME NOT NULL,"
+                    "PRIMARY KEY(id),"
+                    "CONSTRAINT uq_transcript_share "
+                    "UNIQUE(transcript_id,shared_with_user_id),"
+                    "FOREIGN KEY(transcript_id) "
+                    "REFERENCES transcripts(id) ON DELETE CASCADE,"
+                    "FOREIGN KEY(shared_with_user_id) "
+                    "REFERENCES users(id) ON DELETE CASCADE)"
+                )
                 try:
-                    _cu.execute(_sql)
-                    logger.debug("schema repair 追加: %s", _sql[12:50])
-                except Exception as _col_e:
-                    _msg = str(_col_e).lower()
-                    if "duplicate column" in _msg or "already exists" in _msg:
-                        logger.debug("schema repair スキップ（既存）: %s", _sql[12:50])
-                    else:
-                        logger.warning("schema repair 予期せぬエラー: %s | %s", _sql[12:50], _col_e)
-            _cu.execute(
-                "CREATE TABLE IF NOT EXISTS transcript_shares("
-                "id INTEGER NOT NULL,"
-                "transcript_id INTEGER NOT NULL,"
-                "shared_with_user_id INTEGER NOT NULL,"
-                "created_at DATETIME NOT NULL,"
-                "PRIMARY KEY(id),"
-                "CONSTRAINT uq_transcript_share "
-                "UNIQUE(transcript_id,shared_with_user_id),"
-                "FOREIGN KEY(transcript_id) "
-                "REFERENCES transcripts(id) ON DELETE CASCADE,"
-                "FOREIGN KEY(shared_with_user_id) "
-                "REFERENCES users(id) ON DELETE CASCADE)"
-            )
-            try:
-                _cu.execute(
-                    "CREATE INDEX ix_transcript_shares_user "
-                    "ON transcript_shares(shared_with_user_id)"
-                )
-            except Exception:
-                pass
-            _cu.execute(
-                "CREATE TABLE IF NOT EXISTS people("
-                "id INTEGER NOT NULL,"
-                "owner_user_id INTEGER NOT NULL,"
-                "name VARCHAR(100) NOT NULL,"
-                "company VARCHAR(200),"
-                "job_title VARCHAR(200),"
-                "role VARCHAR(200),"
-                "created_at DATETIME NOT NULL,"
-                "PRIMARY KEY(id),"
-                "CONSTRAINT uq_people_owner_name "
-                "UNIQUE(owner_user_id,name),"
-                "FOREIGN KEY(owner_user_id) "
-                "REFERENCES users(id) ON DELETE CASCADE)"
-            )
-            try:
-                _cu.execute("ALTER TABLE people ADD COLUMN role VARCHAR(200)")
-            except Exception:
-                pass
-            try:
-                _cu.execute(
-                    "ALTER TABLE speakers ADD COLUMN person_id INTEGER"
-                )
-            except Exception:
-                pass
-            try:
-                _cu.execute("ALTER TABLE project_vocabulary ADD COLUMN reading VARCHAR(200)")
-            except Exception:
-                pass
-            try:
-                _cu.execute("ALTER TABLE transcripts ADD COLUMN overview TEXT")
-            except Exception:
-                pass
-            try:
-                _cu.execute("ALTER TABLE segments ADD COLUMN original_asr_text TEXT")
-            except Exception:
-                pass
-            try:
-                _cu.execute("""
-                    CREATE TABLE IF NOT EXISTS transcript_vocabulary (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
-                        word VARCHAR(200) NOT NULL,
-                        meaning TEXT,
-                        reading VARCHAR(200),
-                        created_at DATETIME NOT NULL
+                    _cu.execute(
+                        "CREATE INDEX ix_transcript_shares_user "
+                        "ON transcript_shares(shared_with_user_id)"
                     )
-                """)
-            except Exception:
-                pass
-            try:
-                _cu.execute("""
-                    CREATE TABLE IF NOT EXISTS user_vocabulary (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        word VARCHAR(200) NOT NULL,
-                        meaning TEXT,
-                        reading VARCHAR(200),
-                        created_at DATETIME NOT NULL
-                    )
-                """)
-            except Exception:
-                pass
-            # ── alembic_version の安全な更新 ──────────────────────────────
-            # 【重要】新マイグレーション追加時は必ず以下を更新する:
-            #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
-            #   2. _MIGRATION_CHAIN の末尾に新IDを追加
-            #   3. 上の try ブロックにスキーマ変更を追記
-            # 【なぜこの順序比較が必要か】
-            #   無条件に UPDATE すると、新マイグレーションが追加されても
-            #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
-            #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
-            #   display_name 等が消えた 2026-09-08/09 の教訓。
-            _REPAIR_HEAD = 'f7b9c1d3e5a6'
-            _MIGRATION_CHAIN = [
-                '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
-                'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
-                'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
-                'a1b2c3d4e5f6', 'b2c3d4e5f6a7', 'c4d5e6f7a8b9',
-                'b3c4d5e6f7a8', 'c5d6e7f8a9b0', 'a3c5e7b9d1f2', 'b4d5e6f7a8c9',
-                'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6',
-            ]
-            def _ver_idx(v):
-                if not v:
+                except Exception:
+                    pass
+                _cu.execute(
+                    "CREATE TABLE IF NOT EXISTS people("
+                    "id INTEGER NOT NULL,"
+                    "owner_user_id INTEGER NOT NULL,"
+                    "name VARCHAR(100) NOT NULL,"
+                    "company VARCHAR(200),"
+                    "job_title VARCHAR(200),"
+                    "role VARCHAR(200),"
+                    "created_at DATETIME NOT NULL,"
+                    "PRIMARY KEY(id),"
+                    "CONSTRAINT uq_people_owner_name "
+                    "UNIQUE(owner_user_id,name),"
+                    "FOREIGN KEY(owner_user_id) "
+                    "REFERENCES users(id) ON DELETE CASCADE)"
+                )
+                try:
+                    _cu.execute("ALTER TABLE people ADD COLUMN role VARCHAR(200)")
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("ALTER TABLE speakers ADD COLUMN person_id INTEGER")
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("ALTER TABLE project_vocabulary ADD COLUMN reading VARCHAR(200)")
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("ALTER TABLE transcripts ADD COLUMN overview TEXT")
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("ALTER TABLE segments ADD COLUMN original_asr_text TEXT")
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS transcript_vocabulary (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+                            word VARCHAR(200) NOT NULL,
+                            meaning TEXT,
+                            reading VARCHAR(200),
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS user_vocabulary (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            word VARCHAR(200) NOT NULL,
+                            meaning TEXT,
+                            reading VARCHAR(200),
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
+                # ── alembic_version の安全な更新 ──────────────────────────────
+                # 【重要】新マイグレーション追加時は必ず以下を更新する:
+                #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
+                #   2. _MIGRATION_CHAIN の末尾に新IDを追加
+                #   3. 上の try ブロックにスキーマ変更を追記
+                # 【なぜこの順序比較が必要か】
+                #   無条件に UPDATE すると、新マイグレーションが追加されても
+                #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
+                #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
+                #   display_name 等が消えた 2026-09-08/09 の教訓。
+                _REPAIR_HEAD = 'f7b9c1d3e5a6'
+                _MIGRATION_CHAIN = [
+                    '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
+                    'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
+                    'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
+                    'a1b2c3d4e5f6', 'b2c3d4e5f6a7', 'c4d5e6f7a8b9',
+                    'b3c4d5e6f7a8', 'c5d6e7f8a9b0', 'a3c5e7b9d1f2', 'b4d5e6f7a8c9',
+                    'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6',
+                ]
+                def _ver_idx(v):
+                    if not v:
+                        return -1
+                    for _i, _m in enumerate(_MIGRATION_CHAIN):
+                        if v.startswith(_m) or _m.startswith(v[:12]):
+                            return _i
                     return -1
-                for _i, _m in enumerate(_MIGRATION_CHAIN):
-                    if v.startswith(_m) or _m.startswith(v[:12]):
-                        return _i
-                return -1
-            _row = _cu.execute("SELECT version_num FROM alembic_version").fetchone()
-            _cur_ver = _row[0] if _row else None
-            if _ver_idx(_cur_ver) < _ver_idx(_REPAIR_HEAD):
-                if _cur_ver is None:
-                    _cu.execute("INSERT INTO alembic_version (version_num) VALUES (?)", (_REPAIR_HEAD,))
+                _row = _cu.execute("SELECT version_num FROM alembic_version").fetchone()
+                _cur_ver = _row[0] if _row else None
+                if _ver_idx(_cur_ver) < _ver_idx(_REPAIR_HEAD):
+                    if _cur_ver is None:
+                        _cu.execute("INSERT INTO alembic_version (version_num) VALUES (?)", (_REPAIR_HEAD,))
+                    else:
+                        _cu.execute("UPDATE alembic_version SET version_num=?", (_REPAIR_HEAD,))
+                    logger.info("alembic_version 更新: %s → %s", _cur_ver, _REPAIR_HEAD)
                 else:
-                    _cu.execute("UPDATE alembic_version SET version_num=?", (_REPAIR_HEAD,))
-                logger.info("alembic_version 更新: %s → %s", _cur_ver, _REPAIR_HEAD)
-            else:
-                logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
-            _co.commit()
-            # 重要カラムの存在を検証（不足があれば ERROR ログ → Railway で即確認できる）
-            for _tbl, _col in [
-                ("segments", "reviewed_by_user_id"),
-                ("segments", "reviewed_at"),
-                ("transcript_shares", "status"),
-                ("transcript_shares", "can_edit_segments"),
-            ]:
-                _cols = {r[1] for r in _cu.execute(f"PRAGMA table_info({_tbl})").fetchall()}
-                if _col in _cols:
-                    logger.debug("カラム確認OK: %s.%s", _tbl, _col)
-                else:
-                    logger.error("カラム不足: %s.%s が存在しません", _tbl, _col)
-            _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
-            _co.close()
-            logger.info("スキーマ修復完了")
+                    logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
+                _co.commit()
+                # 重要カラムの存在を検証（不足があれば ERROR ログ → Railway で即確認できる）
+                for _tbl, _col in [
+                    ("segments", "reviewed_by_user_id"),
+                    ("segments", "reviewed_at"),
+                    ("transcript_shares", "status"),
+                    ("transcript_shares", "can_edit_segments"),
+                ]:
+                    _cols = {r[1] for r in _cu.execute(f"PRAGMA table_info({_tbl})").fetchall()}
+                    if _col in _cols:
+                        logger.debug("カラム確認OK: %s.%s", _tbl, _col)
+                    else:
+                        logger.error("カラム不足: %s.%s が存在しません", _tbl, _col)
+                _co.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                _co.close()
+                logger.info("スキーマ修復完了")
         except Exception as _e:
             logger.warning("スキーマ修復失敗: %s", _e)
 
@@ -278,12 +285,14 @@ async def lifespan(app: FastAPI):
     # SQLite WAL を main DB に書き込み済みにすることで、
     # 万一のプロセスクラッシュ時のデータ損失ゼロを目指す。
     async def _wal_checkpoint_loop():
-        from backend.db.session import _DB_PATH
+        from backend.db.session import RESOLVED_DB_PATH
         import sqlite3
+        if not RESOLVED_DB_PATH:
+            return
         await asyncio.sleep(60)
         while True:
             try:
-                conn = sqlite3.connect(str(_DB_PATH))
+                conn = sqlite3.connect(str(RESOLVED_DB_PATH))
                 conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 conn.close()
                 logger.debug("WAL チェックポイント完了")
@@ -545,7 +554,8 @@ async def admin_users_stats(
 async def disk_status(user: AdminUser) -> JSONResponse:
     """ディスク使用量の診断。管理者確認用。"""
     import shutil
-    from backend.db.session import _DB_PATH, DATABASE_URL
+    from backend.db.session import RESOLVED_DB_PATH, DATABASE_URL
+    _DB_PATH = RESOLVED_DB_PATH
 
     def dir_size(path: str) -> dict:
         p = Path(path)
@@ -668,14 +678,17 @@ async def admin_download_backup(user: AdminUser):
     from datetime import datetime, timezone
     from fastapi.responses import FileResponse
     from starlette.background import BackgroundTask
-    from backend.db.session import _DB_PATH
+    from backend.db.session import RESOLVED_DB_PATH
+
+    if not RESOLVED_DB_PATH or not RESOLVED_DB_PATH.exists():
+        raise HTTPException(status_code=503, detail="バックアップ対象のDBファイルが見つかりません")
 
     jst_now = datetime.now(timezone.utc).astimezone()
     timestamp = jst_now.strftime("%Y%m%d_%H%M%S")
     filename = f"noto_backup_{timestamp}.db"
     tmp = Path(tempfile.mkdtemp()) / filename
 
-    src = sqlite3.connect(str(_DB_PATH))
+    src = sqlite3.connect(str(RESOLVED_DB_PATH))
     dst = sqlite3.connect(str(tmp))
     src.backup(dst)
     src.close()
