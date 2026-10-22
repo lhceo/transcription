@@ -737,6 +737,8 @@
                         <li><span>再生 / 停止</span><kbd>Space</kbd></li>
                         <li><span>3秒戻る</span><kbd>←</kbd></li>
                         <li><span>3秒進む</span><kbd>→</kbd></li>
+                        <li><span>次の要確認箇所</span><kbd>]</kbd></li>
+                        <li><span>前の要確認箇所</span><kbd>[</kbd></li>
                     </ul>
                     <p class="shortcut-group-label">セグメント編集中</p>
                     <ul class="shortcut-list">
@@ -2046,7 +2048,6 @@ function segmentsApp(transcriptId, historyNames) {
         },
         qualityNavDisplay() {
             if (this._qualityNavIds.length === 0) return '';
-            const idx = this._qualityNavIds.indexOf(this._qualityNavIdx);
             return (this._qualityNavIdx + 1) + ' / ' + this._qualityNavIds.length;
         },
         navQuality(dir) {
@@ -2056,8 +2057,14 @@ function segmentsApp(transcriptId, historyNames) {
             if (this._qualityNavIds.length === 0) return;
             this._qualityNavIdx = ((this._qualityNavIdx + dir) + this._qualityNavIds.length) % this._qualityNavIds.length;
             const id = this._qualityNavIds[this._qualityNavIdx];
-            const el = document.getElementById('segment-' + id);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const card = document.querySelector(`.segment-card[data-segment-id="${id}"]`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                this.seekToCard(card);
+                // 一瞬ハイライトして位置を分かりやすくする
+                card.classList.add('quality-jump-flash');
+                setTimeout(() => card.classList.remove('quality-jump-flash'), 800);
+            }
         },
         dismissQuality(segId) {
             const copy = { ...this.qualityIssues };
@@ -2939,6 +2946,10 @@ function segmentsApp(transcriptId, historyNames) {
                     e.preventDefault(); seekBy(+3);
                 } else if (e.key === 'Escape' && this.editMode) {
                     e.preventDefault(); togglePlay();
+                } else if (e.key === ']') {
+                    e.preventDefault(); this.navQuality(1);
+                } else if (e.key === '[') {
+                    e.preventDefault(); this.navQuality(-1);
                 }
             });
         },

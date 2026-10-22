@@ -2961,6 +2961,13 @@ mark.find-highlight-active {
 }
 .quality-check-bar-ok .quality-check-label strong { color: #16a34a; }
 
+@keyframes quality-jump {
+    0%   { box-shadow: 0 0 0 0 rgba(251,146,60,0.6); }
+    50%  { box-shadow: 0 0 0 6px rgba(251,146,60,0.2); }
+    100% { box-shadow: 0 0 0 0 rgba(251,146,60,0); }
+}
+.quality-jump-flash { animation: quality-jump 0.8s ease-out; }
+
 .meta-merged-badge {
     color: #6b7280; font-size: 11px;
 }
