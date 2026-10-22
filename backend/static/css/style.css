@@ -7867,3 +7867,48 @@ body:has(.multi-float-bar:not([style*="none"])) {
     gap: 4px;
     padding: 8px 10px;
 }
+
+/* ── 常用語辞書（プロフィールページ） ──────────────────────────── */
+.vocab-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--color-border);
+    position: relative;
+}
+.vocab-row:last-child { border-bottom: none; }
+.vocab-main {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.vocab-row .vocab-actions {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.vocab-row:hover .vocab-actions { opacity: 1; }
+.vocab-edit-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.vocab-edit-fields {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.vocab-edit-fields .form-input {
+    min-width: 100px;
+    font-size: 0.875rem;
+    padding: 6px 8px;
+}
+.vocab-add-form {
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    margin-top: 0.5rem;
+}

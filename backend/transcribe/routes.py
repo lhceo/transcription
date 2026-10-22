@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, TranscriptVocabulary, User
+from backend.db.models import Person, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, SpeakerHistory, Transcript, TranscriptShare, TranscriptVocabulary, User, UserVocabulary
 from backend.transcribe.constants import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, MEDIA_TYPES
 from backend.transcribe.cost import (
     get_anthropic_balance_summary,
@@ -512,9 +512,18 @@ async def create_transcript(
     )
 
     # ──── word_boost と custom_spelling を自動収集 ────────────────────────
-    # ユーザー入力語 → PJT固有名詞辞書 → People台帳の名前 の順でマージし上限50語
+    # ユーザー入力語 → 常用語辞書 → PJT固有名詞辞書 → People台帳の名前 の順でマージし上限50語
     auto_boost: list[str] = []
     auto_custom_spelling: list[dict] = []
+    # 常用語辞書（ユーザー全体）
+    user_vocab_rows = list(db.scalars(
+        select(UserVocabulary).where(UserVocabulary.user_id == user["id"])
+    ))
+    for v in user_vocab_rows:
+        if v.word:
+            auto_boost.append(v.word)
+        if v.reading and v.word:
+            auto_custom_spelling.append({"from": [v.reading], "to": v.word})
     vocab_rows: list = []
     if parsed_project_id:
         vocab_rows = list(db.scalars(
@@ -537,8 +546,8 @@ async def create_transcript(
     parsed_custom_spelling = auto_custom_spelling if auto_custom_spelling else None
 
     logger.info(
-        "word_boost 自動補完: user=%s pjt_vocab=%s people=%s total=%s custom_spelling=%s",
-        len(user_word_boost), len(vocab_rows), len(people_names),
+        "word_boost 自動補完: user=%s user_vocab=%s pjt_vocab=%s people=%s total=%s custom_spelling=%s",
+        len(user_word_boost), len(user_vocab_rows), len(vocab_rows), len(people_names),
         len(merged), len(auto_custom_spelling),
     )
 
@@ -759,9 +768,15 @@ async def create_transcript_multi(
 
         logger.info("Transcript(multi) 作成: id=%s files=%d merged_size=%s", transcript.id, len(files), merged_size)
 
-        # word_boost 収集
+        # word_boost 収集（常用語辞書 → PJT語彙 → People名前）
         auto_boost: list[str] = []
         auto_custom_spelling: list[dict] = []
+        _user_vocab_rows = list(db.scalars(select(UserVocabulary).where(UserVocabulary.user_id == user["id"])))
+        for v in _user_vocab_rows:
+            if v.word:
+                auto_boost.append(v.word)
+            if v.reading and v.word:
+                auto_custom_spelling.append({"from": [v.reading], "to": v.word})
         if parsed_project_id:
             vocab_rows = list(db.scalars(select(ProjectVocabulary).where(ProjectVocabulary.project_id == parsed_project_id)))
             for v in vocab_rows:
@@ -2002,6 +2017,81 @@ async def update_transcript_vocabulary(
     return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
 
 
+# ── 常用語辞書（ユーザー全体） ─────────────────────────────────────────
+
+
+@router.get("/api/user/vocabulary")
+async def list_user_vocabulary(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    rows = list(db.scalars(
+        select(UserVocabulary)
+        .where(UserVocabulary.user_id == user["id"])
+        .order_by(UserVocabulary.id)
+    ))
+    return JSONResponse([
+        {"id": v.id, "word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""}
+        for v in rows
+    ])
+
+
+@router.post("/api/user/vocabulary", status_code=status.HTTP_201_CREATED)
+async def add_user_vocabulary(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    payload: Annotated[dict, Body()],
+) -> JSONResponse:
+    word = str(payload.get("word") or "").strip()[:200]
+    if not word:
+        raise HTTPException(status_code=422, detail={"code": "WORD_REQUIRED"})
+    vocab = UserVocabulary(
+        user_id=user["id"],
+        word=word,
+        meaning=str(payload.get("meaning") or "").strip() or None,
+        reading=str(payload.get("reading") or "").strip()[:200] or None,
+    )
+    db.add(vocab)
+    db.commit()
+    db.refresh(vocab)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
+
+
+@router.delete("/api/user/vocabulary/{vocab_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_vocabulary(
+    vocab_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    vocab = db.get(UserVocabulary, vocab_id)
+    if not vocab or vocab.user_id != user["id"]:
+        raise HTTPException(status_code=404)
+    db.delete(vocab)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.patch("/api/user/vocabulary/{vocab_id}")
+async def update_user_vocabulary(
+    vocab_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    payload: Annotated[dict, Body()],
+) -> JSONResponse:
+    vocab = db.get(UserVocabulary, vocab_id)
+    if not vocab or vocab.user_id != user["id"]:
+        raise HTTPException(status_code=404)
+    word = str(payload.get("word") or "").strip()[:200]
+    if not word:
+        raise HTTPException(status_code=422, detail={"code": "WORD_REQUIRED"})
+    vocab.word = word
+    vocab.meaning = str(payload.get("meaning") or "").strip() or None
+    vocab.reading = str(payload.get("reading") or "").strip()[:200] or None
+    db.commit()
+    db.refresh(vocab)
+    return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
+
+
 # ── 話者一括リネーム ───────────────────────────────────────────────────
 
 
@@ -2117,6 +2207,16 @@ def _build_export_txt(
     if meta_lines:
         lines.extend(meta_lines)
         lines.append("")
+    if vocab_items:
+        lines.append("──── 固有名詞辞書 ────")
+        for v in vocab_items:
+            entry = v["word"]
+            if v.get("reading"):
+                entry += f"（読み: {v['reading']}）"
+            if v.get("meaning"):
+                entry += f": {v['meaning']}"
+            lines.append(entry)
+        lines.append("")
     for seg in segments:
         name = _resolve_speaker_name(seg, name_map)
         ts = _format_time_hms(seg.start_seconds)
@@ -2125,16 +2225,6 @@ def _build_export_txt(
         if seg.comment:
             lines.append(f"# {seg.comment}")
         lines.append("")
-    if vocab_items:
-        lines.append("")
-        lines.append("──── 固有名詞一覧 ────")
-        for v in vocab_items:
-            entry = v["word"]
-            if v.get("reading"):
-                entry += f"（{v['reading']}）"
-            if v.get("meaning"):
-                entry += f": {v['meaning']}"
-            lines.append(entry)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -2214,6 +2304,10 @@ def _build_export_json(
             {"speaker_label": label, "display_name": name}
             for label, name in name_map.items()
         ],
+        "vocabulary": [
+            {"word": v["word"], "reading": v.get("reading") or "", "meaning": v.get("meaning") or ""}
+            for v in (vocab_items or [])
+        ],
         "segments": [
             {
                 "order_index": s.order_index,
@@ -2226,10 +2320,6 @@ def _build_export_json(
                 "comment": s.comment,
             }
             for s in segments
-        ],
-        "vocabulary": [
-            {"word": v["word"], "reading": v.get("reading") or "", "meaning": v.get("meaning") or ""}
-            for v in (vocab_items or [])
         ],
     }
     return json.dumps(data, ensure_ascii=False, indent=2)

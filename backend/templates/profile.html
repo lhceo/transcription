@@ -35,6 +35,63 @@
     </div>
 </div>
 
+<!-- 常用語辞書 -->
+<div class="page-header" style="margin-top:2rem">
+    <h3 class="page-title" style="font-size:1.1rem">常用語辞書</h3>
+    <p class="page-subtitle">プロジェクト・スポットを問わず、すべての文字起こしに適用される固有名詞辞書です。<br>意味を書くと Haiku が文脈を理解してより正確に修正できます。</p>
+</div>
+
+<div class="detail-section" style="max-width:640px" x-data="userVocabPage()" x-init="load()">
+
+    <!-- 登録済み一覧 -->
+    <template x-if="vocab.length > 0">
+        <div class="vocab-list" style="margin-bottom:1rem">
+            <template x-for="v in vocab" :key="v.id">
+                <div class="vocab-row" x-show="editingId !== v.id">
+                    <div class="vocab-main">
+                        <span class="vocab-word" x-text="v.word"></span>
+                        <span class="vocab-reading text-muted" x-show="v.reading" x-text="'（' + v.reading + '）'"></span>
+                    </div>
+                    <div class="vocab-meaning text-muted" x-show="v.meaning" x-text="v.meaning"></div>
+                    <div class="vocab-actions">
+                        <button class="btn-icon" title="編集" @click="startEdit(v)">✏️</button>
+                        <button class="btn-icon" title="削除" @click="deleteVocab(v.id)">🗑️</button>
+                    </div>
+                </div>
+                <!-- インライン編集 -->
+                <div class="vocab-edit-row" x-show="editingId === v.id" x-cloak>
+                    <div class="vocab-edit-fields">
+                        <input class="form-input" x-model="editWord" placeholder="単語（正式表記）" style="flex:1">
+                        <input class="form-input" x-model="editReading" placeholder="読み（カタカナ）" style="flex:1">
+                        <input class="form-input" x-model="editMeaning" placeholder="意味・説明（任意）" style="flex:2">
+                    </div>
+                    <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                        <button class="btn btn-primary btn-sm" @click="saveEdit(v.id)" :disabled="!editWord.trim()">保存</button>
+                        <button class="btn btn-sm" @click="cancelEdit()">キャンセル</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+    <p x-show="vocab.length === 0 && !loading" class="text-muted" style="font-size:0.875rem;margin-bottom:1rem">まだ登録されていません。</p>
+
+    <!-- 新規追加フォーム -->
+    <div class="vocab-add-form">
+        <p class="form-label" style="margin-bottom:0.5rem;font-weight:600">新しい単語を登録</p>
+        <div class="vocab-edit-fields">
+            <input class="form-input" x-model="newWord" placeholder="単語（正式表記）" style="flex:1" @keydown.enter="addVocab()">
+            <input class="form-input" x-model="newReading" placeholder="読み（カタカナ）" style="flex:1">
+            <input class="form-input" x-model="newMeaning" placeholder="意味・説明（任意）— 書くとHaikuが正確に修正します" style="flex:2" @keydown.enter="addVocab()">
+        </div>
+        <div style="margin-top:0.5rem">
+            <button class="btn btn-primary btn-sm" @click="addVocab()" :disabled="!newWord.trim() || adding">
+                <span x-show="!adding">追加</span>
+                <span x-show="adding" x-cloak>追加中…</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 (function () {
     window._profileInit = {
@@ -64,6 +121,98 @@ function profilePage() {
                 window.showToast('保存に失敗しました: ' + e.message, 'error');
             } finally {
                 this.saving = false;
+            }
+        },
+    };
+}
+
+function userVocabPage() {
+    return {
+        vocab: [],
+        loading: false,
+        newWord: '',
+        newReading: '',
+        newMeaning: '',
+        adding: false,
+        editingId: null,
+        editWord: '',
+        editReading: '',
+        editMeaning: '',
+
+        async load() {
+            this.loading = true;
+            try {
+                const res = await fetch('/api/user/vocabulary');
+                if (res.ok) this.vocab = await res.json();
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async addVocab() {
+            const word = this.newWord.trim();
+            if (!word) return;
+            this.adding = true;
+            try {
+                const res = await fetch('/api/user/vocabulary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word, reading: this.newReading.trim() || null, meaning: this.newMeaning.trim() || null }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const v = await res.json();
+                this.vocab.push(v);
+                this.newWord = '';
+                this.newReading = '';
+                this.newMeaning = '';
+                window.showToast('単語を登録しました');
+            } catch (e) {
+                window.showToast('登録に失敗しました: ' + e.message, 'error');
+            } finally {
+                this.adding = false;
+            }
+        },
+
+        async deleteVocab(id) {
+            if (!confirm('この単語を削除しますか？')) return;
+            try {
+                const res = await fetch('/api/user/vocabulary/' + id, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.vocab = this.vocab.filter(v => v.id !== id);
+                window.showToast('単語を削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        startEdit(v) {
+            this.editingId = v.id;
+            this.editWord = v.word;
+            this.editReading = v.reading || '';
+            this.editMeaning = v.meaning || '';
+        },
+
+        cancelEdit() {
+            this.editingId = null;
+        },
+
+        async saveEdit(id) {
+            const word = this.editWord.trim();
+            if (!word) return;
+            try {
+                const res = await fetch('/api/user/vocabulary/' + id, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word, reading: this.editReading.trim() || null, meaning: this.editMeaning.trim() || null }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const updated = await res.json();
+                const idx = this.vocab.findIndex(v => v.id === id);
+                if (idx !== -1) this.vocab[idx] = updated;
+                this.editingId = null;
+                window.showToast('単語を更新しました');
+            } catch (e) {
+                window.showToast('更新に失敗しました: ' + e.message, 'error');
             }
         },
     };

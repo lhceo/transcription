@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import SessionLocal, get_db
-from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User
+from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User, UserVocabulary
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_anthropic_balance_summary, get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -883,6 +883,15 @@ def _build_transcript_context(transcript: Transcript, db: Session) -> str:
     ))
     existing_words = {v["word"].lower() for v in vocabulary}
     for v in transcript_vocab_rows:
+        if v.word.lower() not in existing_words:
+            vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
+            existing_words.add(v.word.lower())
+
+    # 常用語辞書（ユーザー全体）をマージ（重複はスキップ）
+    user_vocab_rows = list(db.scalars(
+        select(UserVocabulary).where(UserVocabulary.user_id == transcript.user_id)
+    ))
+    for v in user_vocab_rows:
         if v.word.lower() not in existing_words:
             vocabulary.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
             existing_words.add(v.word.lower())

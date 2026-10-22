@@ -180,6 +180,19 @@ async def lifespan(app: FastAPI):
                 """)
             except Exception:
                 pass
+            try:
+                _cu.execute("""
+                    CREATE TABLE IF NOT EXISTS user_vocabulary (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        word VARCHAR(200) NOT NULL,
+                        meaning TEXT,
+                        reading VARCHAR(200),
+                        created_at DATETIME NOT NULL
+                    )
+                """)
+            except Exception:
+                pass
             # ── alembic_version の安全な更新 ──────────────────────────────
             # 【重要】新マイグレーション追加時は必ず以下を更新する:
             #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
@@ -190,14 +203,14 @@ async def lifespan(app: FastAPI):
             #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
             #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
             #   display_name 等が消えた 2026-09-08/09 の教訓。
-            _REPAIR_HEAD = 'e5f7a9b1c3d4'
+            _REPAIR_HEAD = 'f7b9c1d3e5a6'
             _MIGRATION_CHAIN = [
                 '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
                 'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
                 'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
                 'a1b2c3d4e5f6', 'b2c3d4e5f6a7', 'c4d5e6f7a8b9',
                 'b3c4d5e6f7a8', 'c5d6e7f8a9b0', 'a3c5e7b9d1f2', 'b4d5e6f7a8c9',
-                'd6e8f0a2b4c6', 'e5f7a9b1c3d4',
+                'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6',
             ]
             def _ver_idx(v):
                 if not v:

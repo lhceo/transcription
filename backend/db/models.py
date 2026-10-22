@@ -67,6 +67,10 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    vocabulary: Mapped[list["UserVocabulary"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 # ── transcripts ────────────────────────────────────────────────────────────
@@ -471,6 +475,26 @@ class TranscriptVocabulary(Base):
     )
 
     transcript: Mapped["Transcript"] = relationship(back_populates="vocabulary")
+
+
+# ── user_vocabulary ──────────────────────────────────────────────────────────
+class UserVocabulary(Base):
+    """ユーザー全体で有効な常用語辞書。プロジェクト・スポット問わず整文・Haiku処理に使用する。"""
+
+    __tablename__ = "user_vocabulary"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    word: Mapped[str] = mapped_column(String(200), nullable=False)
+    meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reading: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    user: Mapped["User"] = relationship(back_populates="vocabulary")
 
 
 # ── attachments ─────────────────────────────────────────────────────────────
