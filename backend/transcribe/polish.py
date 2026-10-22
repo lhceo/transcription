@@ -221,6 +221,79 @@ def extract_word_contexts(words: list[str], transcript_text: str) -> list[dict]:
     return results
 
 
+# フィラー・繰り返し自動クリーニング ─────────────────────────────────────────
+
+# 長音（ー）が付く場合のみフィラーと判定する。
+# 長音なし（うん、えー→えなど）は意味のある発言になりうるので除外。
+# えっと は例外的に長音なしでも常にフィラー。
+_FILLER_PATTERNS = [
+    r'うー+ん',     # うーん、うーーん
+    r'んー+ん',     # んーん
+    r'えー+と',     # えーと、えーーと
+    r'えっと',      # えっと
+    r'えー+',       # えー（単独）
+    r'あのー+',     # あのー（長音付き = フィラー。長音なし「あの」は指示語なので除外）
+    r'んー+と',     # んーと
+    r'んー+',       # んー
+    r'あー+',       # あー
+    r'はー+',       # はー
+    r'ふー+ん',     # ふーん
+]
+
+# セグメント区切り文字（フィラー前後に現れる）
+_SEP = r'[、。！？\s]'
+
+# コンパイル済みパターン（前後に区切り文字 or 文頭/文末）
+_FILLER_RE = re.compile(
+    r'(?:(?<=' + _SEP + r')|(?:^))(?:' + '|'.join(_FILLER_PATTERNS) + r')(?=' + _SEP + r'|$)',
+)
+_FILLER_STANDALONE_RE = re.compile(
+    r'^(?:' + '|'.join(_FILLER_PATTERNS) + r')$'
+)
+
+
+def clean_fillers_and_repetitions(text: str) -> tuple[str, int]:
+    """フィラーと直前繰り返しをルールベースで除去する。
+
+    Returns:
+        (cleaned_text, changes_count)
+        changes_count: 変更があった箇所数（0なら変更なし）
+    """
+    if not text:
+        return text, 0
+
+    original = text
+    change_count = 0
+
+    # 完全にフィラーだけのセグメントはそのまま返す（空にしない）
+    if _FILLER_STANDALONE_RE.match(text.strip()):
+        return text, 0
+
+    # Step 1: フィラー除去
+    new_text, n = _FILLER_RE.subn('', text)
+    if n > 0:
+        change_count += n
+        text = new_text
+
+    # Step 2: 区切り文字の連続・先頭末尾の整理
+    if change_count > 0:
+        text = re.sub(r'[、。]{2,}', '、', text)
+        text = re.sub(r'^[、。\s]+', '', text)
+        text = re.sub(r'[、。\s]+$', '', text)
+
+    # Step 3: 直前繰り返し除去（2文字以上の同一フレーズが、。または空白を挟んで連続）
+    # 例: 「そうですね、そうですね」→「そうですね」
+    prev = None
+    while prev != text:
+        prev = text
+        new_text, n = re.subn(r'(.{2,})[、。 ]\1(?=[、。\s]|$)', r'\1', text)
+        if n > 0:
+            change_count += n
+            text = new_text
+
+    return text.strip() if change_count > 0 else original, change_count
+
+
 # 品質チェック ────────────────────────────────────────────────────────────────
 
 QUALITY_CHECK_SYSTEM = """あなたは日本語の音声認識・文字起こしの品質チェッカーです。

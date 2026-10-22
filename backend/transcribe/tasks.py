@@ -186,20 +186,20 @@ async def _mark_failed(transcript_id: int, error_message: str) -> None:
             db.commit()
 
 
-async def _run_quality_check(transcript_id: int, merged_count: int = 0) -> None:
+async def _run_quality_check(transcript_id: int, merged_count: int = 0, filler_cleaned_count: int = 0) -> None:
     """文字起こし完了後に品質チェックを実行してDBに保存する。
 
     quality_check_result の形式:
-      {"issues": [...], "merged_count": N}
+      {"issues": [...], "merged_count": N, "filler_cleaned_count": N}
     """
     settings = load_settings()
     if not settings.has_anthropic:
-        # Anthropic キーがなくても結合件数だけ保存する
+        # Anthropic キーがなくても結合件数・フィラー除去件数だけ保存する
         with SessionLocal() as db:
             t = db.get(Transcript, transcript_id)
             if t is not None:
                 t.quality_check_result = json.dumps(
-                    {"issues": [], "merged_count": merged_count, "skipped": True},
+                    {"issues": [], "merged_count": merged_count, "filler_cleaned_count": filler_cleaned_count, "skipped": True},
                     ensure_ascii=False,
                 )
                 db.commit()
@@ -229,14 +229,43 @@ async def _run_quality_check(transcript_id: int, merged_count: int = 0) -> None:
             t = db.get(Transcript, transcript_id)
             if t is not None:
                 t.quality_check_result = json.dumps(
-                    {"issues": issues or [], "merged_count": merged_count},
+                    {"issues": issues or [], "merged_count": merged_count, "filler_cleaned_count": filler_cleaned_count},
                     ensure_ascii=False,
                 )
                 db.commit()
-        logger.info("品質チェック完了: transcript_id=%s issues=%s merged=%s",
-                    transcript_id, len(issues or []), merged_count)
+        logger.info("品質チェック完了: transcript_id=%s issues=%s merged=%s filler_cleaned=%s",
+                    transcript_id, len(issues or []), merged_count, filler_cleaned_count)
     except Exception:
         logger.exception("品質チェック失敗: transcript_id=%s", transcript_id)
+
+
+def _auto_clean_fillers(transcript_id: int) -> int:
+    """フィラーと連続繰り返しをルールベースで自動除去する。
+
+    original_asr_text は変更しない（元に戻す操作のため保持）。
+    Returns: クリーニングしたセグメント数
+    """
+    from backend.transcribe.polish import clean_fillers_and_repetitions
+
+    with SessionLocal() as db:
+        segments = list(db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+        ))
+        cleaned_count = 0
+        for seg in segments:
+            if not seg.text_content:
+                continue
+            new_text, changes = clean_fillers_and_repetitions(seg.text_content)
+            if changes > 0 and new_text != seg.text_content:
+                seg.text_content = new_text
+                cleaned_count += 1
+        if cleaned_count > 0:
+            db.commit()
+
+    logger.info("フィラー自動除去完了: transcript_id=%s cleaned_segments=%s", transcript_id, cleaned_count)
+    return cleaned_count
 
 
 async def _run_auto_pickup(transcript_id: int) -> None:
@@ -390,11 +419,18 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
         except Exception:
             logger.exception("自動結合に失敗: transcript_id=%s", transcript_id)
 
+        # 5b2. フィラー・繰り返しの自動除去（ルールベース・失敗しても継続）
+        _filler_cleaned_count = 0
+        try:
+            _filler_cleaned_count = _auto_clean_fillers(transcript_id)
+        except Exception:
+            logger.exception("フィラー自動除去に失敗: transcript_id=%s", transcript_id)
+
         # 5c. 固有名詞候補の自動ピックアップ（失敗しても全体の成功は妨げない）
         await _run_auto_pickup(transcript_id)
 
-        # 5d. 品質チェック自動実行（結合件数も一緒に保存）
-        await _run_quality_check(transcript_id, merged_count=_merged_count)
+        # 5d. 品質チェック自動実行（結合件数・フィラー除去件数も一緒に保存）
+        await _run_quality_check(transcript_id, merged_count=_merged_count, filler_cleaned_count=_filler_cleaned_count)
 
         # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
         #    失敗時は移動せず、一時領域ごと削除される。

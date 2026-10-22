@@ -90,7 +90,7 @@
             </span>
         {% endif %}
         <span class="meta-item">{{ speakers|length }}人の話者</span>
-        <span class="meta-item">{{ segments|length }} セグメント{% if auto_merged_count > 0 %}<span class="meta-merged-badge" title="自動結合で {{ auto_merged_count }} 件のセグメントをまとめました">・{{ auto_merged_count }}件を自動結合</span>{% endif %}</span>
+        <span class="meta-item">{{ segments|length }} セグメント{% if auto_merged_count > 0 %}<span class="meta-merged-badge" title="自動結合で {{ auto_merged_count }} 件のセグメントをまとめました">・{{ auto_merged_count }}件を自動結合</span>{% endif %}{% if filler_cleaned_count > 0 %}<span class="meta-merged-badge meta-filler-badge" title="フィラー・繰り返しを {{ filler_cleaned_count }} セグメントから自動除去しました">・{{ filler_cleaned_count }}件をクリーニング</span>{% endif %}</span>
         {% if transcript.cost_yen %}
             <span class="meta-item meta-cost">約 {{ transcript.cost_yen }} 円</span>
         {% endif %}

@@ -1208,6 +1208,7 @@ async def transcript_detail(
     import json as _json
     quality_check_data: list[dict] = []
     auto_merged_count: int = 0
+    filler_cleaned_count: int = 0
     quality_check_ran: bool = False
     if transcript.quality_check_result:
         try:
@@ -1219,6 +1220,7 @@ async def transcript_detail(
             elif isinstance(parsed, dict):
                 quality_check_data = parsed.get("issues", [])
                 auto_merged_count = parsed.get("merged_count", 0)
+                filler_cleaned_count = parsed.get("filler_cleaned_count", 0)
                 quality_check_ran = not parsed.get("skipped", False)
         except Exception:
             pass
@@ -1260,6 +1262,7 @@ async def transcript_detail(
             "has_pickup_suggestions": bool(transcript.pickup_suggestions),
             "quality_check_data": quality_check_data,
             "auto_merged_count": auto_merged_count,
+            "filler_cleaned_count": filler_cleaned_count,
             "quality_check_ran": quality_check_ran,
             "shares_data": shares_data,
             "current_user_permissions": current_user_permissions,

@@ -2971,6 +2971,9 @@ mark.find-highlight-active {
 .meta-merged-badge {
     color: #6b7280; font-size: 11px;
 }
+.meta-filler-badge {
+    color: #059669;
+}
 
 .polish-history-bar {
     background: #f0f9ff; border-bottom: 1px solid #bae6fd;
