@@ -6101,6 +6101,9 @@ textarea.form-input-sm {
     padding: 0;
 }
 .pjt-transcript-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
     border-bottom: 1px solid var(--color-border);
     padding: 12px 6px;
     border-radius: 4px;
@@ -6109,7 +6112,7 @@ textarea.form-input-sm {
 .pjt-transcript-item:last-child { border-bottom: none; padding-bottom: 0; }
 .pjt-transcript-item:first-child { padding-top: 0; }
 .pjt-transcript-item:hover { background: var(--color-bg); }
-.pjt-transcript-link { text-decoration: none; display: block; }
+.pjt-transcript-link { text-decoration: none; display: block; flex: 1; min-width: 0; }
 .pjt-transcript-title-row {
     display: flex;
     align-items: center;
@@ -6214,6 +6217,143 @@ textarea.form-input-sm {
 .pjt-add-existing-meta {
     font-size: 11px;
     color: var(--color-text-muted);
+}
+
+/* ── 「外す」ボタン（transcriptアイテム右端） ── */
+.pjt-transcript-unlink {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pjt-transcript-item:hover .pjt-transcript-unlink { opacity: 1; }
+.pjt-transcript-unlink:hover {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fca5a5;
+    opacity: 1;
+}
+@media (max-width: 640px) {
+    .pjt-transcript-unlink { opacity: 0.55; }
+}
+
+/* ── 過去データ追加モーダル ── */
+.pjt-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.pjt-modal-dialog {
+    background: var(--color-surface);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+    overflow: hidden;
+}
+.pjt-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px 14px;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+.pjt-modal-head h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--color-text);
+}
+.pjt-modal-search {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+.pjt-modal-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 80px;
+}
+.pjt-modal-empty {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 28px 20px;
+    line-height: 1.7;
+}
+.pjt-modal-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+}
+.pjt-modal-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+}
+.pjt-modal-item:hover { background: var(--color-hover); }
+.pjt-modal-item.is-selected { background: #eff6ff; }
+.pjt-modal-checkbox {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--color-primary);
+}
+.pjt-modal-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.pjt-modal-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pjt-modal-item-meta {
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+.pjt-modal-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+.pjt-modal-count {
+    font-size: 12px;
+    margin-right: auto;
 }
 
 /* メンバーリスト（サイドバー用コンパクト） */

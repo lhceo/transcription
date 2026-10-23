@@ -652,6 +652,58 @@ async def available_transcripts_for_project(
     ])
 
 
+class BatchAddTranscriptsBody(BaseModel):
+    transcript_ids: list[int]
+
+
+@router.post("/api/projects/{project_id}/batch-add-transcripts")
+async def batch_add_transcripts(
+    project_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: BatchAddTranscriptsBody,
+) -> JSONResponse:
+    """複数の文字起こしを一括でプロジェクトに追加する。"""
+    _get_project_or_404(project_id, user["id"], db)
+    added = 0
+    total_imported = 0
+    existing_names = {
+        (m.name or "").lower()
+        for m in db.scalars(
+            select(ProjectMember).where(ProjectMember.project_id == project_id)
+        )
+    }
+    for tid in body.transcript_ids[:50]:
+        transcript = db.get(Transcript, tid)
+        if transcript is None or transcript.user_id != user["id"] or transcript.deleted_at:
+            continue
+        if transcript.project_id == project_id:
+            continue
+        transcript.project_id = project_id
+        added += 1
+        # 話者→People リンクからメンバーを自動取り込み
+        speakers = list(db.scalars(
+            select(Speaker)
+            .options(selectinload(Speaker.person))
+            .where(Speaker.transcript_id == tid, Speaker.person_id.isnot(None))
+        ))
+        for s in speakers:
+            p = s.person
+            if p is None or p.name.lower() in existing_names:
+                continue
+            db.add(ProjectMember(
+                project_id=project_id,
+                name=p.name,
+                company=p.company or "",
+                job_title=p.job_title or "",
+                user_id=None,
+            ))
+            existing_names.add(p.name.lower())
+            total_imported += 1
+    db.commit()
+    return JSONResponse({"added": added, "members_imported": total_imported})
+
+
 # ── アップロードフォーム用 API ───────────────────────────────────────────────
 
 @router.get("/api/themes-list")

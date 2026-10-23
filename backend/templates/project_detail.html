@@ -47,43 +47,20 @@
     <div class="pjt-layout">
 
         {# ── 左：音声データ一覧（主役） ── #}
-        <section class="pjt-main">
+        <section class="pjt-main" x-data="transcriptAdder({{ project.id }})">
             <div class="pjt-section-header">
                 <h2 class="pjt-section-title">音声データ</h2>
-                <div style="display:flex;gap:8px;align-items:center;position:relative">
+                <div style="display:flex;gap:8px;align-items:center;">
                     <a href="/?project={{ project.id }}" class="btn btn-outline btn-sm">＋ アップロード</a>
-                    <div x-data="transcriptAdder({{ project.id }})">
-                        <button class="btn btn-outline btn-sm" @click="toggle()" type="button">既存データを追加</button>
-                        <div class="pjt-add-existing-dropdown" x-show="open" x-cloak @click.outside="open=false">
-                            <p class="pjt-add-existing-label">追加するデータを選択</p>
-                            <template x-if="loading">
-                                <p class="pjt-add-existing-empty">読み込み中…</p>
-                            </template>
-                            <template x-if="!loading && items.length === 0">
-                                <p class="pjt-add-existing-empty">追加できるデータがありません</p>
-                            </template>
-                            <template x-if="!loading && items.length > 0">
-                                <ul class="pjt-add-existing-list">
-                                    <template x-for="t in items" :key="t.id">
-                                        <li>
-                                            <button class="pjt-add-existing-item" type="button" @click="add(t.id)" :disabled="adding">
-                                                <span class="pjt-add-existing-name" x-text="t.name"></span>
-                                                <span class="pjt-add-existing-meta" x-text="t.created_at + (t.duration_seconds ? ' · ' + formatDuration(t.duration_seconds) : '')"></span>
-                                            </button>
-                                        </li>
-                                    </template>
-                                </ul>
-                            </template>
-                        </div>
-                    </div>
+                    <button class="btn btn-ghost btn-sm" @click="openModal()" type="button">過去のデータを追加</button>
                 </div>
             </div>
 
             {% if related_transcripts %}
-            <ul class="pjt-transcript-list">
+            <ul class="pjt-transcript-list" id="transcript-list">
                 {% for t in related_transcripts %}
                 {% set status = t.status %}
-                <li class="pjt-transcript-item">
+                <li class="pjt-transcript-item" id="titem-{{ t.id }}">
                     <a href="/transcripts/{{ t.id }}" class="pjt-transcript-link">
                         <div class="pjt-transcript-title-row">
                             {% if status == 'processing' or status == 'uploading' %}
@@ -112,15 +89,71 @@
                         <div class="pjt-transcript-purpose">{{ t.meeting_purpose }}</div>
                         {% endif %}
                     </a>
+                    <button class="pjt-transcript-unlink" @click.prevent="unlinkTranscript({{ t.id }})" title="プロジェクトから外す" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                 </li>
                 {% endfor %}
             </ul>
             {% else %}
-            <div class="pjt-empty">
+            <div class="pjt-empty" id="transcript-empty">
                 <p class="text-muted">まだ音声データがありません。</p>
-                <p class="text-muted" style="font-size:13px;">アップロード時にこのプロジェクトを選択するか、「既存データを追加」で登録済みデータを追加できます。</p>
+                <p class="text-muted" style="font-size:13px;">アップロード時にこのプロジェクトを選択するか、「過去のデータを追加」で登録済みデータを追加できます。</p>
             </div>
             {% endif %}
+
+            {# ── 既存データ追加モーダル ── #}
+            <div class="pjt-modal-overlay" x-show="modalOpen" x-cloak @click.self="closeModal()" @keydown.escape.window="modalOpen && closeModal()" style="display:none">
+                <div class="pjt-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
+                    <div class="pjt-modal-head">
+                        <h3 id="add-modal-title">過去のデータをプロジェクトに追加</h3>
+                        <button class="btn-icon" @click="closeModal()" type="button" title="閉じる">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="pjt-modal-search">
+                        <input type="text" class="form-input form-input-sm" x-model="search" placeholder="名前で検索…" x-ref="searchInput" autocomplete="off">
+                    </div>
+                    <div class="pjt-modal-body">
+                        <template x-if="loading">
+                            <p class="pjt-modal-empty">読み込み中…</p>
+                        </template>
+                        <template x-if="!loading && filteredItems.length === 0 && !search.trim()">
+                            <p class="pjt-modal-empty">追加できるデータがありません<br><span style="font-size:11px;">（完了済みでプロジェクト未所属のデータが対象です）</span></p>
+                        </template>
+                        <template x-if="!loading && filteredItems.length === 0 && search.trim()">
+                            <p class="pjt-modal-empty">「<span x-text="search"></span>」に一致するデータがありません</p>
+                        </template>
+                        <template x-if="!loading && filteredItems.length > 0">
+                            <ul class="pjt-modal-list">
+                                <template x-for="t in filteredItems" :key="t.id">
+                                    <li>
+                                        <label class="pjt-modal-item" :class="{ 'is-selected': selected.has(t.id) }">
+                                            <input type="checkbox" class="pjt-modal-checkbox" :checked="selected.has(t.id)" @change="toggleSelect(t.id)">
+                                            <div class="pjt-modal-item-info">
+                                                <span class="pjt-modal-item-name" x-text="t.name"></span>
+                                                <span class="pjt-modal-item-meta" x-text="t.created_at + (t.duration_seconds ? ' · ' + formatDuration(t.duration_seconds) : '') + (t.project_name ? ' · 現在: ' + t.project_name : '')"></span>
+                                            </div>
+                                        </label>
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                    </div>
+                    <div class="pjt-modal-foot">
+                        <span class="pjt-modal-count text-muted" x-show="selected.size > 0" x-text="selected.size + '件選択中'"></span>
+                        <button class="btn btn-ghost btn-sm" @click="closeModal()" type="button">キャンセル</button>
+                        <button class="btn btn-primary btn-sm" @click="confirmAdd()" type="button" :disabled="selected.size === 0 || adding">
+                            <template x-if="!adding">
+                                <span x-text="selected.size > 0 ? selected.size + '件を追加する' : 'データを選択してください'"></span>
+                            </template>
+                            <template x-if="adding">
+                                <span>追加中…</span>
+                            </template>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         {# ── 右：コンテキストサイドバー ── #}
@@ -523,16 +556,31 @@ function projectDetail() {
 
 function transcriptAdder(projectId) {
     return {
-        open: false,
+        modalOpen: false,
         loading: false,
         adding: false,
         items: [],
+        selected: new Set(),
+        search: '',
 
-        async toggle() {
-            if (!this.open && this.items.length === 0) {
-                await this.load();
-            }
-            this.open = !this.open;
+        get filteredItems() {
+            const q = this.search.trim().toLowerCase();
+            if (!q) return this.items;
+            return this.items.filter(t => t.name.toLowerCase().includes(q));
+        },
+
+        async openModal() {
+            this.modalOpen = true;
+            if (this.items.length === 0) await this.load();
+            this.$nextTick(() => {
+                if (this.$refs.searchInput) this.$refs.searchInput.focus();
+            });
+        },
+
+        closeModal() {
+            this.modalOpen = false;
+            this.search = '';
+            this.selected = new Set();
         },
 
         async load() {
@@ -547,25 +595,68 @@ function transcriptAdder(projectId) {
             }
         },
 
-        async add(transcriptId) {
+        toggleSelect(id) {
+            const s = new Set(this.selected);
+            if (s.has(id)) s.delete(id); else s.add(id);
+            this.selected = s;
+        },
+
+        async confirmAdd() {
+            if (this.selected.size === 0 || this.adding) return;
             this.adding = true;
             try {
-                const res = await fetch(`/api/transcripts/${transcriptId}/project`, {
-                    method: 'PATCH',
+                const ids = Array.from(this.selected);
+                const res = await fetch(`/api/projects/${projectId}/batch-add-transcripts`, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project_id: projectId }),
+                    body: JSON.stringify({ transcript_ids: ids }),
                 });
                 if (!res.ok) throw new Error(res.status);
                 const data = await res.json();
                 const msg = data.members_imported > 0
-                    ? `追加しました（メンバー ${data.members_imported} 人を自動登録）`
-                    : '追加しました';
+                    ? `${data.added}件を追加しました（メンバー${data.members_imported}人を自動登録）`
+                    : `${data.added}件を追加しました`;
                 window.showToast(msg, 'success');
+                this.closeModal();
                 location.reload();
             } catch (e) {
                 window.showToast('追加に失敗しました', 'error');
             } finally {
                 this.adding = false;
+            }
+        },
+
+        async unlinkTranscript(transcriptId) {
+            const ok = await window.showConfirm(
+                'プロジェクトから外す',
+                'このデータをプロジェクトから外しますか？\nデータ自体は削除されません。',
+                '外す',
+                'キャンセル'
+            );
+            if (!ok) return;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/project`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: null }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                const el = document.getElementById('titem-' + transcriptId);
+                if (el) {
+                    el.style.transition = 'opacity 0.2s, transform 0.2s';
+                    el.style.opacity = '0';
+                    el.style.transform = 'translateX(-8px)';
+                    setTimeout(() => {
+                        el.remove();
+                        const list = document.getElementById('transcript-list');
+                        if (list && list.children.length === 0) location.reload();
+                    }, 220);
+                }
+                window.showToast('プロジェクトから外しました', 'success');
+                // モーダルのリストをリフレッシュ（次回開いたとき再取得させる）
+                this.items = [];
+            } catch (e) {
+                window.showToast('操作に失敗しました', 'error');
             }
         },
 
