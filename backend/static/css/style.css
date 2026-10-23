@@ -6219,6 +6219,25 @@ textarea.form-input-sm {
     color: var(--color-text-muted);
 }
 
+/* ── プロジェクトページ アップロードモーダル ドロップゾーン ── */
+.pjt-upload-dropzone {
+    border: 2px dashed var(--color-border);
+    border-radius: 10px;
+    padding: 32px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--color-bg);
+    user-select: none;
+}
+.pjt-upload-dropzone:hover,
+.pjt-upload-dropzone.has-file {
+    border-color: var(--color-primary);
+    background: #eff6ff;
+}
+
 /* ── 「外す」ボタン（transcriptアイテム右端） ── */
 .pjt-transcript-unlink {
     flex-shrink: 0;

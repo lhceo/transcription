@@ -51,7 +51,7 @@
             <div class="pjt-section-header">
                 <h2 class="pjt-section-title">音声データ</h2>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <a href="/?project={{ project.id }}" class="btn btn-outline btn-sm">＋ アップロード</a>
+                    <button class="btn btn-outline btn-sm" @click="openUpload()" type="button">＋ アップロード</button>
                     <button class="btn btn-ghost btn-sm" @click="openModal()" type="button">過去のデータを追加</button>
                 </div>
             </div>
@@ -150,6 +150,62 @@
                             <template x-if="adding">
                                 <span>追加中…</span>
                             </template>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# ── アップロードモーダル ── #}
+            {# x-show なので file input は常に DOM に存在する #}
+            <div class="pjt-modal-overlay" x-show="uploadOpen" x-cloak @click.self="closeUpload()" @keydown.escape.window="uploadOpen && closeUpload()" style="display:none">
+                <div class="pjt-modal-dialog" style="max-width:460px" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+                    <div class="pjt-modal-head">
+                        <h3 id="upload-modal-title">音声ファイルをアップロード</h3>
+                        <button class="btn-icon" @click="closeUpload()" type="button" :disabled="uploading" title="閉じる">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div style="padding:20px 20px 0;">
+                        {# ファイル入力は x-if の外（x-show 内は OK） #}
+                        <input type="file" id="pjt-upload-file"
+                            accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
+                            class="hidden-file-input"
+                            @change="onUploadFileChange($event)">
+                        <div class="pjt-upload-dropzone"
+                            :class="{ 'has-file': uploadFileName }"
+                            @click="document.getElementById('pjt-upload-file').click()"
+                            @dragover.prevent="uploadDragOver = true"
+                            @dragleave.prevent="uploadDragOver = false"
+                            @drop.prevent="onUploadDrop($event)"
+                            :style="uploadDragOver ? 'border-color:var(--color-primary);background:#eff6ff' : ''">
+                            <template x-if="!uploadFileName">
+                                <div style="text-align:center;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32" style="margin-bottom:8px;color:var(--color-text-muted)" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+                                    <p style="font-size:14px;font-weight:500;margin:0 0 4px;">クリックまたはドラッグ＆ドロップ</p>
+                                    <p style="font-size:12px;color:var(--color-text-muted);margin:0">mp3 / mp4 / m4a / wav / mov</p>
+                                </div>
+                            </template>
+                            <template x-if="uploadFileName">
+                                <div style="text-align:center;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28" style="margin-bottom:6px;color:var(--color-primary)" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 12.75 3 3m0 0 3-3m-3 3v-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                                    <p style="font-size:13px;font-weight:500;margin:0;word-break:break-all" x-text="uploadFileName"></p>
+                                    <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0" x-text="uploadFileSize"></p>
+                                </div>
+                            </template>
+                        </div>
+                        {# 進捗バー #}
+                        <div x-show="uploading" style="margin-top:14px;">
+                            <div style="height:6px;background:var(--color-border);border-radius:3px;overflow:hidden;">
+                                <div :style="'width:' + uploadPercent + '%;background:var(--color-primary);height:100%;transition:width 0.2s;border-radius:3px'"></div>
+                            </div>
+                            <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;text-align:center" x-text="uploadPercent < 100 ? 'アップロード中… ' + uploadPercent + '%' : '処理中…'"></p>
+                        </div>
+                    </div>
+                    <div class="pjt-modal-foot" style="margin-top:20px;">
+                        <button class="btn btn-ghost btn-sm" @click="closeUpload()" type="button" :disabled="uploading">キャンセル</button>
+                        <button class="btn btn-primary btn-sm" @click="doUpload()" type="button" :disabled="!uploadFileName || uploading">
+                            <span x-show="!uploading">アップロード開始</span>
+                            <span x-show="uploading">アップロード中…</span>
                         </button>
                     </div>
                 </div>
@@ -556,11 +612,20 @@ function projectDetail() {
 
 function transcriptAdder(projectId) {
     return {
+        // ── 過去データ追加モーダル ──
         modalOpen: false,
         loading: false,
         adding: false,
         items: [],
         selected: new Set(),
+
+        // ── アップロードモーダル ──
+        uploadOpen: false,
+        uploading: false,
+        uploadFileName: '',
+        uploadFileSize: '',
+        uploadPercent: 0,
+        uploadDragOver: false,
         search: '',
 
         get filteredItems() {
@@ -666,6 +731,88 @@ function transcriptAdder(projectId) {
             const h = Math.floor(m / 60);
             const rm = m % 60;
             return h > 0 ? `${h}時間${rm > 0 ? rm + '分' : ''}` : `${rm}分`;
+        },
+
+        // ── アップロードモーダル関連 ──
+        openUpload() {
+            this.uploadOpen = true;
+            this.uploadFileName = '';
+            this.uploadFileSize = '';
+            this.uploadPercent = 0;
+            this.uploading = false;
+            const fi = document.getElementById('pjt-upload-file');
+            if (fi) fi.value = '';
+        },
+
+        closeUpload() {
+            if (this.uploading) return;
+            this.uploadOpen = false;
+            this.uploadFileName = '';
+            this.uploadFileSize = '';
+            this.uploadPercent = 0;
+            const fi = document.getElementById('pjt-upload-file');
+            if (fi) fi.value = '';
+        },
+
+        onUploadFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.uploadFileName = file.name;
+            this.uploadFileSize = this._prettyBytes(file.size);
+        },
+
+        onUploadDrop(e) {
+            this.uploadDragOver = false;
+            const file = e.dataTransfer.files[0];
+            if (!file) return;
+            const fi = document.getElementById('pjt-upload-file');
+            if (!fi) return;
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fi.files = dt.files;
+            this.uploadFileName = file.name;
+            this.uploadFileSize = this._prettyBytes(file.size);
+        },
+
+        async doUpload() {
+            const fi = document.getElementById('pjt-upload-file');
+            if (!fi || !fi.files.length || this.uploading) return;
+            this.uploading = true;
+            this.uploadPercent = 0;
+            const fd = new FormData();
+            fd.append('file', fi.files[0]);
+            fd.append('project_id', String(projectId));
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) this.uploadPercent = Math.round(e.loaded / e.total * 100);
+            });
+            xhr.onload = () => {
+                this.uploading = false;
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    window.showToast('アップロード完了。文字起こしを開始しました。', 'success');
+                    this.uploadOpen = false;
+                    location.reload();
+                } else {
+                    let msg = 'アップロードに失敗しました';
+                    try { msg = JSON.parse(xhr.responseText)?.detail?.message || msg; } catch (_) {}
+                    window.showToast(msg, 'error');
+                    this.uploadPercent = 0;
+                }
+            };
+            xhr.onerror = () => {
+                this.uploading = false;
+                this.uploadPercent = 0;
+                window.showToast('アップロードに失敗しました', 'error');
+            };
+            xhr.open('POST', '/api/transcripts');
+            xhr.send(fd);
+        },
+
+        _prettyBytes(bytes) {
+            const mb = bytes / (1024 * 1024);
+            if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+            if (mb >= 1) return mb.toFixed(1) + ' MB';
+            return (bytes / 1024).toFixed(0) + ' KB';
         },
     };
 }
