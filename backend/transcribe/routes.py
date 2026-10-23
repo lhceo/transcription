@@ -1336,6 +1336,95 @@ def _link_speaker_to_person(speaker: Speaker, to_name: str, user_id: int, db: Se
     speaker.person_id = person.id
 
 
+@router.get("/api/transcripts/{transcript_id}/segments/html", response_class=HTMLResponse)
+async def transcript_segments_html(
+    request: Request,
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    offset: int = 0,
+    limit: int = 200,
+) -> HTMLResponse:
+    """セグメントHTMLチャンク（遅延読み込み用）。"""
+    limit = min(limit, 300)
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    settings = load_settings()
+    is_owner = _is_owner(transcript, user["id"]) or user["email"].lower() == settings.admin_email
+
+    # このチャンクのセグメント
+    segments = list(
+        db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+
+    speakers = list(db.scalars(select(Speaker).where(Speaker.transcript_id == transcript_id)))
+    speaker_name_map = {s.speaker_label: s.display_name for s in speakers}
+
+    # 色の一貫性のため全セグメントのspeaker_label+display_nameをクエリ（軽量）
+    all_labels = db.execute(
+        select(Segment.speaker_label, Segment.display_name)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ).all()
+    name_to_color: dict[str, int] = {}
+    for speaker_label, display_name in all_labels:
+        effective = display_name or speaker_name_map.get(speaker_label) or speaker_label
+        if effective not in name_to_color:
+            name_to_color[effective] = len(name_to_color) % 8
+
+    def _polish_level(seg):
+        if not seg.is_polished or not seg.pre_polish_text:
+            return None
+        ratio = difflib.SequenceMatcher(None, seg.pre_polish_text, seg.text_content).quick_ratio()
+        change = 1.0 - ratio
+        if change < 0.12:
+            return "minor"
+        elif change < 0.35:
+            return "moderate"
+        return "major"
+
+    polish_levels = {s.id: _polish_level(s) for s in segments if s.is_polished}
+
+    # 前チャンクの最後のセグメント（マージン計算用）
+    prev_effective_name = None
+    if offset > 0:
+        prev_seg = db.scalar(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+            .offset(offset - 1)
+            .limit(1)
+        )
+        if prev_seg:
+            prev_effective_name = (
+                prev_seg.display_name
+                or speaker_name_map.get(prev_seg.speaker_label)
+                or prev_seg.speaker_label
+            )
+
+    return templates.TemplateResponse(
+        request,
+        "_segment_chunk.html",
+        {
+            "segments": segments,
+            "speaker_name_map": speaker_name_map,
+            "name_to_color": name_to_color,
+            "polish_levels": polish_levels,
+            "prev_effective_name": prev_effective_name,
+            "is_owner": is_owner,
+            "user": user,
+        },
+    )
+
+
 @router.get("/api/transcripts/{transcript_id}/status")
 async def get_transcript_status(
     transcript_id: int,

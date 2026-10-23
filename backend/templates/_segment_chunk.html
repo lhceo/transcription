@@ -1,0 +1,453 @@
+{# セグメントチャンク（遅延読み込み用）。<li> 要素のリストのみ出力。
+   変数: segments, speaker_name_map, name_to_color, polish_levels,
+         prev_effective_name (str|None), is_owner, user #}
+{% for seg in segments %}
+    {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
+    {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
+    {% if loop.first %}
+        {% if prev_effective_name is not none and prev_effective_name == effective_name %}
+            {% set mt = '8px' %}
+        {% else %}
+            {% set mt = '16px' %}
+        {% endif %}
+    {% else %}
+        {% set prev_effective = loop.previtem.display_name or speaker_name_map.get(loop.previtem.speaker_label) or loop.previtem.speaker_label %}
+        {% set mt = '8px' if prev_effective == effective_name else '16px' %}
+    {% endif %}
+    <li class="segment-card"
+        id="segment-{{ seg.id }}"
+        data-segment-id="{{ seg.id }}"
+        data-speaker-label="{{ seg.speaker_label }}"
+        data-color-index="{{ color_idx }}"
+        data-start-seconds="{{ seg.start_seconds }}"
+        data-end-seconds="{{ seg.end_seconds }}"
+        data-original-asr-text="{{ seg.original_asr_text or '' }}"
+        data-bookmarked="{{ '1' if seg.is_bookmarked else '0' }}"
+        data-comment="{{ seg.comment or '' }}"
+        style="margin-top: {{ mt }}"
+        :class="{
+            'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
+            'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
+            'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,
+            'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done
+        }">
+        <header class="segment-header">
+            <button
+                type="button"
+                class="speaker-badge speaker-color-{{ color_idx }}"
+                data-segment-id="{{ seg.id }}"
+                data-speaker-label="{{ seg.speaker_label }}"
+                data-current-display-name="{{ seg.display_name or '' }}"
+                data-effective-name="{{ effective_name }}"
+                @click="openSpeakerEditorFromEvent($event)"
+            >
+                <span class="speaker-badge-text">{{ effective_name }}</span>
+            </button>
+            {# ブックマーク済みインジケーター（クリックでブックマークパネルへ） #}
+            <button type="button"
+                class="segment-bookmark-indicator"
+                data-segment-id="{{ seg.id }}"
+                style="{{ '' if seg.is_bookmarked else 'display:none' }}"
+                @click.stop="scrollToBookmarkPanel({{ seg.id }})"
+                title="ブックマーク済み"
+                aria-label="ブックマーク済み">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <span class="segment-time" data-start="{{ seg.start_seconds }}">
+                {% set ts = seg.start_seconds|int %}
+                {% set th = ts // 3600 %}
+                {% set tm = (ts % 3600) // 60 %}
+                {% set tsec = ts % 60 %}
+                {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
+            </span>
+            {% if seg.is_edited %}
+            <span class="seg-badge seg-badge-edited seg-badge-revertable"
+                  data-edited="1"
+                  x-show="!reviewMode"
+                  @click.stop="openRevertConfirm({{ seg.id }}, 'edited')"
+                  title="クリックで元に戻す">編集済み ↩</span>
+            {% endif %}
+            {% if seg.is_polished %}
+            {% set plevel = polish_levels.get(seg.id, 'minor') %}
+            <span class="seg-badge seg-badge-polished seg-badge-polished-{{ plevel }} seg-badge-revertable"
+                  x-show="!reviewMode"
+                  data-before="{{ (seg.pre_polish_text or '') | e }}"
+                  @click.stop="openRevertConfirm({{ seg.id }}, 'polished', $el.dataset.before)"
+                  title="クリックで整文前のテキストを確認">整文済み ↩</span>
+            {% endif %}
+            {% if '（？）' in seg.text_content %}
+            <span class="seg-badge seg-badge-unresolved seg-badge-unresolved-clickable"
+                  x-show="!reviewMode && !resolvedUnknowns[{{ seg.id }}]"
+                  @click.stop="resolveUnknown({{ seg.id }}, $el.closest('.segment-card'))"
+                  title="クリックで（？）を削除して解決済みにする">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                未解決あり
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.7"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+            {% endif %}
+            {# 品質チェックバッジ（クリックで解決済みにする） #}
+            <span class="seg-badge seg-badge-quality"
+                  x-show="!reviewMode && qualityIssues[{{ seg.id }}]"
+                  x-cloak
+                  :title="(qualityIssues[{{ seg.id }}]?.note || '要確認') + '（クリックで解決済みにする）'"
+                  @click.stop="dismissQuality({{ seg.id }})">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span x-text="qualityTypeLabel(qualityIssues[{{ seg.id }}]?.type)"></span>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.6;flex-shrink:0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+            {# セグメントレビューボタン（常時表示） #}
+            <button type="button"
+                class="seg-review-btn"
+                :class="{ 'is-reviewed': reviewedSegments[{{ seg.id }}] }"
+                x-show="!reviewMode"
+                @click.stop="toggleReview({{ seg.id }})"
+                :title="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'"
+                :aria-label="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            {# レビュアーアバター #}
+            <template x-if="reviewedSegments[{{ seg.id }}] && reviewedSegments[{{ seg.id }}].reviewer_picture">
+                <img class="seg-reviewer-avatar"
+                     :src="reviewedSegments[{{ seg.id }}].reviewer_picture"
+                     :alt="reviewedSegments[{{ seg.id }}].reviewer_name"
+                     :title="reviewedSegments[{{ seg.id }}].reviewer_name + ' がチェック済み'"
+                     x-show="!reviewMode">
+            </template>
+            {# 編集中オーバーレイ（他ユーザーが編集中） #}
+            <template x-if="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0">
+                <span class="seg-editing-overlay" x-show="!reviewMode"
+                      :title="presenceData[{{ seg.id }}].map(p => p.name).join(', ') + ' が編集中'">
+                    <template x-if="presenceData[{{ seg.id }}][0].picture_url">
+                        <img :src="presenceData[{{ seg.id }}][0].picture_url"
+                             class="presence-mini-avatar"
+                             :alt="presenceData[{{ seg.id }}][0].name"
+                             referrerpolicy="no-referrer">
+                    </template>
+                    <template x-if="!presenceData[{{ seg.id }}][0].picture_url">
+                        <span class="presence-mini-initials"
+                              x-text="presenceData[{{ seg.id }}][0].name.charAt(0)"></span>
+                    </template>
+                    <span x-text="presenceData[{{ seg.id }}][0].name + ' さんが編集中'"></span>
+                </span>
+            </template>
+            {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
+            <div class="segment-actions" x-show="!reviewMode">
+                <button type="button"
+                    class="segment-action-btn segment-comment-btn" :class="{'has-comment': segComments[{{ seg.id }}]}"
+                    data-segment-id="{{ seg.id }}"
+                    @click.stop="toggleCommentEdit({{ seg.id }})"
+                    :title="segComments[{{ seg.id }}] ? 'コメントを編集' : 'コメントを追加'"
+                    :aria-label="segComments[{{ seg.id }}] ? 'コメントを編集' : 'コメントを追加'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                <button type="button"
+                    class="segment-action-btn segment-bookmark-btn {{ 'is-bookmarked' if seg.is_bookmarked else '' }}"
+                    @click.stop="toggleBookmark({{ seg.id }}, $el.closest('.segment-card'))"
+                    title="{{ 'ブックマーク解除' if seg.is_bookmarked else 'ブックマーク' }}"
+                    aria-label="{{ 'ブックマーク解除' if seg.is_bookmarked else 'ブックマーク' }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                {% if seg.original_asr_text and seg.original_asr_text != seg.text_content %}
+                <button
+                    type="button"
+                    class="segment-action-btn segment-revert-btn"
+                    @click.stop="revertSegment({{ seg.id }}, $el.closest('.segment-card'))"
+                    title="元の文字起こしに戻す"
+                    aria-label="元の文字起こしに戻す"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <path d="M3.51 15a9 9 0 1 0 .49-3.04"></path>
+                    </svg>
+                </button>
+                {% endif %}
+                <button
+                    type="button"
+                    class="segment-action-btn segment-delete-btn"
+                    x-show="canEditSegments"
+                    @click.stop="deleteSegment({{ seg.id }}, $el.closest('.segment-card'))"
+                    title="このブロックを削除"
+                    aria-label="このブロックを削除"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                        <path d="M10 11v6"></path>
+                        <path d="M14 11v6"></path>
+                        <path d="M9 6V4h6v2"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        {# セグメント内ミニタイムライン：アクティブ時に表示、クリックでシーク #}
+        <div class="segment-progress-wrap"
+             @click="seekFromSegmentBar($event)"
+             title="クリックでこの位置から再生">
+            <div class="segment-progress-track">
+                <div class="segment-progress-bar"></div>
+                <div class="segment-progress-thumb"></div>
+            </div>
+        </div>
+
+        {# v1.1 Option C インラインエディタ #}
+        <div
+            class="segment-text"
+            x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}]) && !segFills[{{ seg.id }}]"
+            @click="seekToSegmentFromEvent($event)"
+            @dblclick="seekFromTextDblClick($event)"
+        ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
+
+        {# 穴埋めUI（（？）含むセグメント・通常モード） #}
+        {% if '（？）' in seg.text_content %}
+        <template x-if="segFills[{{ seg.id }}] && !shouldShowTextarea({{ seg.id }}) && !reviewMode">
+            <div class="fill-in-standalone-area">
+                <div style="font-size:11px;color:#b45309;margin-bottom:8px;display:flex;align-items:center;gap:4px">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    聞き取れなかった箇所があります。補完してください：
+                </div>
+                <div class="fill-in-area">
+                    <template x-for="(part, idx) in segFills[{{ seg.id }}].parts" :key="'sf-{{ seg.id }}-' + idx">
+                        <span>
+                            <span x-text="part"></span>
+                            <template x-if="idx < segFills[{{ seg.id }}].fills.length">
+                                <span>
+                                    <template x-if="segFills[{{ seg.id }}].activeFillIdx !== idx">
+                                        <button class="fill-chip"
+                                                :class="segFills[{{ seg.id }}].fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                @click.stop="startSegFillEdit({{ seg.id }}, idx)">
+                                            <template x-if="!segFills[{{ seg.id }}].fills[idx]">
+                                                <span style="display:flex;align-items:center;gap:3px">
+                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                    補完してください
+                                                </span>
+                                            </template>
+                                            <template x-if="segFills[{{ seg.id }}].fills[idx]">
+                                                <span style="display:flex;align-items:center;gap:4px">
+                                                    <span x-text="segFills[{{ seg.id }}].fills[idx]"></span>
+                                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                </span>
+                                            </template>
+                                        </button>
+                                    </template>
+                                    <template x-if="segFills[{{ seg.id }}].activeFillIdx === idx">
+                                        <span class="fill-chip-input-wrap">
+                                            <input class="fill-chip-input"
+                                                   :id="'sf-{{ seg.id }}-' + idx"
+                                                   x-model="segFills[{{ seg.id }}].fills[idx]"
+                                                   @blur.stop="stopSegFillEdit({{ seg.id }})"
+                                                   @keydown.enter.stop="stopSegFillEdit({{ seg.id }})"
+                                                   @keydown.escape.stop="segFills[{{ seg.id }}].fills[idx] = ''; stopSegFillEdit({{ seg.id }})"
+                                                   @click.stop>
+                                        </span>
+                                    </template>
+                                </span>
+                            </template>
+                        </span>
+                    </template>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:6px">
+                    <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="dismissSegFill({{ seg.id }})">後で</button>
+                    <button class="btn btn-sm btn-primary" @click.stop="saveSegFill({{ seg.id }}, $el.closest('.segment-card'))">確定して保存</button>
+                </div>
+            </div>
+        </template>
+        {% endif %}
+
+        {# 編集中オーバーレイカラオケ：textareaに背景ハイライトで再生位置を表示 #}
+        <div class="segment-text-overlay-wrap">
+            <div class="segment-text-overlay" aria-hidden="true"><span class="overlay-played"></span><span class="overlay-current"></span><span class="overlay-remaining"></span></div>
+            <textarea
+                class="segment-text-edit"
+                x-show="shouldShowTextarea({{ seg.id }}) && !reviewMode"
+                x-cloak
+                data-segment-id="{{ seg.id }}"
+                @blur="onSegmentBlur($event)"
+                @input="onSegmentInput($event)"
+                @keydown="onSegmentKeydown($event)"
+                @dblclick="seekFromTextareaDblClick($event)"
+                @compositionstart="$event.target._composing = true"
+                @compositionend="$event.target._composing = false"
+            >{{ seg.text_content }}</textarea>
+        </div>
+        {# v1.0.3: 「ここで分割」ボタン。textarea にフォーカスがあるときだけ
+           表示 (CSS の :focus + 兄弟セレクタ)。 #}
+        <button
+            type="button"
+            class="segment-split-btn"
+            x-show="!reviewMode"
+            @pointerdown="$event.preventDefault()"
+            @click="onSplitButtonClick($event)"
+            aria-label="カーソル位置でセグメントを分割"
+            title="カーソル位置でセグメントを分割します"
+        >
+            <span class="segment-split-btn-label">
+                <svg class="segment-split-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="6" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                    <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                    <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+                </svg>
+                ここで分割
+            </span>
+            <small class="segment-split-btn-hint">Shift+Enter</small>
+        </button>
+
+        {# ── 原文に戻す確認バー ── #}
+        <div class="revert-confirm-bar"
+             x-show="revertConfirmSegId === {{ seg.id }}" style="display:none" @click.stop>
+            <div style="width:100%">
+                <div style="font-weight:600;margin-bottom:6px"
+                     x-text="revertConfirmType === 'polished' ? '整文前のテキストに戻しますか？' : '手動編集を取り消して元に戻しますか？'"></div>
+                <template x-if="revertConfirmType === 'polished' && revertConfirmBeforeText">
+                    <div>
+                        <div style="font-size:11px;color:#6b7280;margin-bottom:4px">整文前（ユーザー編集後）のテキスト：</div>
+                        <div style="font-size:13px;color:#374151;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:7px 10px;line-height:1.7;margin-bottom:8px" x-text="revertConfirmBeforeText"></div>
+                    </div>
+                </template>
+                <div class="revert-confirm-actions">
+                    <button class="btn btn-ghost btn-sm" @click.stop="revertConfirmSegId = null; revertConfirmBeforeText = ''">キャンセル</button>
+                    <button class="btn-revert" @click.stop="doRevert({{ seg.id }}, $el.closest('.segment-card'))">元に戻す</button>
+                </div>
+            </div>
+        </div>
+
+        {# ── コメント表示 / 編集エリア ── #}
+        <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }}) && !reviewMode"
+             x-cloak style="display:none;cursor:pointer"
+             @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集">
+            <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
+            <span class="segment-comment-edit-hint">✏ 編集</span>
+        </div>
+        <div class="segment-comment-edit-wrap"
+             x-show="commentEditId === {{ seg.id }}" style="display:none"
+             @click.stop>
+            <textarea class="segment-comment-textarea"
+                      id="comment-ta-{{ seg.id }}"
+                      rows="2"
+                      placeholder="補足メモ（整文・エクスポートに反映されます）"
+                      @keydown.escape.stop="cancelCommentEdit()"
+                      @compositionstart="$event.target._composing = true"
+                      @compositionend="$event.target._composing = false"
+                      @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
+            >{{ seg.comment or '' }}</textarea>
+            <div class="segment-comment-actions">
+                <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
+                <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
+                {% if is_owner or seg.comment_author_user_id is none or seg.comment_author_user_id == user['id'] %}
+                <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" x-show="segComments[{{ seg.id }}]" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
+                {% endif %}
+                <p class="segment-comment-hint">Shift+Enterで改行 / Enterで保存</p>
+            </div>
+        </div>
+
+        {# ── 整文インラインレビュー UI ── #}
+        {# 採用済み #}
+        <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" x-cloak style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            採用済み
+            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+        </div>
+        <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
+
+        {# スキップ済み #}
+        <div class="review-skipped-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            スキップ（元の文字起こしを使用）
+            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+        </div>
+
+        {# diff 未対応 #}
+        <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'diff' && !reviewData[{{ seg.id }}].done">
+        <div>
+            <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
+            <div class="review-flag-list">
+                <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
+                    <span class="review-flag-badge"
+                          :class="'review-flag-' + flagTypeRisk(flag.type)"
+                          :title="flag.note"
+                          x-text="flagTypeLabel(flag.type)"></span>
+                </template>
+                <span class="review-flag-note"
+                      x-text="reviewData[{{ seg.id }}].flags.map(f => f.note).join(' / ')"></span>
+            </div>
+            </template>
+            <div class="review-pending-header">
+                <span class="review-pending-badge diff-badge">整文あり</span>
+                <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
+            </div>
+            <div class="review-original-box">
+                <span class="review-original-label" x-text="diffReviewMode ? 'あなたの文字起こし' : '元の文字起こし'"></span>
+                <span x-text="reviewData[{{ seg.id }}]?.original || ''"></span>
+            </div>
+            <div class="review-edit-section">
+                <span class="review-edit-label" x-text="diffReviewMode ? 'AIの整文案（編集して調整可）' : '整文後（編集可）'"></span>
+                <textarea class="review-edit-textarea" x-model="reviewData[{{ seg.id }}].polishedText" rows="3" @click.stop></textarea>
+            </div>
+            <div class="review-inline-actions">
+                <button class="btn btn-sm btn-outline" style="color:#64748b"
+                        x-text="diffReviewMode ? '元に戻す' : 'スキップ'"
+                        @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
+                <button class="btn btn-sm btn-primary"
+                        x-text="diffReviewMode ? '採用' : '採用'"
+                        @click.stop="reviewData[{{ seg.id }}].done = 'accepted'"></button>
+            </div>
+        </div>
+        </template>
+
+        {# unknown（？）補完 未対応 #}
+        <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
+        <div>
+            <div class="review-pending-header">
+                <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
+                <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
+            </div>
+            <div class="fill-in-area">
+                <template x-for="(part, idx) in reviewData[{{ seg.id }}]?.parts || []" :key="'p-{{ seg.id }}-' + idx">
+                    <span>
+                        <span x-text="part"></span>
+                        <template x-if="idx < (reviewData[{{ seg.id }}]?.fills?.length || 0)">
+                            <span>
+                                <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx !== idx">
+                                    <button class="fill-chip"
+                                            :class="reviewData[{{ seg.id }}]?.fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                            @click.stop="startFillEdit({{ seg.id }}, idx)">
+                                        <template x-if="!reviewData[{{ seg.id }}]?.fills[idx]">
+                                            <span style="display:flex;align-items:center;gap:3px">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                補完してください
+                                            </span>
+                                        </template>
+                                        <template x-if="reviewData[{{ seg.id }}]?.fills[idx]">
+                                            <span style="display:flex;align-items:center;gap:4px">
+                                                <span x-text="reviewData[{{ seg.id }}]?.fills[idx]"></span>
+                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            </span>
+                                        </template>
+                                    </button>
+                                </template>
+                                <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx === idx">
+                                    <span class="fill-chip-input-wrap">
+                                        <input class="fill-chip-input"
+                                               :id="'fill-{{ seg.id }}-' + idx"
+                                               x-model="reviewData[{{ seg.id }}].fills[idx]"
+                                               @blur.stop="stopFillEdit({{ seg.id }})"
+                                               @keydown.enter.stop="stopFillEdit({{ seg.id }})"
+                                               @keydown.escape.stop="reviewData[{{ seg.id }}].fills[idx] = ''; stopFillEdit({{ seg.id }})"
+                                               @click.stop>
+                                    </span>
+                                </template>
+                            </span>
+                        </template>
+                    </span>
+                </template>
+            </div>
+            <div class="review-inline-actions">
+                <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">スキップ</button>
+                <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
+            </div>
+        </div>
+        </template>
+    </li>
+{% endfor %}

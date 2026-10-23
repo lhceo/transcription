@@ -25,6 +25,8 @@
     window.__CURRENT_USER_PERMISSIONS = {{ current_user_permissions | tojson }};
     window.__CURRENT_USER_ID = {{ user['id'] }};
     window.__IS_OWNER = {{ 'true' if is_owner else 'false' }};
+    window.__SEGMENT_TIMES = [{% for seg in segments %}{"id":{{ seg.id }},"s":{{ seg.start_seconds }},"e":{{ seg.end_seconds }}}{% if not loop.last %},{% endif %}{% endfor %}];
+    window.__TOTAL_SEGMENTS = {{ segments|length }};
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
@@ -895,7 +897,7 @@
     {% else %}
         <ol class="segment-list" id="segment-list"
             :class="{ 'segment-list-editing': editMode, 'segment-list-focus': editMode && focusedEditingSegmentId !== null }">
-            {% for seg in segments %}
+            {% for seg in segments[:200] %}
                 {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
                 {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
                 {% if loop.first %}
@@ -1342,6 +1344,15 @@
                 </li>
             {% endfor %}
         </ol>
+        {% if segments|length > 200 %}
+        <div id="segments-load-sentinel"
+             data-transcript-id="{{ transcript.id }}"
+             data-offset="200"
+             data-total="{{ segments|length }}"
+             style="text-align:center;padding:16px;color:var(--color-text-muted);font-size:0.875rem">
+            <span>読み込み中...</span>
+        </div>
+        {% endif %}
     {% endif %}
 
     </div>{# /transcript-main-col #}
@@ -3066,6 +3077,25 @@ function segmentsApp(transcriptId, historyNames) {
                     break; // currentTime より start が大きいセグメントが見つかったので終了
                 }
             }
+
+            // 未読み込みセグメント帯かチェック（__SEGMENT_TIMESを使う）
+            const times = window.__SEGMENT_TIMES || [];
+            const lastCard = cards[cards.length - 1];
+            const lastLoadedEnd = lastCard ? parseFloat(lastCard.dataset.endSeconds) : 0;
+            const beyondLoaded = times.length > cards.length && currentTime > lastLoadedEnd;
+
+            if (beyondLoaded) {
+                // 未読み込み帯を再生中 → sentinelがあれば自動ロード
+                const sentinel = document.getElementById('segments-load-sentinel');
+                if (sentinel && !sentinel._loading) {
+                    this._triggerChunkLoad(sentinel);
+                }
+                // アクティブカードをクリア
+                this.clearActiveCardClass(cards);
+                this.activeSegmentEl = null;
+                return;
+            }
+
             if (!activeCard) {
                 // 再生開始前 (currentTime < 最初の start) → 全カード非アクティブ
                 this.clearActiveCardClass(cards);
@@ -3099,6 +3129,43 @@ function segmentsApp(transcriptId, historyNames) {
             }
 
             this.applyProgressToCard(activeCard, ratio);
+        },
+
+        async _triggerChunkLoad(sentinel) {
+            if (sentinel._loading) return;
+            const offset = parseInt(sentinel.dataset.offset);
+            const total = parseInt(sentinel.dataset.total);
+            if (offset >= total) { sentinel.remove(); return; }
+            sentinel._loading = true;
+            try {
+                const transcriptId = sentinel.dataset.transcriptId;
+                const res = await fetch(`/api/transcripts/${transcriptId}/segments/html?offset=${offset}&limit=200`);
+                if (!res.ok) throw new Error(res.status);
+                const html = await res.text();
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const ol = document.getElementById('segment-list');
+                const newEls = [];
+                while (tmp.firstChild) {
+                    const el = tmp.firstChild;
+                    ol.insertBefore(el, sentinel);
+                    if (el.nodeType === Node.ELEMENT_NODE) newEls.push(el);
+                }
+                // 追加された要素のみ Alpine を初期化
+                newEls.forEach(el => Alpine.initTree(el));
+                sentinel.dataset.offset = String(offset + 200);
+                if (offset + 200 >= total) {
+                    sentinel.remove();
+                } else {
+                    sentinel._loading = false;
+                    const span = sentinel.querySelector('span');
+                    if (span) span.textContent = '読み込み中...';
+                }
+            } catch(e) {
+                const span = sentinel.querySelector('span');
+                if (span) span.textContent = '読み込みに失敗しました';
+                sentinel._loading = false;
+            }
         },
 
         clearActiveCardClass(cards) {
@@ -5905,5 +5972,20 @@ function projectAssigner(transcriptId, initialProjectId) {
         },
     };
 }
+
+// セグメント遅延読み込み（IntersectionObserver）
+(function() {
+    const sentinel = document.getElementById('segments-load-sentinel');
+    if (!sentinel) return;
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+            const appEl = document.querySelector('[x-data*="segmentsApp"]');
+            if (!appEl) return;
+            const app = Alpine.$data(appEl);
+            if (app && app._triggerChunkLoad) app._triggerChunkLoad(sentinel);
+        }
+    }, { rootMargin: '300px' });
+    observer.observe(sentinel);
+})();
 </script>
 {% endblock %}
