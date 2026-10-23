@@ -713,8 +713,9 @@ function uploadForm() {
                 if (empty) empty.remove();
                 // プロジェクトが選択されていたら完了後にそのプロジェクトページへ戻る
                 const projectSel = document.querySelector('[name="project_id"]');
-                if (projectSel && projectSel.value) {
-                    window.location.href = '/projects/' + projectSel.value;
+                const returnProjectId = (projectSel && projectSel.value) || window._uploadReturnProjectId || '';
+                if (returnProjectId) {
+                    window.location.href = '/projects/' + returnProjectId;
                 }
                 return;
             }
@@ -1172,6 +1173,12 @@ function projectSelector() {
             const preselect = params.get('project');
             if (preselect && this.projects.some(p => String(p.id) === preselect)) {
                 this.selectedId = preselect;
+                // x-for でオプションがDOMに描画されるのを待ってから select.value を強制セット
+                await this.$nextTick();
+                const sel = document.querySelector('[name="project_id"]');
+                if (sel) sel.value = preselect;
+                // アップロード完了後のリダイレクト先をグローバルに保存
+                window._uploadReturnProjectId = preselect;
                 await this.onProjectChange();
             }
         },
