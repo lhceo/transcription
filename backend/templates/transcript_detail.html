@@ -3148,7 +3148,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const newEls = [];
                 while (tmp.firstChild) {
                     const el = tmp.firstChild;
-                    ol.insertBefore(el, sentinel);
+                    ol.appendChild(el);
                     if (el.nodeType === Node.ELEMENT_NODE) newEls.push(el);
                 }
                 // 追加された要素のみ Alpine を初期化
