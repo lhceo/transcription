@@ -1158,8 +1158,23 @@ async def polish_pickup(
 
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    words = await pickup_proper_nouns(client, full_text, registered)
+    words, inp_tokens, out_tokens = await pickup_proper_nouns(client, full_text, registered)
     word_items = extract_word_contexts(words, full_text)
+
+    # ピックアップのAPIコストをPolishLogに記録
+    if inp_tokens or out_tokens:
+        from backend.transcribe.polish import actual_cost_yen
+        cost = actual_cost_yen(inp_tokens, out_tokens, "haiku")
+        pickup_log = PolishLog(
+            transcript_id=transcript_id,
+            model="haiku(pickup)",
+            input_tokens=inp_tokens,
+            output_tokens=out_tokens,
+            cost_yen=cost,
+            created_by_user_id=user["id"],
+        )
+        db.add(pickup_log)
+        db.commit()
 
     return JSONResponse({"words": word_items})
 

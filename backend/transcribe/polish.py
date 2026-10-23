@@ -156,8 +156,12 @@ async def pickup_proper_nouns(
     client,
     transcript_text: str,
     registered_words: list[str],
-) -> list[str]:
-    """文字起こしテキストから未登録の固有名詞候補を抽出する。"""
+) -> tuple[list[str], int, int]:
+    """文字起こしテキストから未登録の固有名詞候補を抽出する。
+
+    Returns:
+        (words, input_tokens, output_tokens)
+    """
     registered_str = "、".join(registered_words) if registered_words else "（なし）"
     # 長い音声でも後半の用語を取りこぼさないよう先頭・中間・末尾からサンプリング
     n = len(transcript_text)
@@ -186,10 +190,12 @@ async def pickup_proper_nouns(
         )
         text = message.content[0].text.strip()
         data = json.loads(text)
-        return data.get("words", [])
+        inp = message.usage.input_tokens if message.usage else 0
+        out = message.usage.output_tokens if message.usage else 0
+        return data.get("words", []), inp, out
     except Exception as e:
         logger.warning("固有名詞ピックアップ失敗: %s", e)
-        return []
+        return [], 0, 0
 
 
 def extract_word_contexts(words: list[str], transcript_text: str) -> list[dict]:

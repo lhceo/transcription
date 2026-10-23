@@ -307,15 +307,30 @@ async def _run_auto_pickup(transcript_id: int) -> None:
                     existing_lower.add(w.lower())
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        words = await pickup_proper_nouns(client, full_text, registered)
+        words, inp_tokens, out_tokens = await pickup_proper_nouns(client, full_text, registered)
         await client.aclose()
 
+        with SessionLocal() as db:
+            t = db.get(Transcript, transcript_id)
+            if t is None:
+                return
+            if words:
+                t.pickup_suggestions = json.dumps(words, ensure_ascii=False)
+            # 自動ピックアップのコストを記録
+            if inp_tokens or out_tokens:
+                from backend.transcribe.polish import actual_cost_yen
+                from backend.db.models import PolishLog
+                cost = actual_cost_yen(inp_tokens, out_tokens, "haiku")
+                db.add(PolishLog(
+                    transcript_id=transcript_id,
+                    model="haiku(auto-pickup)",
+                    input_tokens=inp_tokens,
+                    output_tokens=out_tokens,
+                    cost_yen=cost,
+                    created_by_user_id=t.user_id,
+                ))
+            db.commit()
         if words:
-            with SessionLocal() as db:
-                t = db.get(Transcript, transcript_id)
-                if t is not None:
-                    t.pickup_suggestions = json.dumps(words, ensure_ascii=False)
-                    db.commit()
             logger.info("固有名詞候補ピックアップ完了: transcript_id=%s words=%s", transcript_id, len(words))
     except Exception:
         logger.exception("固有名詞候補ピックアップ失敗: transcript_id=%s", transcript_id)
