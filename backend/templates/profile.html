@@ -80,9 +80,10 @@
         <p class="form-label" style="margin-bottom:0.5rem;font-weight:600">新しい単語を登録</p>
         <div class="vocab-edit-fields">
             <input class="form-input" x-model="newWord" placeholder="単語（正式表記）" style="flex:1" @keydown.enter="addVocab()">
-            <input class="form-input" x-model="newReading" placeholder="読み（カタカナ）" style="flex:1">
+            <input class="form-input" x-model="newReading" placeholder="読み方（例: いちかわ）" style="flex:1">
             <input class="form-input" x-model="newMeaning" placeholder="意味・説明（任意）— 書くとHaikuが正確に修正します" style="flex:2" @keydown.enter="addVocab()">
         </div>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
         <div style="margin-top:0.5rem">
             <button class="btn btn-primary btn-sm" @click="addVocab()" :disabled="!newWord.trim() || adding">
                 <span x-show="!adding">追加</span>

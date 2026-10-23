@@ -529,7 +529,8 @@
                         <button type="button" class="btn btn-outline btn-sm" @click="addVocab()" :disabled="!newVocabWord.trim()">追加</button>
                     </div>
                     <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
-                        <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: らいおんはーと）" maxlength="200">
+                        <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: いちかわ）" maxlength="200">
+                        <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
                         <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="意味・説明（例: クライアント企業名）" rows="2" style="resize:vertical"></textarea>
                     </div>
                     <template x-if="vocabulary.length === 0">
@@ -1790,6 +1791,9 @@ function audioPlayer(transcriptId) {
         },
 
         onTimeUpdate() {
+            const now = Date.now();
+            if (now - (this._lastTimeUpdateMs || 0) < 80) return; // Alpine更新を80ms以上間引く
+            this._lastTimeUpdateMs = now;
             const audio = this.$refs.audioEl;
             if (audio) this.currentTime = audio.currentTime;
         },
@@ -4023,6 +4027,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── テキストエリアイベント ─────────────────────────────────
         onSegmentInput(event) {
+            if (event.currentTarget._composing) return; // IME変換確定前はスキップ
             this.autoResize(event.currentTarget);
             // 変更を pending に登録してデバウンス自動保存を起動
             const ta = event.currentTarget;

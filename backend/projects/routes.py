@@ -356,7 +356,7 @@ async def project_detail_page(
         key = v.word.lower()
         if key not in seen_words and key not in project_vocab_words:
             seen_words.add(key)
-            transcript_vocab_items.append({"word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
+            transcript_vocab_items.append({"id": v.id, "transcript_id": v.transcript_id, "word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
 
     ctx = _common_ctx(user, db)
     ctx.update({

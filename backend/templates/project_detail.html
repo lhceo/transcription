@@ -158,19 +158,25 @@
             {# ── アップロードモーダル ── #}
             {# x-show なので file input は常に DOM に存在する #}
             <div class="pjt-modal-overlay" x-show="uploadOpen" x-cloak @click.self="closeUpload()" @keydown.escape.window="uploadOpen && closeUpload()" style="display:none">
-                <div class="pjt-modal-dialog" style="max-width:460px" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+                <div class="pjt-modal-dialog" :style="uploadMode === 'multi' ? 'max-width:520px' : 'max-width:460px'" role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
                     <div class="pjt-modal-head">
                         <h3 id="upload-modal-title">音声ファイルをアップロード</h3>
-                        <button class="btn-icon" @click="closeUpload()" type="button" :disabled="uploading" title="閉じる">
+                        <button class="btn-icon" @click="closeUpload()" type="button" :disabled="uploading || uploadingMulti" title="閉じる">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                     </div>
-                    <div style="padding:20px 20px 0;">
-                        {# ファイル入力は x-if の外（x-show 内は OK） #}
-                        <input type="file" id="pjt-upload-file"
-                            accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
-                            class="hidden-file-input"
-                            @change="onUploadFileChange($event)">
+                    {# ファイル入力2つ: x-show内なので常にDOM存在 #}
+                    <input type="file" id="pjt-upload-file" multiple
+                        accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
+                        class="hidden-file-input"
+                        @change="onUploadFileChange($event)">
+                    <input type="file" id="pjt-upload-file-add" multiple
+                        accept=".mp3,.mp4,.m4a,.wav,.mov,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,video/mp4,video/quicktime"
+                        class="hidden-file-input"
+                        @change="onUploadFileAdd($event)">
+
+                    {# ─ idle/single: ドロップゾーン ─ #}
+                    <div x-show="uploadMode !== 'multi'" style="padding:20px 20px 0;">
                         <div class="pjt-upload-dropzone"
                             :class="{ 'has-file': uploadFileName }"
                             @click="document.getElementById('pjt-upload-file').click()"
@@ -182,7 +188,7 @@
                                 <div style="text-align:center;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32" style="margin-bottom:8px;color:var(--color-text-muted)" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
                                     <p style="font-size:14px;font-weight:500;margin:0 0 4px;">クリックまたはドラッグ＆ドロップ</p>
-                                    <p style="font-size:12px;color:var(--color-text-muted);margin:0">mp3 / mp4 / m4a / wav / mov</p>
+                                    <p style="font-size:12px;color:var(--color-text-muted);margin:0">mp3 / mp4 / m4a / wav / mov（複数可）</p>
                                 </div>
                             </template>
                             <template x-if="uploadFileName">
@@ -193,7 +199,6 @@
                                 </div>
                             </template>
                         </div>
-                        {# 進捗バー #}
                         <div x-show="uploading" style="margin-top:14px;">
                             <div style="height:6px;background:var(--color-border);border-radius:3px;overflow:hidden;">
                                 <div :style="'width:' + uploadPercent + '%;background:var(--color-primary);height:100%;transition:width 0.2s;border-radius:3px'"></div>
@@ -201,11 +206,72 @@
                             <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;text-align:center" x-text="uploadPercent < 100 ? 'アップロード中… ' + uploadPercent + '%' : '処理中…'"></p>
                         </div>
                     </div>
+
+                    {# ─ multi: 並べ替えリスト ─ #}
+                    <div x-show="uploadMode === 'multi'" x-cloak style="padding:16px 20px 0;"
+                        @dragover.prevent="uploadMultiDragOver($event)"
+                        @drop.prevent="onUploadMultiZoneDrop($event)">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <span style="font-size:13px;font-weight:600;">複数ファイルを順番に結合します</span>
+                            <label class="btn btn-secondary btn-sm" for="pjt-upload-file-add" style="cursor:pointer;">＋ ファイルを追加</label>
+                        </div>
+                        <ul style="list-style:none;padding:0;margin:0;max-height:260px;overflow-y:auto;border:1px solid var(--color-border);border-radius:6px;">
+                            <template x-for="(item, idx) in uploadFileList" :key="item.id">
+                                <li style="display:flex;align-items:center;gap:8px;padding:8px 10px;"
+                                    :style="(uploadDragOverIdx === idx ? 'background:var(--color-bg-hover,#f8f9fa);' : '') + (idx < uploadFileList.length - 1 ? 'border-bottom:1px solid var(--color-border);' : '')"
+                                    draggable="true"
+                                    @dragstart="onUploadItemDragStart($event, idx)"
+                                    @dragover.prevent="uploadDragOverIdx = idx"
+                                    @dragleave="uploadDragOverIdx = null"
+                                    @drop.prevent="onUploadItemDrop($event, idx)"
+                                    @dragend="uploadDragSrcIdx = null; uploadDragOverIdx = null">
+                                    <span style="cursor:grab;color:var(--color-text-muted);flex-shrink:0;" aria-hidden="true">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="21" y2="16"/></svg>
+                                    </span>
+                                    <span style="font-size:12px;color:var(--color-text-muted);flex-shrink:0;width:18px;text-align:right;" x-text="idx + 1"></span>
+                                    <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="item.name" :title="item.name"></span>
+                                    <span style="font-size:11px;color:var(--color-text-muted);flex-shrink:0;" x-text="_prettyBytes(item.size)"></span>
+                                    <div style="display:flex;gap:2px;flex-shrink:0;">
+                                        <button type="button" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:var(--color-text-muted);" :disabled="idx === 0" @click="moveUploadFileUp(idx)" title="上へ">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+                                        </button>
+                                        <button type="button" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:var(--color-text-muted);" :disabled="idx === uploadFileList.length - 1" @click="moveUploadFileDown(idx)" title="下へ">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                        </button>
+                                        <button type="button" style="background:none;border:none;padding:2px 4px;cursor:pointer;color:#dc2626;" @click="removeUploadFile(idx)" title="削除">
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                        </button>
+                                    </div>
+                                </li>
+                            </template>
+                        </ul>
+                        <div style="font-size:11px;color:var(--color-text-muted);text-align:center;padding:6px 0;border:1px dashed var(--color-border);border-radius:4px;margin-top:6px;">ここにファイルをドロップして追加</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:var(--color-text-muted);">
+                            <span x-text="uploadFileList.length + ' ファイル'"></span>
+                            <span x-text="_prettyTotalUploadSize"></span>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <input type="text" class="form-input form-input-sm" x-model="uploadMultiTitle"
+                                placeholder="文字起こし名（空白のままでも可）" maxlength="500" style="width:100%;box-sizing:border-box;">
+                        </div>
+                        <div x-show="uploadingMulti" style="margin-top:12px;">
+                            <div style="height:6px;background:var(--color-border);border-radius:3px;overflow:hidden;">
+                                <div :style="'width:' + uploadPercent + '%;background:var(--color-primary);height:100%;transition:width 0.2s;border-radius:3px'"></div>
+                            </div>
+                            <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;text-align:center" x-text="uploadPercent < 100 ? 'アップロード中… ' + uploadPercent + '%' : '結合処理中…'"></p>
+                        </div>
+                    </div>
+
                     <div class="pjt-modal-foot" style="margin-top:20px;">
-                        <button class="btn btn-ghost btn-sm" @click="closeUpload()" type="button" :disabled="uploading">キャンセル</button>
-                        <button class="btn btn-primary btn-sm" @click="doUpload()" type="button" :disabled="!uploadFileName || uploading">
+                        <button class="btn btn-ghost btn-sm" @click="resetUpload()" type="button" x-show="uploadMode === 'multi'" x-cloak :disabled="uploadingMulti" style="margin-right:auto;">選び直す</button>
+                        <button class="btn btn-ghost btn-sm" @click="closeUpload()" type="button" :disabled="uploading || uploadingMulti">キャンセル</button>
+                        <button class="btn btn-primary btn-sm" @click="doUpload()" type="button" x-show="uploadMode !== 'multi'" :disabled="!uploadFileName || uploading">
                             <span x-show="!uploading">アップロード開始</span>
-                            <span x-show="uploading">アップロード中…</span>
+                            <span x-show="uploading" x-cloak>アップロード中…</span>
+                        </button>
+                        <button class="btn btn-primary btn-sm" @click="doUploadMulti()" type="button" x-show="uploadMode === 'multi'" x-cloak :disabled="uploadFileList.length < 2 || uploadingMulti">
+                            <span x-show="!uploadingMulti">この順番でアップロード</span>
+                            <span x-show="uploadingMulti" x-cloak>処理中…</span>
                         </button>
                     </div>
                 </div>
@@ -307,7 +373,8 @@
                     <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="if (!$event.isComposing) addWord()" style="width:100%; min-width:0;">
                 </div>
                 <div class="pjt-vocab-subfields" x-show="newWord.trim()">
-                    <input type="text" class="form-input form-input-sm" x-model="newReading" placeholder="読み方（例: ライオンハート）">
+                    <input type="text" class="form-input form-input-sm" x-model="newReading" placeholder="読み方（例: いちかわ）">
+                    <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
                     <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="意味・説明">
                     <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
                 </div>
@@ -346,24 +413,41 @@
                     </ul>
                 </template>
 
-                {# 音声データ由来の語彙（読み取り専用） #}
-                {% if transcript_vocab_items %}
-                <div style="margin-top:12px;">
+                {# 音声データ由来の語彙（Alpine.js で編集可能） #}
+                <div x-show="transcriptVocabItems.length > 0" x-cloak style="margin-top:12px;">
                     <p style="font-size:11px; font-weight:600; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">音声データ由来</p>
                     <ul class="pjt-vocab-list">
-                        {% for v in transcript_vocab_items %}
-                        <li class="pjt-vocab-item" style="opacity:0.75;">
-                            <div class="pjt-vocab-word">
-                                <span>{{ v.word }}</span>
-                                {% if v.reading %}<span class="pjt-vocab-reading text-muted">({{ v.reading }})</span>{% endif %}
-                            </div>
-                            {% if v.meaning %}<span class="pjt-vocab-meaning text-muted">{{ v.meaning }}</span>{% endif %}
-                        </li>
-                        {% endfor %}
+                        <template x-for="v in transcriptVocabItems" :key="v.id">
+                            <li class="pjt-vocab-item">
+                                <div x-show="editingTranscriptVocabId !== v.id" style="display:contents;">
+                                    <div class="pjt-vocab-word">
+                                        <span x-text="v.word"></span>
+                                        <span class="pjt-vocab-reading text-muted" x-show="v.reading" x-text="'(' + v.reading + ')'"></span>
+                                    </div>
+                                    <span class="pjt-vocab-meaning text-muted" x-show="v.meaning" x-text="v.meaning"></span>
+                                    <div style="display:flex;gap:4px;flex-shrink:0">
+                                        <button class="btn-icon btn-icon-xs" @click="startEditTranscriptVocab(v)" title="編集">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        </button>
+                                        <button class="btn-icon btn-icon-danger btn-icon-xs" @click="deleteTranscriptVocab(v)" title="削除">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div x-show="editingTranscriptVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1;padding:2px 0;">
+                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.word" placeholder="単語 *">
+                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.reading" placeholder="読み方（例: いちかわ）">
+                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.meaning" placeholder="意味・説明">
+                                    <div style="display:flex;gap:6px;margin-top:2px;">
+                                        <button class="btn btn-primary btn-sm" @click="saveEditTranscriptVocab(v)">保存</button>
+                                        <button class="btn btn-ghost btn-sm" @click="cancelEditTranscriptVocab()">キャンセル</button>
+                                    </div>
+                                </div>
+                            </li>
+                        </template>
                     </ul>
                     <p class="text-muted" style="font-size:11px; margin-top:6px;">この語彙は各音声データの固有名詞辞書から自動収集されています。整文・エクスポートに有効です。</p>
                 </div>
-                {% endif %}
             </section>
 
 
@@ -399,6 +483,7 @@
         vocabulary: initialVocabulary,
         name: {{ project.name | tojson }},
         description: {{ (project.description or '') | tojson }},
+        transcriptVocabItems: {{ transcript_vocab_items | tojson }},
     };
 })();
 
@@ -426,6 +511,10 @@ function projectDetail() {
         newMeaning: '',
         editingVocabId: null,
         editVocab: { word: '', reading: '', meaning: '' },
+
+        transcriptVocabItems: init.transcriptVocabItems || [],
+        editingTranscriptVocabId: null,
+        editTranscriptVocab: { word: '', reading: '', meaning: '' },
 
         startEditInfo() {
             this.draftName = this.projectName;
@@ -607,6 +696,66 @@ function projectDetail() {
                 window.showToast('更新に失敗しました: ' + e.message, 'error');
             }
         },
+
+        // ── 音声データ由来の語彙（編集・削除） ──
+        startEditTranscriptVocab(v) {
+            this.editingTranscriptVocabId = v.id;
+            this.editTranscriptVocab = { word: v.word, reading: v.reading || '', meaning: v.meaning || '' };
+        },
+
+        cancelEditTranscriptVocab() {
+            this.editingTranscriptVocabId = null;
+            this.editTranscriptVocab = { word: '', reading: '', meaning: '' };
+        },
+
+        async saveEditTranscriptVocab(v) {
+            const word = this.editTranscriptVocab.word.trim();
+            if (!word) { window.showToast('単語は必須です', 'error'); return; }
+            try {
+                const res = await fetch(`/api/transcripts/${v.transcript_id}/vocabulary/${v.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        word,
+                        reading: this.editTranscriptVocab.reading.trim() || null,
+                        meaning: this.editTranscriptVocab.meaning.trim() || null,
+                    }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || res.status);
+                const data = await res.json();
+                const idx = this.transcriptVocabItems.findIndex(x => x.id === v.id);
+                if (idx !== -1) {
+                    this.transcriptVocabItems[idx] = {
+                        ...this.transcriptVocabItems[idx],
+                        word: data.word,
+                        reading: data.reading || '',
+                        meaning: data.meaning || '',
+                    };
+                }
+                this.cancelEditTranscriptVocab();
+                window.showToast('更新しました');
+            } catch (e) {
+                window.showToast('更新に失敗しました: ' + e.message, 'error');
+            }
+        },
+
+        async deleteTranscriptVocab(v) {
+            const ok = await window.showConfirm(
+                '固有名詞を削除',
+                `「${v.word}」を削除しますか？\n元の音声データの辞書からも削除されます。`,
+                '削除する',
+                'キャンセル'
+            );
+            if (!ok) return;
+            try {
+                const res = await fetch(`/api/transcripts/${v.transcript_id}/vocabulary/${v.id}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error(res.status);
+                this.transcriptVocabItems = this.transcriptVocabItems.filter(x => x.id !== v.id);
+                window.showToast('削除しました');
+            } catch (e) {
+                window.showToast('削除に失敗しました', 'error');
+            }
+        },
     };
 }
 
@@ -628,10 +777,25 @@ function transcriptAdder(projectId) {
         uploadDragOver: false,
         search: '',
 
+        // ── マルチファイルアップロード ──
+        uploadMode: 'idle',  // 'idle' | 'single' | 'multi'
+        uploadFileList: [],  // [{id, file, name, size}]
+        uploadDragSrcIdx: null,
+        uploadDragOverIdx: null,
+        uploadingMulti: false,
+        _uploadFileIdSeq: 0,
+        _uploadSingleFile: null,
+        uploadMultiTitle: '',
+
         get filteredItems() {
             const q = this.search.trim().toLowerCase();
             if (!q) return this.items;
             return this.items.filter(t => t.name.toLowerCase().includes(q));
+        },
+
+        get _prettyTotalUploadSize() {
+            const total = this.uploadFileList.reduce((s, f) => s + f.size, 0);
+            return this._prettyBytes(total);
         },
 
         async openModal() {
@@ -718,7 +882,6 @@ function transcriptAdder(projectId) {
                     }, 220);
                 }
                 window.showToast('プロジェクトから外しました', 'success');
-                // モーダルのリストをリフレッシュ（次回開いたとき再取得させる）
                 this.items = [];
             } catch (e) {
                 window.showToast('操作に失敗しました', 'error');
@@ -736,51 +899,148 @@ function transcriptAdder(projectId) {
         // ── アップロードモーダル関連 ──
         openUpload() {
             this.uploadOpen = true;
+            this.uploadMode = 'idle';
             this.uploadFileName = '';
             this.uploadFileSize = '';
             this.uploadPercent = 0;
             this.uploading = false;
+            this.uploadingMulti = false;
+            this.uploadFileList = [];
+            this._uploadSingleFile = null;
+            this.uploadMultiTitle = '';
             const fi = document.getElementById('pjt-upload-file');
             if (fi) fi.value = '';
+            const fi2 = document.getElementById('pjt-upload-file-add');
+            if (fi2) fi2.value = '';
         },
 
         closeUpload() {
-            if (this.uploading) return;
+            if (this.uploading || this.uploadingMulti) return;
             this.uploadOpen = false;
+            this.resetUpload();
+        },
+
+        resetUpload() {
+            this.uploadMode = 'idle';
             this.uploadFileName = '';
             this.uploadFileSize = '';
-            this.uploadPercent = 0;
+            this.uploadFileList = [];
+            this._uploadSingleFile = null;
+            this.uploadMultiTitle = '';
             const fi = document.getElementById('pjt-upload-file');
             if (fi) fi.value = '';
+            const fi2 = document.getElementById('pjt-upload-file-add');
+            if (fi2) fi2.value = '';
         },
 
         onUploadFileChange(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            this.uploadFileName = file.name;
-            this.uploadFileSize = this._prettyBytes(file.size);
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            if (files.length === 1) {
+                this.uploadMode = 'single';
+                this._uploadSingleFile = files[0];
+                this.uploadFileName = files[0].name;
+                this.uploadFileSize = this._prettyBytes(files[0].size);
+                this.uploadFileList = [];
+            } else {
+                this.uploadMode = 'multi';
+                this._uploadSingleFile = null;
+                this.uploadFileList = [];
+                this._addUploadFiles(files);
+            }
+            e.target.value = '';
+        },
+
+        onUploadFileAdd(e) {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            this._addUploadFiles(files);
+            e.target.value = '';
+        },
+
+        _addUploadFiles(files) {
+            const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'mov'];
+            for (const f of files) {
+                const ext = f.name.toLowerCase().split('.').pop();
+                if (!allowedExts.includes(ext)) {
+                    window.showToast(`${f.name}: 対応していない形式です`, 'error');
+                    continue;
+                }
+                const id = ++this._uploadFileIdSeq;
+                this.uploadFileList = [...this.uploadFileList, { id, file: f, name: f.name, size: f.size }];
+            }
         },
 
         onUploadDrop(e) {
             this.uploadDragOver = false;
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            const fi = document.getElementById('pjt-upload-file');
-            if (!fi) return;
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            fi.files = dt.files;
-            this.uploadFileName = file.name;
-            this.uploadFileSize = this._prettyBytes(file.size);
+            const files = Array.from(e.dataTransfer.files || []);
+            if (!files.length) return;
+            if (files.length === 1) {
+                this.uploadMode = 'single';
+                this._uploadSingleFile = files[0];
+                this.uploadFileName = files[0].name;
+                this.uploadFileSize = this._prettyBytes(files[0].size);
+            } else {
+                this.uploadMode = 'multi';
+                this.uploadFileList = [];
+                this._uploadSingleFile = null;
+                this._addUploadFiles(files);
+            }
+        },
+
+        onUploadItemDragStart(e, idx) {
+            this.uploadDragSrcIdx = idx;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(idx));
+        },
+
+        onUploadItemDrop(e, targetIdx) {
+            this.uploadDragOverIdx = null;
+            if (this.uploadDragSrcIdx === null || this.uploadDragSrcIdx === targetIdx) return;
+            const list = [...this.uploadFileList];
+            const [moved] = list.splice(this.uploadDragSrcIdx, 1);
+            list.splice(targetIdx, 0, moved);
+            this.uploadFileList = list;
+            this.uploadDragSrcIdx = null;
+        },
+
+        uploadMultiDragOver(e) {
+            if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+                e.preventDefault();
+            }
+        },
+
+        onUploadMultiZoneDrop(e) {
+            const files = Array.from(e.dataTransfer.files || []);
+            if (!files.length) return;
+            this._addUploadFiles(files);
+        },
+
+        moveUploadFileUp(idx) {
+            if (idx === 0) return;
+            const list = [...this.uploadFileList];
+            [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+            this.uploadFileList = list;
+        },
+
+        moveUploadFileDown(idx) {
+            if (idx >= this.uploadFileList.length - 1) return;
+            const list = [...this.uploadFileList];
+            [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
+            this.uploadFileList = list;
+        },
+
+        removeUploadFile(idx) {
+            this.uploadFileList = this.uploadFileList.filter((_, i) => i !== idx);
+            if (this.uploadFileList.length === 0) this.resetUpload();
         },
 
         async doUpload() {
-            const fi = document.getElementById('pjt-upload-file');
-            if (!fi || !fi.files.length || this.uploading) return;
+            if (!this._uploadSingleFile || this.uploading) return;
             this.uploading = true;
             this.uploadPercent = 0;
             const fd = new FormData();
-            fd.append('file', fi.files[0]);
+            fd.append('file', this._uploadSingleFile);
             fd.append('project_id', String(projectId));
             const xhr = new XMLHttpRequest();
             xhr.upload.addEventListener('progress', (e) => {
@@ -806,6 +1066,52 @@ function transcriptAdder(projectId) {
             };
             xhr.open('POST', '/api/transcripts');
             xhr.send(fd);
+        },
+
+        async doUploadMulti() {
+            if (this.uploadingMulti || this.uploadFileList.length < 2) return;
+            this.uploadingMulti = true;
+            this.uploadPercent = 0;
+            const fd = new FormData();
+            for (const item of this.uploadFileList) {
+                fd.append('files', item.file, item.name);
+            }
+            fd.append('project_id', String(projectId));
+            if (this.uploadMultiTitle.trim()) fd.append('title', this.uploadMultiTitle.trim());
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/transcripts/multi');
+                xhr.timeout = 30 * 60 * 1000;
+                xhr.upload.onprogress = (ev) => {
+                    if (!ev.lengthComputable) return;
+                    this.uploadPercent = Math.min(90, Math.round(ev.loaded / ev.total * 100));
+                };
+                const result = await new Promise((resolve, reject) => {
+                    xhr.onload = () => resolve(xhr);
+                    xhr.onerror = () => reject(new Error('ネットワークエラー'));
+                    xhr.ontimeout = () => reject(new Error('タイムアウト'));
+                    xhr.send(fd);
+                });
+                this.uploadingMulti = false;
+                this.uploadPercent = 100;
+                if (result.status >= 200 && result.status < 300) {
+                    window.showToast('アップロード完了。結合・文字起こしを開始しました。', 'success');
+                    this.uploadOpen = false;
+                    location.reload();
+                } else {
+                    let msg = 'アップロードに失敗しました';
+                    try {
+                        const body = JSON.parse(result.responseText || '{}');
+                        if (body?.detail?.message) msg = body.detail.message;
+                    } catch (_) {}
+                    window.showToast(msg, 'error');
+                    this.uploadPercent = 0;
+                }
+            } catch (err) {
+                this.uploadingMulti = false;
+                this.uploadPercent = 0;
+                window.showToast(err.message || 'アップロードに失敗しました', 'error');
+            }
         },
 
         _prettyBytes(bytes) {
