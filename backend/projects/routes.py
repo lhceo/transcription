@@ -1312,8 +1312,8 @@ async def polish_run(
     estimated_output = int(sum(estimate_tokens(s["text"]) for s in seg_dicts) * 1.2)
     n_batches_est = max(1, _math.ceil(estimated_output / _POLISH_SAFE_TOKENS))
 
-    # 古いジョブを掃除（10分超）
-    cutoff = _time.time() - 600
+    # 古いジョブを掃除（60分超）
+    cutoff = _time.time() - 3600
     for old_id in [k for k, v in list(_polish_jobs.items()) if v.get("started_at", 0) < cutoff]:
         _polish_jobs.pop(old_id, None)
 
