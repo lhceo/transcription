@@ -6887,6 +6887,44 @@ textarea.form-input-sm {
     50% { opacity: 0.4; }
 }
 
+/* ── デプロイ安全チェック ─────────────────────────────── */
+.admin-deploy-safe,
+.admin-deploy-wait {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    border: 1.5px solid;
+}
+.admin-deploy-safe {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+}
+.admin-deploy-wait {
+    background: #fffbeb;
+    border-color: #fcd34d;
+    color: #92400e;
+}
+.admin-deploy-icon {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.4;
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+}
+.admin-deploy-body { flex: 1; }
+.admin-deploy-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+.admin-deploy-detail { font-size: 0.82rem; line-height: 1.6; opacity: 0.85; }
+.admin-deploy-refresh-hint {
+    font-size: 0.72rem;
+    opacity: 0.55;
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
 /* ── アップロードフォーム OKF セクション ─────────────────────────────── */
 .okf-section {
     border: 1px solid var(--color-border);

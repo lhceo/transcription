@@ -535,12 +535,13 @@
             open: false,
             loading: false,
             users: [],
+            processingJobs: [],
             maintenance: false,
             maintenanceLoading: false,
             initPage() {
                 this.load();
                 this.checkMaintenance();
-                setInterval(() => this.load(), 60_000);
+                setInterval(() => this.load(), 30_000);
             },
             toggle() {
                 this.open = !this.open;
@@ -554,6 +555,7 @@
                     if (!res.ok) throw new Error(res.status);
                     const data = await res.json();
                     this.users = data.users;
+                    this.processingJobs = data.processing_jobs || [];
                 } catch (e) {
                     window.showToast('利用状況の取得に失敗しました', 'error');
                 } finally {
@@ -634,6 +636,12 @@
             lastActivity(u) {
                 const dates = [u.last_login_at, u.last_upload_at, u.last_seen_at].filter(Boolean).map(s => new Date(s).getTime());
                 return dates.length ? new Date(Math.max(...dates)).toISOString() : null;
+            },
+            onlineUsers() {
+                return this.users.filter(u => this.isOnline(u));
+            },
+            isSafeToDeploy() {
+                return this.onlineUsers().length === 0 && this.processingJobs.length === 0;
             },
         };
     }

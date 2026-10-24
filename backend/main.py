@@ -617,7 +617,23 @@ async def admin_users_stats(
             "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,
         })
 
-    return JSONResponse({"users": result})
+    # 処理中ジョブ数（デプロイ安全チェック用）
+    processing_jobs = list(db.scalars(
+        select(Transcript)
+        .where(Transcript.status.in_(("uploaded", "processing")))
+        .where(Transcript.deleted_at.is_(None))
+    ))
+    processing_jobs_info = [
+        {
+            "transcript_id": t.id,
+            "status": t.status,
+            "filename": t.original_filename,
+            "user_id": t.user_id,
+        }
+        for t in processing_jobs
+    ]
+
+    return JSONResponse({"users": result, "processing_jobs": processing_jobs_info})
 
 
 @app.get("/api/admin/disk-status")
