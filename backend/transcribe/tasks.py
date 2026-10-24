@@ -21,7 +21,7 @@ import json
 
 from backend.config import load_settings
 from backend.db import SessionLocal
-from backend.db.models import ProjectVocabulary, Segment, Speaker, Transcript, TranscriptVocabulary
+from backend.db.models import ProjectVocabulary, Segment, Speaker, Transcript, TranscriptVocabulary, UserVocabulary
 from backend.transcribe.assemblyai_client import AssemblyAIClient, AssemblyAIError
 from backend.transcribe.cost import COST_YEN_PER_HOUR
 from backend.transcribe.storage import cleanup_job_dir, move_to_storage
@@ -296,12 +296,18 @@ async def _run_auto_pickup(transcript_id: int) -> None:
                     select(ProjectVocabulary.word)
                     .where(ProjectVocabulary.project_id == transcript.project_id)
                 ))
-            transcript_vocab_words = list(db.scalars(
+            existing_lower = {w.lower() for w in registered}
+            for w in db.scalars(
                 select(TranscriptVocabulary.word)
                 .where(TranscriptVocabulary.transcript_id == transcript_id)
-            ))
-            existing_lower = {w.lower() for w in registered}
-            for w in transcript_vocab_words:
+            ):
+                if w.lower() not in existing_lower:
+                    registered.append(w)
+                    existing_lower.add(w.lower())
+            for w in db.scalars(
+                select(UserVocabulary.word)
+                .where(UserVocabulary.user_id == transcript.user_id)
+            ):
                 if w.lower() not in existing_lower:
                     registered.append(w)
                     existing_lower.add(w.lower())

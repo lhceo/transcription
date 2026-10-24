@@ -1144,26 +1144,29 @@ async def polish_pickup(
             raw = []
         transcript.pickup_suggestions = None
         db.commit()
-        # 旧フォーマット（文字列リスト）と新フォーマット（dictリスト）の両対応
-        if raw and isinstance(raw[0], str):
-            word_items = extract_word_contexts(raw, full_text)
-        else:
-            word_items = raw
+        # str/dict 両フォーマット対応・context を付与して返す
+        word_items = extract_word_contexts(raw, full_text)
         return JSONResponse({"words": word_items})
 
-    # 登録済み語句（PJT辞書 + 個別辞書の両方）
+    # 登録済み語句（PJT辞書 + 個別辞書 + ユーザー辞書）
     registered: list[str] = []
     if transcript.project_id:
         registered = list(db.scalars(
             select(ProjectVocabulary.word)
             .where(ProjectVocabulary.project_id == transcript.project_id)
         ))
-    transcript_vocab_words = list(db.scalars(
+    existing_lower = {w.lower() for w in registered}
+    for w in db.scalars(
         select(TranscriptVocabulary.word)
         .where(TranscriptVocabulary.transcript_id == transcript_id)
-    ))
-    existing_lower = {w.lower() for w in registered}
-    for w in transcript_vocab_words:
+    ):
+        if w.lower() not in existing_lower:
+            registered.append(w)
+            existing_lower.add(w.lower())
+    for w in db.scalars(
+        select(UserVocabulary.word)
+        .where(UserVocabulary.user_id == user["id"])
+    ):
         if w.lower() not in existing_lower:
             registered.append(w)
             existing_lower.add(w.lower())
@@ -1285,13 +1288,24 @@ async def polish_run(
 
     if body.extra_vocabulary:
         sanitized_extra = [
-            {"word": str(v.get("word") or "").strip()[:200], "meaning": str(v.get("meaning") or "").strip()[:500]}
+            {
+                "word": str(v.get("word") or "").strip()[:200],
+                "reading": str(v.get("reading") or "").strip()[:200],
+                "meaning": str(v.get("meaning") or "").strip()[:500],
+            }
             for v in body.extra_vocabulary[:30]
             if str(v.get("word") or "").strip()
         ]
-        extra_lines = "\n".join(f"  - {v['word']}: {v['meaning']}" for v in sanitized_extra)
+        extra_lines = []
+        for v in sanitized_extra:
+            line = f"  - {v['word']}"
+            if v["reading"]:
+                line += f"（読み: {v['reading']}）"
+            if v["meaning"]:
+                line += f": {v['meaning']}"
+            extra_lines.append(line)
         if extra_lines:
-            context_text += f"\n【追加固有名詞（今回登録）】\n{extra_lines}"
+            context_text += "\n【追加固有名詞（今回登録）】\n" + "\n".join(extra_lines)
 
     speakers_for_map = list(db.scalars(
         select(Speaker).where(Speaker.transcript_id == transcript_id)

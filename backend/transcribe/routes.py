@@ -2612,6 +2612,15 @@ async def export_transcript(
     for v in transcript_vocab:
         if v.word.lower() not in existing_vocab_words:
             vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
+            existing_vocab_words.add(v.word.lower())
+    user_vocab = list(db.scalars(
+        select(UserVocabulary)
+        .where(UserVocabulary.user_id == user["id"])
+        .order_by(UserVocabulary.id)
+    ))
+    for v in user_vocab:
+        if v.word.lower() not in existing_vocab_words:
+            vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
 
     meta_lines = _build_meta_block(transcript, speakers if include_meta else None, segments if include_meta else None) if include_meta else None
     export_vocab = (vocab_items or None) if include_vocab else None

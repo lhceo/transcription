@@ -139,28 +139,32 @@ def build_context_text(
 
 # 固有名詞ピックアップ ─────────────────────────────────────────────────────────
 
-PICKUP_SYSTEM = """あなたは日本語の文字起こしテキストを分析するアシスタントです。
-テキストから固有名詞・専門用語・意味が不明確な語句を抽出してください。
+PICKUP_SYSTEM = """あなたは日本語ビジネス会議の文字起こしを分析するアシスタントです。
+テキストから固有名詞・専門用語を抽出し、それぞれの意味を推察してください。
 
 条件:
 - 人名・会社名・製品名・プロジェクト名・略称・ニックネームなどを対象にする
 - 既に辞書に登録済みの語句は除外する
-- 一般的な日本語の単語は除外する
+- 一般的な日本語の単語（会議・報告・確認など）は除外する
 - 最大15件まで
 
-必ずJSONで返してください:
-{"words": ["単語1", "単語2", ...]}"""
+各単語について「それが何か」を会話の文脈から1〜2文で推察してください。
+分からない場合は meaning を空文字にしてください。
+
+必ずJSONで返してください（他のテキストは不要）:
+{"words": [{"word": "単語1", "meaning": "推察される意味・説明"}, ...]}"""
 
 
 async def pickup_proper_nouns(
     client,
     transcript_text: str,
     registered_words: list[str],
-) -> tuple[list[str], int, int]:
+) -> tuple[list[dict], int, int]:
     """文字起こしテキストから未登録の固有名詞候補を抽出する。
 
     Returns:
         (words, input_tokens, output_tokens)
+        words は [{"word": str, "meaning": str}, ...] 形式
     """
     registered_str = "、".join(registered_words) if registered_words else "（なし）"
     # 長い音声でも後半の用語を取りこぼさないよう先頭・中間・末尾からサンプリング
@@ -184,32 +188,50 @@ async def pickup_proper_nouns(
     try:
         message = await client.messages.create(
             model=MODELS["haiku"]["id"],  # ピックアップは常にHaikuで十分
-            max_tokens=512,
+            max_tokens=1024,
             system=PICKUP_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
         text = message.content[0].text.strip()
-        data = json.loads(text)
         inp = message.usage.input_tokens if message.usage else 0
         out = message.usage.output_tokens if message.usage else 0
-        return data.get("words", []), inp, out
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as je:
+            logger.warning("固有名詞ピックアップ: JSONパース失敗 (raw=%r) %s", text[:200], je)
+            return [], inp, out
+        raw_words = data.get("words", [])
+        # 旧フォーマット（文字列リスト）と新フォーマット（dictリスト）の両対応
+        words = [
+            w if isinstance(w, dict) else {"word": w, "meaning": ""}
+            for w in raw_words
+            if (isinstance(w, dict) and w.get("word")) or (isinstance(w, str) and w)
+        ]
+        return words, inp, out
     except Exception as e:
         logger.warning("固有名詞ピックアップ失敗: %s", e)
         return [], 0, 0
 
 
-def extract_word_contexts(words: list[str], transcript_text: str) -> list[dict]:
+def extract_word_contexts(words: list, transcript_text: str) -> list[dict]:
     """各単語の初出文脈（前後の文）を抽出する。
 
+    Args:
+        words: str のリスト（旧形式）または {"word": str, "meaning": str} のdictリスト（新形式）
+
     Returns:
-        [{"word": str, "context": str | None}, ...]
+        [{"word": str, "meaning": str, "context": str | None}, ...]
     """
     # セグメント区切りは改行、文区切りは。！？
     sentences = re.split(r'(?<=[。！？])|(?<=\n)', transcript_text)
     sentences = [s.strip() for s in sentences if s.strip()]
 
     results = []
-    for word in words:
+    for item in words:
+        word = item if isinstance(item, str) else item.get("word", "")
+        meaning = "" if isinstance(item, str) else (item.get("meaning") or "")
+        if not word:
+            continue
         context: str | None = None
         for sentence in sentences:
             if word in sentence:
@@ -223,7 +245,7 @@ def extract_word_contexts(words: list[str], transcript_text: str) -> list[dict]:
                     snippet = snippet + "…"
                 context = snippet
                 break
-        results.append({"word": word, "context": context})
+        results.append({"word": word, "meaning": meaning, "context": context})
     return results
 
 

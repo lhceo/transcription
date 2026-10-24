@@ -1815,7 +1815,7 @@
                     </template>
                     <template x-if="pickupWords.length > 0">
                         <div>
-                            <p class="section-hint">以下の語句が見つかりました。意味を登録すると整文の精度が上がります（任意）。</p>
+                            <p class="section-hint">以下の語句が見つかりました。AIが意味を推察しました。修正・追記してから整文できます（空欄の場合は登録されません）。</p>
                             <div class="pickup-list">
                                 <template x-for="(w, i) in pickupWords" :key="i">
                                     <div class="pickup-row">
@@ -5630,7 +5630,7 @@ function polishModal() {
                     this.pickupWords = (data.words || []).map(w =>
                         typeof w === 'string'
                             ? { word: w, meaning: '', context: null }
-                            : { word: w.word, meaning: '', context: w.context || null }
+                            : { word: w.word, meaning: w.meaning || '', context: w.context || null }
                     );
                 }
             } catch (e) { /* ignore */ }
