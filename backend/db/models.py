@@ -210,6 +210,8 @@ class Segment(Base):
     is_bookmarked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     bookmark_memo: Mapped[str | None] = mapped_column(Text, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # "decision"（決定事項）/ "todo"（アクションアイテム）/ None
+    tag: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # セグメントレビュー (collaboration v1)
     reviewed_by_user_id: Mapped[int | None] = mapped_column(

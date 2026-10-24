@@ -2603,6 +2603,22 @@ mark.find-highlight-active {
 .seg-badge-revertable:hover { filter: brightness(.92); opacity: 1; }
 .segment-card:hover .seg-badge-revertable { opacity: 1; }
 
+/* ── セグメントタグバッジ（決定事項 / ToDo） ── */
+.seg-tag-badge {
+    display: inline-flex; align-items: center;
+    font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    padding: 1px 6px; border-radius: 3px;
+    cursor: pointer; user-select: none;
+    transition: filter .15s;
+}
+.seg-tag-badge:hover { filter: brightness(.92); }
+.seg-tag-decision { background: #dcfce7; color: #15803d; }
+.seg-tag-todo     { background: #eff6ff; color: #1d4ed8; }
+
+/* タグボタン（segment-actions 内） */
+.segment-tag-btn.has-tag svg { stroke: #6366f1; }
+.segment-tag-btn.has-tag { color: #6366f1; }
+
 /* ── セグメントコメント ── */
 .segment-comment-wrap {
     margin-top: 6px;
