@@ -35,6 +35,7 @@ from backend.transcribe.polish import (
     pickup_proper_nouns,
     extract_word_contexts,
     run_polish,
+    fetch_url_contexts,
 )
 
 logger = logging.getLogger(__name__)
@@ -1321,6 +1322,17 @@ async def polish_run(
         }
         for s in segments
     ]
+
+    # コメント内URLをフェッチしてコンテキストに追加
+    all_comments = [s["comment"] for s in seg_dicts if s.get("comment")]
+    if all_comments:
+        url_contexts = await fetch_url_contexts(all_comments)
+        if url_contexts:
+            url_lines = ["\n【参照URL内容（コメントから自動取得）】"]
+            for uc in url_contexts:
+                url_lines.append(f"\nURL: {uc['url']}\n---\n{uc['content']}\n---")
+            context_text += "\n".join(url_lines)
+            logger.info("参照URL %d件をコンテキストに追加", len(url_contexts))
 
     # バッチ数を事前推定（進捗表示用）
     estimated_output = int(sum(estimate_tokens(s["text"]) for s in seg_dicts) * 1.2)

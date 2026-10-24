@@ -2397,6 +2397,26 @@ def _build_meta_block(
     return lines
 
 
+def _extract_comment_urls(segments: list[Segment], name_map: dict[str, str]) -> list[dict]:
+    """セグメントコメントからURLを抽出して [{url, timestamp, speaker, note}] を返す。"""
+    import re as _re
+    _url_re = _re.compile(r'https?://\S+')
+    results: list[dict] = []
+    seen: set[str] = set()
+    for seg in segments:
+        if not seg.comment:
+            continue
+        for url in _url_re.findall(seg.comment):
+            if url in seen:
+                continue
+            seen.add(url)
+            name = _resolve_speaker_name(seg, name_map)
+            ts = _format_time_hms(seg.start_seconds)
+            note = _url_re.sub('', seg.comment).strip(' 。、・:：　')
+            results.append({"url": url, "timestamp": ts, "speaker": name, "note": note or None})
+    return results
+
+
 def _calculate_quality_score(
     transcript: Transcript,
     segments: list[Segment],
@@ -2514,6 +2534,7 @@ def _build_export_txt(
     vocab_items: list[dict] | None = None,
     meta_lines: list[str] | None = None,
     quality_stamp: str | None = None,
+    ref_urls: list[dict] | None = None,
 ) -> str:
     lines: list[str] = []
     if meta_lines:
@@ -2557,6 +2578,19 @@ def _build_export_txt(
                 lines.append(f"- [{ts} {name}] {s.text_content}")
             lines.append("")
 
+    if ref_urls:
+        lines.append("")
+        lines.append("══════════════════════════════════════════")
+        lines.append("【参照リンク一覧】")
+        lines.append("このドキュメントをAIで分析する際は、以下のURLの内容も合わせて参照してください。")
+        lines.append("")
+        for r in ref_urls:
+            entry = f"- [{r['timestamp']} {r['speaker']}] {r['url']}"
+            if r.get("note"):
+                entry += f"（{r['note']}）"
+            lines.append(entry)
+        lines.append("══════════════════════════════════════════")
+
     if quality_stamp:
         lines.append(quality_stamp)
 
@@ -2587,6 +2621,7 @@ def _build_export_json(
     meta_lines: list[str] | None = None,
     speakers: list | None = None,
     quality_data: dict | None = None,
+    ref_urls: list[dict] | None = None,
 ) -> str:
     import json
     from datetime import timezone as _tz
@@ -2675,6 +2710,16 @@ def _build_export_json(
                 for s in todos
             ]
 
+    if ref_urls:
+        data["references"] = {
+            "ai_instruction": "以下のURLを参照してからこのドキュメントを分析してください。",
+            "urls": [
+                {"url": r["url"], "timestamp": r["timestamp"], "speaker": r["speaker"],
+                 **({"note": r["note"]} if r.get("note") else {})}
+                for r in ref_urls
+            ],
+        }
+
     if quality_data:
         data["quality"] = quality_data
 
@@ -2745,6 +2790,7 @@ async def export_transcript(
     export_vocab = (vocab_items or None) if include_vocab else None
 
     quality = _calculate_quality_score(transcript, segments, speakers, vocab_items)
+    ref_urls = _extract_comment_urls(segments, name_map) or None
 
     def _build_quality_stamp(q: dict) -> str:
         lines = ["", "══════════════════════════════════════════"]
@@ -2762,7 +2808,7 @@ async def export_transcript(
     fmt = format.lower()
     if fmt == "txt":
         stamp = _build_quality_stamp(quality)
-        content = _build_export_txt(segments, name_map, export_vocab, meta_lines, stamp)
+        content = _build_export_txt(segments, name_map, export_vocab, meta_lines, stamp, ref_urls)
         media_type = "text/plain; charset=utf-8"
         ext = "txt"
     elif fmt == "srt":
@@ -2770,7 +2816,7 @@ async def export_transcript(
         media_type = "application/x-subrip; charset=utf-8"
         ext = "srt"
     elif fmt == "json":
-        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines, speakers if include_meta else None, quality)
+        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines, speakers if include_meta else None, quality, ref_urls)
         media_type = "application/json; charset=utf-8"
         ext = "json"
     else:

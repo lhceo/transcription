@@ -14,6 +14,57 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+_URL_RE = re.compile(r'https?://\S+')
+
+
+async def _fetch_url_text(url: str, max_chars: int = 2500) -> str | None:
+    """URLをフェッチしてプレーンテキストを返す。失敗・非テキストはNone。"""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; Noto/1.0)"},
+            )
+            if resp.status_code != 200:
+                return None
+            ct = resp.headers.get("content-type", "")
+            if "html" in ct:
+                text = re.sub(r'<style[^>]*>.*?</style>', '', resp.text, flags=re.DOTALL)
+                text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+            elif "text" in ct or "plain" in ct or "json" in ct:
+                text = resp.text.strip()
+            else:
+                return None
+            return text[:max_chars] if text else None
+    except Exception as _e:
+        logger.debug("URL fetch失敗 %s: %s", url, _e)
+        return None
+
+
+async def fetch_url_contexts(comments: list[str], max_urls: int = 5) -> list[dict]:
+    """コメントリストからURLを抽出してフェッチし、{url, content} のリストを返す。"""
+    seen: set[str] = set()
+    urls: list[str] = []
+    for comment in comments:
+        for url in _URL_RE.findall(comment or ""):
+            if url not in seen:
+                seen.add(url)
+                urls.append(url)
+            if len(urls) >= max_urls:
+                break
+        if len(urls) >= max_urls:
+            break
+
+    results = []
+    for url in urls:
+        content = await _fetch_url_text(url)
+        if content:
+            results.append({"url": url, "content": content})
+    return results
+
 # モデル定義 ─────────────────────────────────────────────────────────────────
 MODELS = {
     "haiku": {
