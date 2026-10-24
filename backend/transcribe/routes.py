@@ -1249,6 +1249,27 @@ async def transcript_detail(
         return "major"
     polish_levels = {s.id: _polish_level(s) for s in segments if s.is_polished}
 
+    # 話者ごとの発話時間集計（話者分析バー用）
+    _speaker_seconds: dict[str, float] = {}
+    for seg in segments:
+        eff = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label
+        dur = max(0.0, (seg.end_seconds or 0) - (seg.start_seconds or 0))
+        _speaker_seconds[eff] = _speaker_seconds.get(eff, 0.0) + dur
+    _total_sec = sum(_speaker_seconds.values()) or 1
+    speaker_stats = sorted(
+        [
+            {
+                "name": name,
+                "seconds": round(sec),
+                "percent": round(sec / _total_sec * 100, 1),
+                "color_idx": name_to_color.get(name, 0),
+            }
+            for name, sec in _speaker_seconds.items()
+        ],
+        key=lambda x: x["seconds"],
+        reverse=True,
+    )
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1279,6 +1300,7 @@ async def transcript_detail(
             "shares_data": shares_data,
             "current_user_permissions": current_user_permissions,
             "reviewed_segments": reviewed_segments,
+            "speaker_stats": speaker_stats,
         },
     )
 

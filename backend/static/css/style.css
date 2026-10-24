@@ -3486,6 +3486,85 @@ mark.find-highlight-active {
     flex: 1;
     min-width: 0;
 }
+
+/* ── 話者分析バー ──────────────────────────────────────── */
+.speaker-chart-wrap {
+    margin-bottom: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--color-surface);
+}
+.speaker-chart-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+    text-align: left;
+}
+.speaker-chart-toggle:hover { background: var(--color-hover); }
+.speaker-chart-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6; }
+.speaker-chart-toggle-hint { font-size: 0.75rem; font-weight: 400; color: var(--color-text-muted); margin-left: 2px; }
+.speaker-chart-chevron { width: 14px; height: 14px; flex-shrink: 0; margin-left: auto; opacity: 0.5; transition: transform 0.2s; }
+.speaker-chart-panel { padding: 0 14px 14px; }
+.speaker-chart-bar {
+    display: flex;
+    height: 18px;
+    border-radius: 6px;
+    overflow: hidden;
+    gap: 2px;
+    margin-bottom: 10px;
+}
+/* 棒グラフの各セグメント: speaker-color-N の background を転用しつつ視認性の高い色に上書き */
+.speaker-chart-bar .speaker-color-0 { background: #3b82f6; }
+.speaker-chart-bar .speaker-color-1 { background: #22c55e; }
+.speaker-chart-bar .speaker-color-2 { background: #f97316; }
+.speaker-chart-bar .speaker-color-3 { background: #ec4899; }
+.speaker-chart-bar .speaker-color-4 { background: #8b5cf6; }
+.speaker-chart-bar .speaker-color-5 { background: #06b6d4; }
+.speaker-chart-bar .speaker-color-6 { background: #f59e0b; }
+.speaker-chart-bar .speaker-color-7 { background: #ef4444; }
+.speaker-chart-segment {
+    border-radius: 3px;
+    transition: opacity 0.15s;
+    cursor: default;
+}
+.speaker-chart-segment:hover { opacity: 0.8; }
+.speaker-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+}
+.speaker-chart-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+}
+.speaker-chart-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.speaker-chart-dot.speaker-color-0 { background: #3b82f6; }
+.speaker-chart-dot.speaker-color-1 { background: #22c55e; }
+.speaker-chart-dot.speaker-color-2 { background: #f97316; }
+.speaker-chart-dot.speaker-color-3 { background: #ec4899; }
+.speaker-chart-dot.speaker-color-4 { background: #8b5cf6; }
+.speaker-chart-dot.speaker-color-5 { background: #06b6d4; }
+.speaker-chart-dot.speaker-color-6 { background: #f59e0b; }
+.speaker-chart-dot.speaker-color-7 { background: #ef4444; }
+.speaker-chart-legend-name { color: var(--color-text); font-weight: 500; }
+.speaker-chart-legend-pct { font-weight: 700; color: var(--color-text); }
+.speaker-chart-legend-time { color: var(--color-text-muted); }
 .transcript-sidebar-col {
     display: flex;
     flex-direction: row;

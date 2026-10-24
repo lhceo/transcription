@@ -889,6 +889,51 @@
         </div>
     </div>
 
+    {# ──── 話者分析バー ──── #}
+    {% if speaker_stats and speaker_stats|length > 1 %}
+    <div class="speaker-chart-wrap" x-data="{ open: false }">
+        <button type="button" class="speaker-chart-toggle" @click="open = !open"
+                :aria-expanded="open" aria-controls="speaker-chart-panel">
+            <svg class="speaker-chart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/>
+            </svg>
+            話者分析
+            <span class="speaker-chart-toggle-hint">{{ speaker_stats|length }}人 · {{ (transcript.audio_duration_seconds or 0)|int // 60 }}分</span>
+            <svg class="speaker-chart-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :style="open ? 'transform:rotate(180deg)' : ''">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </button>
+        <div id="speaker-chart-panel" class="speaker-chart-panel" x-show="open" x-cloak
+             x-transition:enter="speaker-chart-enter" x-transition:enter-start="speaker-chart-enter-start">
+
+            {# 横積み棒グラフ #}
+            <div class="speaker-chart-bar">
+                {% for sp in speaker_stats %}
+                <div class="speaker-chart-segment speaker-color-{{ sp.color_idx }}"
+                     style="width: {{ sp.percent }}%; min-width: {% if sp.percent >= 3 %}0{% else %}4{% endif %}px"
+                     title="{{ sp.name }}: {{ sp.percent }}%"></div>
+                {% endfor %}
+            </div>
+
+            {# 凡例 #}
+            <div class="speaker-chart-legend">
+                {% for sp in speaker_stats %}
+                <div class="speaker-chart-legend-item">
+                    <span class="speaker-chart-dot speaker-color-{{ sp.color_idx }}"></span>
+                    <span class="speaker-chart-legend-name">{{ sp.name }}</span>
+                    <span class="speaker-chart-legend-pct">{{ sp.percent }}%</span>
+                    <span class="speaker-chart-legend-time">
+                        {%- set m = sp.seconds // 60 -%}
+                        {%- set s = sp.seconds % 60 -%}
+                        {% if m > 0 %}{{ m }}分{% if s > 0 %}{{ s }}秒{% endif %}{% else %}{{ s }}秒{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {# ──── セグメント一覧 ──── #}
     {% if not segments %}
         <div class="segments-empty">
