@@ -223,21 +223,11 @@
                 </select>
             </div>
             <div class="form-row">
-                <label for="word_boost" class="form-label">よく出る単語
-                    <span class="form-label-hint">（1行1語・任意）</span>
-                </label>
-                <textarea
-                    id="word_boost"
-                    name="word_boost"
-                    class="form-textarea"
-                    rows="3"
-                    placeholder="ライオンハート&#10;市川&#10;AssemblyAI"
-                ></textarea>
-                <p class="form-hint">
-                    人名・社名・専門用語など、このMTGに出てきそうな固有名詞を登録しておくと、
-                    <strong>文字起こし時の認識精度が上がります</strong>（音が似ていれば効果的）。<br>
-                    ※ この設定は今回の文字起こし専用です。単語の意味も含めて繰り返し使いたい場合は、
-                    <a href="/themes" class="form-hint-link">プロジェクトの固有名詞辞書</a>に登録してください。
+                <p class="form-hint" style="margin:0">
+                    <strong>文字起こし精度を上げるには</strong>：人名・社名など誤認識しやすい単語は
+                    <a href="/themes" class="form-hint-link">プロジェクトの固有名詞辞書</a>か
+                    <a href="/profile" class="form-hint-link">常用語辞書</a>に
+                    読み方つきで登録してください。プロジェクト紐づきでアップロードすると自動的に使われます。
                 </p>
             </div>
             <div class="form-row">
@@ -776,7 +766,6 @@ function uploadForm() {
             // フォームの他フィールドを収集
             const modelTier = form.querySelector('[name="model_tier"]')?.value || 'best';
             const speakersExpected = form.querySelector('[name="speakers_expected"]')?.value || '';
-            const wordBoost = form.querySelector('[name="word_boost"]')?.value || '';
             const projectIdVal = form.querySelector('[name="project_id"]')?.value || '';
             const meetingDate = form.querySelector('[name="meeting_date"]')?.value || '';
             const meetingLocation = form.querySelector('[name="meeting_location"]')?.value || '';
@@ -785,7 +774,6 @@ function uploadForm() {
 
             fd.append('model_tier', modelTier);
             if (speakersExpected) fd.append('speakers_expected', speakersExpected);
-            if (wordBoost) fd.append('word_boost', wordBoost);
             if (projectIdVal) fd.append('project_id', projectIdVal);
             if (meetingDate) fd.append('meeting_date', meetingDate);
             if (meetingLocation) fd.append('meeting_location', meetingLocation);
@@ -1194,14 +1182,6 @@ function projectSelector() {
                 const res = await fetch('/api/projects/' + id + '/context');
                 if (!res.ok) return;
                 const ctx = await res.json();
-
-                // 固有名詞を word_boost テキストエリアに自動セット
-                if (ctx.vocabulary && ctx.vocabulary.length > 0) {
-                    const ta = document.getElementById('word_boost');
-                    if (ta && !ta.value.trim()) {
-                        ta.value = ctx.vocabulary.map(v => v.word).join('\n');
-                    }
-                }
 
                 // 人数をセレクトに自動セット
                 if (ctx.member_count >= 2 && ctx.member_count <= 10) {
