@@ -520,7 +520,36 @@
                 </div>
             </div>
             <div class="form-row form-row-inline">
-                <label class="form-label">固有名詞</label>
+                <label class="form-label" style="display:flex;align-items:center;gap:5px">
+                    固有名詞
+                    <span class="info-help-wrap" x-data="{ open: false }">
+                        <button type="button" class="info-help-btn" @click.stop="open = !open" aria-label="単語登録の使われ方を見る">?</button>
+                        <div class="info-help-popover" x-show="open" x-cloak @click.outside="open = false" style="display:none">
+                            <p class="info-help-popover-title">単語登録は3つの場面で使われます</p>
+                            <div class="info-help-step">
+                                <span class="info-help-step-num">1</span>
+                                <div class="info-help-step-body">
+                                    <strong>文字起こし時（AssemblyAI）</strong>
+                                    <span>読み方を登録すると「やまさん→ヤマサン」のように初回から正確に変換されます。誤認識しそうな読み方も複数登録できます。</span>
+                                </div>
+                            </div>
+                            <div class="info-help-step">
+                                <span class="info-help-step-num">2</span>
+                                <div class="info-help-step-body">
+                                    <strong>整文（AI清書）時</strong>
+                                    <span>意味を登録すると、AIが文脈を理解した上で清書します。「誰が・誰に」の判断精度が上がります。</span>
+                                </div>
+                            </div>
+                            <div class="info-help-step">
+                                <span class="info-help-step-num">3</span>
+                                <div class="info-help-step-body">
+                                    <strong>エクスポート時</strong>
+                                    <span>辞書セクションとして先頭に添付されます。NotebookLM等の後続AIへの文脈提供になります。</span>
+                                </div>
+                            </div>
+                        </div>
+                    </span>
+                </label>
                 <div class="vocab-editor">
                     <div class="vocab-add-row">
                         <input type="text" class="form-input form-input-sm" x-model="newVocabWord"
@@ -1293,9 +1322,29 @@
                                   @compositionend="$event.target._composing = false"
                                   @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
                         >{{ seg.comment or '' }}</textarea>
-                        <div class="segment-comment-actions">
+                        <div class="segment-comment-actions" x-data="{ helpOpen: false }">
                             <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
                             <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
+                            <span class="info-help-wrap" style="margin-left:4px">
+                                <button type="button" class="info-help-btn" @click.stop="helpOpen = !helpOpen" aria-label="コメントの使われ方を見る">?</button>
+                                <div class="info-help-popover" x-show="helpOpen" x-cloak @click.outside="helpOpen = false" style="display:none;left:auto;right:0">
+                                    <p class="info-help-popover-title">コメントは2つの場面で使われます</p>
+                                    <div class="info-help-step">
+                                        <span class="info-help-step-num">1</span>
+                                        <div class="info-help-step-body">
+                                            <strong>整文（AI清書）時</strong>
+                                            <span>この発言の状況・補足としてAIに渡されます。例：「薩摩会議DAY2の分科会中の発言」と書くと、文脈を理解して清書されます。</span>
+                                        </div>
+                                    </div>
+                                    <div class="info-help-step">
+                                        <span class="info-help-step-num">2</span>
+                                        <div class="info-help-step-body">
+                                            <strong>エクスポート時</strong>
+                                            <span>発言直下に「# コメント内容」として記載されます。NotebookLM等の後続AIが文脈を読み取れるようになります。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </span>
                             {% if is_owner or seg.comment_author_user_id is none or seg.comment_author_user_id == user['id'] %}
                             <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" x-show="segComments[{{ seg.id }}]" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
                             {% endif %}
