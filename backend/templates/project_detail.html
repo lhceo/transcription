@@ -375,7 +375,7 @@
                 <div class="pjt-vocab-subfields" x-show="newWord.trim()">
                     <input type="text" class="form-input form-input-sm" x-model="newReading" placeholder="読み方（例: いちかわ）">
                     <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
-                    <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="意味・説明">
+                    <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                     <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
                 </div>
 
@@ -402,7 +402,7 @@
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1;">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（例: ライオンハート）">
-                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="意味・説明">
+                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                                     <div style="display:flex;gap:6px;margin-top:2px;">
                                         <button class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
                                         <button class="btn btn-ghost btn-sm" @click="cancelEditVocab()">キャンセル</button>
@@ -437,7 +437,7 @@
                                 <div x-show="editingTranscriptVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1;padding:2px 0;">
                                     <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.word" placeholder="単語 *">
                                     <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.reading" placeholder="読み方（例: いちかわ）">
-                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.meaning" placeholder="意味・説明">
+                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                                     <div style="display:flex;gap:6px;margin-top:2px;">
                                         <button class="btn btn-primary btn-sm" @click="saveEditTranscriptVocab(v)">保存</button>
                                         <button class="btn btn-ghost btn-sm" @click="cancelEditTranscriptVocab()">キャンセル</button>

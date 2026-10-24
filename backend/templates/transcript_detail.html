@@ -533,7 +533,7 @@
                     <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
                         <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: いちかわ）" maxlength="200">
                         <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
-                        <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="意味・説明（例: クライアント企業名）" rows="2" style="resize:vertical"></textarea>
+                        <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="何なのかを書く（例: 地域活性化の年次サミット）→ AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                     </div>
                     <template x-if="vocabulary.length === 0">
                         <p class="form-hint" style="margin-top:6px">まだ登録されていません</p>
@@ -558,7 +558,7 @@
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方">
-                                    <textarea class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="意味・説明" rows="2" style="resize:vertical"></textarea>
+                                    <textarea class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                                     <div style="display:flex;gap:6px">
                                         <button type="button" class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
                                         <button type="button" class="btn btn-ghost btn-sm" @click="cancelEditVocab()">キャンセル</button>
@@ -1774,7 +1774,7 @@
                                             <span class="pickup-word" x-text="w.word"></span>
                                             <span class="pickup-context" x-show="w.context" x-text="w.context"></span>
                                         </div>
-                                        <textarea class="form-input" x-model="w.meaning" placeholder="意味・説明（任意）" rows="2" style="resize:vertical"></textarea>
+                                        <textarea class="form-input" x-model="w.meaning" placeholder="何なのかを書く（例: 年次サミット・会社名・プロジェクト略称）→ AIが文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                                     </div>
                                 </template>
                             </div>
