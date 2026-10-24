@@ -531,8 +531,8 @@
                         <button type="button" class="btn btn-outline btn-sm" @click="addVocab()" :disabled="!newVocabWord.trim()">追加</button>
                     </div>
                     <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
-                        <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: いちかわ）" maxlength="200">
-                        <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます（例: いちかわ → 市川）</p>
+                        <input type="text" class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（例: えのさん, えんさん）カンマ区切りで複数可" maxlength="200">
+                        <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。<br>誤認識しそうな読み方も含めて複数登録できます（例: えのさん, えんさん → えのさん）</p>
                         <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="何なのかを書く（例: 地域活性化の年次サミット）→ AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                     </div>
                     <template x-if="vocabulary.length === 0">
@@ -557,7 +557,7 @@
                                 </div>
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
-                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方">
+                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（カンマ区切りで複数可：例 えのさん, えんさん）">
                                     <textarea class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                                     <div style="display:flex;gap:6px">
                                         <button type="button" class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>

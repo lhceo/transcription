@@ -67,6 +67,15 @@ router = APIRouter()
 
 # ── バックグラウンドタスク エラーロギング ─────────────────────────────────────
 
+def _reading_to_from_list(reading: str) -> list[str]:
+    """読み欄をカンマ区切りで分割して custom_spelling の from リストを返す。
+    例: "えのさん, えんさん" → ["えのさん", "えんさん"]
+    """
+    import re as _re
+    parts = [p.strip() for p in _re.split(r'[,、]', reading) if p.strip()]
+    return parts if parts else [reading]
+
+
 def _log_task_error(task: asyncio.Task) -> None:
     """create_task() の done callback。例外が握りつぶされないようにログへ記録する。"""
     if not task.cancelled() and task.exception():
@@ -529,7 +538,7 @@ async def create_transcript(
         if v.word:
             auto_boost.append(v.word)
         if v.reading and v.word:
-            auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+            auto_custom_spelling.append({"from": _reading_to_from_list(v.reading), "to": v.word})
     vocab_rows: list = []
     if parsed_project_id:
         vocab_rows = list(db.scalars(
@@ -539,7 +548,7 @@ async def create_transcript(
             if v.word:
                 auto_boost.append(v.word)
             if v.reading and v.word:
-                auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+                auto_custom_spelling.append({"from": _reading_to_from_list(v.reading), "to": v.word})
     people_names = list(db.scalars(
         select(Person.name).where(Person.owner_user_id == user["id"])
     ))
@@ -788,14 +797,14 @@ async def create_transcript_multi(
             if v.word:
                 auto_boost.append(v.word)
             if v.reading and v.word:
-                auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+                auto_custom_spelling.append({"from": _reading_to_from_list(v.reading), "to": v.word})
         if parsed_project_id:
             vocab_rows = list(db.scalars(select(ProjectVocabulary).where(ProjectVocabulary.project_id == parsed_project_id)))
             for v in vocab_rows:
                 if v.word:
                     auto_boost.append(v.word)
                 if v.reading and v.word:
-                    auto_custom_spelling.append({"from": [v.reading], "to": v.word})
+                    auto_custom_spelling.append({"from": _reading_to_from_list(v.reading), "to": v.word})
         people_names = list(db.scalars(select(Person.name).where(Person.owner_user_id == user["id"])))
         auto_boost.extend(people_names)
         _merged_boost = list(dict.fromkeys(user_word_boost + auto_boost))
