@@ -107,9 +107,9 @@ async def auth_google_callback(request: Request) -> RedirectResponse:
             url="/login?error=email_not_verified", status_code=302
         )
 
-    # ドメイン制限のチェック
+    # ドメイン制限のチェック（未設定 = 全員拒否のフェイルクローズ）
     domain = email.split("@")[-1]
-    if settings.allowed_email_domains and domain not in settings.allowed_email_domains:
+    if not settings.allowed_email_domains or domain not in settings.allowed_email_domains:
         logger.info("許可されていないドメインからのログイン試行: %s", email)
         return RedirectResponse(url="/login?error=forbidden_domain", status_code=302)
 

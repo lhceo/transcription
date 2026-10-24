@@ -15,7 +15,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -200,6 +200,58 @@ async def lifespan(app: FastAPI):
                     """)
                 except Exception:
                     pass
+                # 古い DB（projects 追加以前）に対して projects 系テーブルを保証する
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS projects (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            name VARCHAR(200) NOT NULL,
+                            description TEXT,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS project_members (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            role VARCHAR(20) NOT NULL DEFAULT 'member',
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS project_vocabulary (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            word VARCHAR(200) NOT NULL,
+                            meaning TEXT,
+                            reading VARCHAR(200),
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS polish_logs (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
+                            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                            segments_count INTEGER NOT NULL DEFAULT 0,
+                            cost_yen INTEGER NOT NULL DEFAULT 0,
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
                 # ── alembic_version の安全な更新 ──────────────────────────────
                 # 【重要】新マイグレーション追加時は必ず以下を更新する:
                 #   1. _REPAIR_HEAD を新しいマイグレーションIDに更新
@@ -210,14 +262,14 @@ async def lifespan(app: FastAPI):
                 #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
                 #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
                 #   display_name 等が消えた 2026-09-08/09 の教訓。
-                _REPAIR_HEAD = 'f7b9c1d3e5a6'
+                _REPAIR_HEAD = 'a1b3c5d7e9f0'
                 _MIGRATION_CHAIN = [
                     '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
                     'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
                     'e2b8f1c9d054', 'e4f6a8b0c2d3', 'f3c9e2a7b165', 'f5a7b9c1d3e4',
                     'a1b2c3d4e5f6', 'b2c3d4e5f6a7', 'c4d5e6f7a8b9',
                     'b3c4d5e6f7a8', 'c5d6e7f8a9b0', 'a3c5e7b9d1f2', 'b4d5e6f7a8c9',
-                    'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6',
+                    'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6', 'a1b3c5d7e9f0',
                 ]
                 def _ver_idx(v):
                     if not v:
@@ -261,6 +313,24 @@ async def lifespan(app: FastAPI):
     cfg = AlembicConfig(str(alembic_ini))
     command.upgrade(cfg, "head")
     logger.info("Alembic マイグレーション完了")
+
+    # 1b. 起動時スウィープ: デプロイ中断などで processing のまま固着したジョブを failed に
+    from datetime import datetime, timezone as _tz_startup
+    from backend.db import SessionLocal as _SL_startup
+    from backend.db.models import Transcript as _Tr_startup
+    try:
+        with _SL_startup() as _db_sw:
+            _stale = list(_db_sw.scalars(
+                select(_Tr_startup).where(_Tr_startup.status == "processing")
+            ))
+            if _stale:
+                for _t in _stale:
+                    _t.status = "failed"
+                    _t.error_message = "サーバー再起動により処理が中断されました（再アップロードしてください）"
+                _db_sw.commit()
+                logger.warning("起動時スウィープ: %d 件の stale processing → failed", len(_stale))
+    except Exception as _sw_err:
+        logger.error("起動時スウィープ失敗: %s", _sw_err)
 
     # 2. 自動削除タスクを起動 (5 分後に初回スキャン、その後 24 時間ごと)
     import asyncio

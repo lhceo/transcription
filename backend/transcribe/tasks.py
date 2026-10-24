@@ -387,13 +387,27 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
                 t.assemblyai_transcript_id = aai_transcript_id
                 db.commit()
 
-        # 4. ポーリング
+        # 4. ポーリング（一時的な通信エラーは最大5回まで許容してリトライ）
+        _MAX_TRANSIENT_ERRORS = 5
+        _transient_errors = 0
         loop = asyncio.get_event_loop()
         start = loop.time()
         result: dict | None = None
         while True:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
-            res = await client.get_transcript(aai_transcript_id)
+            try:
+                res = await client.get_transcript(aai_transcript_id)
+                _transient_errors = 0
+            except Exception as _poll_err:
+                _transient_errors += 1
+                logger.warning(
+                    "poll 一時エラー (%d/%d): transcript_id=%s err=%s",
+                    _transient_errors, _MAX_TRANSIENT_ERRORS, transcript_id, _poll_err,
+                )
+                if _transient_errors >= _MAX_TRANSIENT_ERRORS:
+                    await _mark_failed(transcript_id, f"通信エラーが連続しました: {_poll_err}")
+                    return
+                continue
             status = res.get("status")
             if status == "completed":
                 result = res

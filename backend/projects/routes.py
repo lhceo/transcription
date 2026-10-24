@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.auth.dependencies import CurrentUser
 from backend.config import APP_VERSION, load_settings
 from backend.db import SessionLocal, get_db
-from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptVocabulary, User, UserVocabulary
+from backend.db.models import Attachment, Person, PolishLog, Project, ProjectMember, ProjectVocabulary, Segment, Speaker, Theme, Transcript, TranscriptShare, TranscriptVocabulary, User, UserVocabulary
 from datetime import timezone as _tz
 from backend.transcribe.cost import get_anthropic_balance_summary, get_cost_summary
 from backend.transcribe.display import has_stored_audio, transcript_display_name
@@ -884,9 +884,21 @@ class PolishRevertRequest(BaseModel):
 
 def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
     t = db.get(Transcript, transcript_id)
-    if not t or t.user_id != user_id or t.deleted_at is not None:
+    if not t or t.deleted_at is not None:
         raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
-    return t
+    if t.user_id == user_id:
+        return t
+    # can_polish=True の共有ユーザーも整文エンドポイントを利用可能
+    share = db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == user_id,
+            TranscriptShare.can_polish == True,  # noqa: E712
+        )
+    )
+    if share:
+        return t
+    raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
 
 
 def _build_transcript_context(transcript: Transcript, db: Session) -> str:

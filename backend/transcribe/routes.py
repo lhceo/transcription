@@ -1860,15 +1860,16 @@ async def merge_segment_with_prev(
     prev.text_content = merged_text
     prev.end_seconds = segment.end_seconds
     prev.is_edited = True
-    # original_asr_text と pre_polish_text も結合して revert が正しく動くようにする
+    # original_asr_text と pre_polish_text も結合して revert が正しく動くようにする。
+    # 片方だけ存在する場合、存在しない側は text_content で補完する（欠落防止）。
     if prev.original_asr_text is not None or segment.original_asr_text is not None:
-        prev_asr = (prev.original_asr_text or "").rstrip()
-        seg_asr = (segment.original_asr_text or "").lstrip()
+        prev_asr = (prev.original_asr_text if prev.original_asr_text is not None else prev.text_content or "").rstrip()
+        seg_asr = (segment.original_asr_text if segment.original_asr_text is not None else current_text or "").lstrip()
         sep = '' if prev_asr.endswith(("。", "、", "！", "？", ".", "!")) else ' '
         prev.original_asr_text = (prev_asr + sep + seg_asr).strip()
     if prev.pre_polish_text is not None or segment.pre_polish_text is not None:
-        prev_pp = (prev.pre_polish_text or "").rstrip()
-        seg_pp = (segment.pre_polish_text or "").lstrip()
+        prev_pp = (prev.pre_polish_text if prev.pre_polish_text is not None else prev.text_content or "").rstrip()
+        seg_pp = (segment.pre_polish_text if segment.pre_polish_text is not None else current_text or "").lstrip()
         sep = '' if prev_pp.endswith(("。", "、", "！", "？", ".", "!")) else ' '
         prev.pre_polish_text = (prev_pp + sep + seg_pp).strip() or None
 
@@ -1951,16 +1952,15 @@ async def update_segment_comment(
 
     comment_text = (body.get("comment") or "").strip()
 
-    # Clearing another user's comment is not allowed for non-owners
-    if not comment_text and segment.comment and segment.comment_author_user_id not in (None, user["id"]):
+    # 他ユーザーのコメントは内容問わず変更不可（オーナーは除く）
+    if segment.comment and segment.comment_author_user_id not in (None, user["id"]):
         if not _is_owner(transcript, user["id"]):
             raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
     segment.comment = comment_text or None
     if segment.comment:
         segment.comment_author_user_id = user["id"]
-    elif not _is_owner(transcript, user["id"]):
-        # Non-owner clearing their own comment - clear author too
+    else:
         segment.comment_author_user_id = None
     db.commit()
     return JSONResponse({"ok": True, "comment": segment.comment})
@@ -2614,19 +2614,27 @@ async def rename_segments_by_effective_name(
         if effective == from_name:
             matched_ids.append(seg.id)
 
-    # 実際に書き換える
-    matched_labels: set[str] = set()
+    # speaker_label ごとにセグメントをグループ化
+    label_segments: dict[str, list] = {}
     for seg in segments:
-        if seg.id in matched_ids:
-            seg.display_name = to_name
-            matched_labels.add(seg.speaker_label)
+        label_segments.setdefault(seg.speaker_label, []).append(seg)
 
-    # リネームに関与した Speaker レコードの display_name も更新する。
-    # これにより分割で生まれた新セグメント（display_name=NULL）が
-    # speakers テーブルにフォールバックしても正しい名前を返せる。
+    # 実際に書き換える
+    matched_ids_set = set(matched_ids)
+    for seg in segments:
+        if seg.id in matched_ids_set:
+            seg.display_name = to_name
+
+    # Speaker レコードの更新は「そのラベルの全セグメントが from_name だった場合」のみ。
+    # 一部だけ一致するラベルを更新すると display_name=NULL のセグメントが
+    # 意図せず to_name に変わってしまうため。
     speaker_map = {s.speaker_label: s for s in speakers}
-    for label in matched_labels:
-        if label in speaker_map:
+    for label, label_segs in label_segments.items():
+        all_match = all(
+            (s.display_name or name_map.get(s.speaker_label) or s.speaker_label) == from_name
+            for s in label_segs
+        )
+        if all_match and label in speaker_map:
             speaker_map[label].display_name = to_name
             _link_speaker_to_person(speaker_map[label], to_name, user["id"], db)
 
