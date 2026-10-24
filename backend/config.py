@@ -28,7 +28,8 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # - v1.4 (整文インラインレビュー + セグメントコメント + Command+Z)
 # - v1.5.0 (キーボードショートカット強化・メディアキー対応・Undo/Redo)
 # - v1.6.0 (デプロイ安全チェック・話者分析バー・セグメントタグ（決定/ToDo）)
-APP_VERSION = "1.6.0"
+# - v1.7.0 (プレフライトチェック・エクスポート品質ゲート・品質スタンプ埋め込み)
+APP_VERSION = "1.7.0"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:

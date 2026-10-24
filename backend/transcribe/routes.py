@@ -2397,11 +2397,123 @@ def _build_meta_block(
     return lines
 
 
+def _calculate_quality_score(
+    transcript: Transcript,
+    segments: list[Segment],
+    speakers: list[Speaker],
+    vocab_items: list[dict],
+) -> dict:
+    import re as _re
+
+    score = 0
+    breakdown = []
+    improvements = []
+    _unnamed = _re.compile(r"^未設定話者")
+
+    # 話者確定 (25pt)
+    total_sp = len(speakers)
+    named_sp = sum(1 for s in speakers if not _unnamed.match(s.display_name or ""))
+    if total_sp == 0:
+        sp_pts = 0
+    else:
+        sp_pts = round(25 * named_sp / total_sp)
+    score += sp_pts
+    breakdown.append({"label": "話者の確定", "points": sp_pts, "max": 25,
+                       "detail": f"{named_sp}/{total_sp}人が設定済み"})
+    unnamed_count = total_sp - named_sp
+    if unnamed_count > 0:
+        improvements.append(f"話者名を設定する（{unnamed_count}人が未設定）")
+
+    # 手動編集の痕跡 (30pt)
+    total_s = len(segments)
+    edited = sum(1 for s in segments if s.is_edited)
+    if total_s == 0 or edited == 0:
+        ed_pts = 0
+    elif edited / total_s >= 0.3:
+        ed_pts = 30
+    elif edited / total_s >= 0.1:
+        ed_pts = 20
+    else:
+        ed_pts = 10
+    score += ed_pts
+    breakdown.append({"label": "手動編集の痕跡", "points": ed_pts, "max": 30,
+                       "detail": f"{edited}セグメントを手動で確認・編集"})
+    if edited == 0:
+        improvements.append("セグメントを手動で確認・修正する")
+
+    # 固有名詞辞書 (20pt)
+    vc = len(vocab_items)
+    if vc >= 5:
+        v_pts = 20
+    elif vc >= 3:
+        v_pts = 15
+    elif vc >= 1:
+        v_pts = 8
+    else:
+        v_pts = 0
+    score += v_pts
+    breakdown.append({"label": "固有名詞辞書", "points": v_pts, "max": 20,
+                       "detail": f"{vc}語が登録済み"})
+    if vc == 0:
+        improvements.append("固有名詞を辞書に登録する")
+    elif vc < 3:
+        improvements.append("さらに固有名詞を登録する")
+
+    # 整文の実施 (15pt)
+    polished = sum(1 for s in segments if s.is_polished)
+    if total_s == 0 or polished == 0:
+        p_pts = 0
+    elif polished / total_s >= 0.5:
+        p_pts = 15
+    elif polished / total_s >= 0.2:
+        p_pts = 8
+    else:
+        p_pts = 4
+    score += p_pts
+    breakdown.append({"label": "整文の実施", "points": p_pts, "max": 15,
+                       "detail": f"{polished}/{total_s}セグメントを整文済み"})
+    if polished == 0:
+        improvements.append("整文を実行してテキストを整える")
+
+    # MTGメタ情報 (10pt)
+    ctx_pts = 0
+    if transcript.meeting_purpose:
+        ctx_pts += 4
+    if transcript.meeting_agenda:
+        ctx_pts += 3
+    if transcript.meeting_date or transcript.meeting_location:
+        ctx_pts += 3
+    score += ctx_pts
+    breakdown.append({"label": "MTGメタ情報", "points": ctx_pts, "max": 10,
+                       "detail": "目的・議題・日時など"})
+    if ctx_pts < 7:
+        improvements.append("MTG情報（目的・議題）を入力する")
+
+    if score >= 80:
+        level = "trusted"
+        level_label = "✅ 信頼できるコンテキスト"
+    elif score >= 50:
+        level = "partial"
+        level_label = "⚠️ 部分的に確認済み"
+    else:
+        level = "unverified"
+        level_label = "🔴 AI生成・未検証"
+
+    return {
+        "score": score,
+        "level": level,
+        "level_label": level_label,
+        "breakdown": breakdown,
+        "improvements": improvements,
+    }
+
+
 def _build_export_txt(
     segments: list[Segment],
     name_map: dict[str, str],
     vocab_items: list[dict] | None = None,
     meta_lines: list[str] | None = None,
+    quality_stamp: str | None = None,
 ) -> str:
     lines: list[str] = []
     if meta_lines:
@@ -2445,6 +2557,9 @@ def _build_export_txt(
                 lines.append(f"- [{ts} {name}] {s.text_content}")
             lines.append("")
 
+    if quality_stamp:
+        lines.append(quality_stamp)
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -2471,6 +2586,7 @@ def _build_export_json(
     vocab_items: list[dict] | None = None,
     meta_lines: list[str] | None = None,
     speakers: list | None = None,
+    quality_data: dict | None = None,
 ) -> str:
     import json
     from datetime import timezone as _tz
@@ -2559,6 +2675,9 @@ def _build_export_json(
                 for s in todos
             ]
 
+    if quality_data:
+        data["quality"] = quality_data
+
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -2625,9 +2744,25 @@ async def export_transcript(
     meta_lines = _build_meta_block(transcript, speakers if include_meta else None, segments if include_meta else None) if include_meta else None
     export_vocab = (vocab_items or None) if include_vocab else None
 
+    quality = _calculate_quality_score(transcript, segments, speakers, vocab_items)
+
+    def _build_quality_stamp(q: dict) -> str:
+        lines = ["", "══════════════════════════════════════════"]
+        lines.append(f"コンテキスト品質: {q['level_label']}（スコア: {q['score']}/100）")
+        if q["improvements"]:
+            lines.append("AIツールへ入力する前に改善できる項目:")
+            for imp in q["improvements"]:
+                lines.append(f"  ・{imp}")
+        else:
+            lines.append("このドキュメントは人間によって確認・整備されています。")
+        lines.append("Generated by Noto")
+        lines.append("══════════════════════════════════════════")
+        return "\n".join(lines)
+
     fmt = format.lower()
     if fmt == "txt":
-        content = _build_export_txt(segments, name_map, export_vocab, meta_lines)
+        stamp = _build_quality_stamp(quality)
+        content = _build_export_txt(segments, name_map, export_vocab, meta_lines, stamp)
         media_type = "text/plain; charset=utf-8"
         ext = "txt"
     elif fmt == "srt":
@@ -2635,7 +2770,7 @@ async def export_transcript(
         media_type = "application/x-subrip; charset=utf-8"
         ext = "srt"
     elif fmt == "json":
-        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines, speakers if include_meta else None)
+        content = _build_export_json(transcript, segments, name_map, export_vocab, meta_lines, speakers if include_meta else None, quality)
         media_type = "application/json; charset=utf-8"
         ext = "json"
     else:
@@ -2667,6 +2802,45 @@ def _urlencode_filename(name: str) -> str:
     from urllib.parse import quote
 
     return quote(name, safe="")
+
+
+@router.get("/api/transcripts/{transcript_id}/quality-score")
+async def get_quality_score(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """エクスポート品質スコアを返す。"""
+    settings = load_settings()
+    transcript = db.get(Transcript, transcript_id)
+    is_admin = user["email"].lower() == settings.admin_email
+    if transcript is None or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    if not is_admin and not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    segments = list(db.scalars(
+        select(Segment).where(Segment.transcript_id == transcript_id).order_by(Segment.order_index)
+    ))
+    speakers = list(db.scalars(
+        select(Speaker).where(Speaker.transcript_id == transcript_id)
+    ))
+
+    vocab_items: list[dict] = []
+    if transcript.project_id:
+        for v in db.scalars(select(ProjectVocabulary).where(ProjectVocabulary.project_id == transcript.project_id)):
+            vocab_items.append({"word": v.word})
+    existing = {v["word"].lower() for v in vocab_items}
+    for v in db.scalars(select(TranscriptVocabulary).where(TranscriptVocabulary.transcript_id == transcript_id)):
+        if v.word.lower() not in existing:
+            vocab_items.append({"word": v.word})
+            existing.add(v.word.lower())
+    for v in db.scalars(select(UserVocabulary).where(UserVocabulary.user_id == user["id"])):
+        if v.word.lower() not in existing:
+            vocab_items.append({"word": v.word})
+            existing.add(v.word.lower())
+
+    return JSONResponse(_calculate_quality_score(transcript, segments, speakers, vocab_items))
 
 
 @router.post("/api/transcripts/{transcript_id}/segments/rename-by-name")

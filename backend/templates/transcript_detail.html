@@ -27,6 +27,7 @@
     window.__IS_OWNER = {{ 'true' if is_owner else 'false' }};
     window.__SEGMENT_TIMES = [{% for seg in segments %}{"id":{{ seg.id }},"s":{{ seg.start_seconds }},"e":{{ seg.end_seconds }}}{% if not loop.last %},{% endif %}{% endfor %}];
     window.__TOTAL_SEGMENTS = {{ segments|length }};
+    window.__SPEAKERS = [{% for s in speakers %}{"label":{{ s.speaker_label|tojson }},"name":{{ s.display_name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
@@ -710,8 +711,8 @@
                         );
                         if (!ok) return;
                     }
-                    window.location.href = url;
                     this.open = false;
+                    window.dispatchEvent(new CustomEvent('open-quality-gate', { detail: { url } }));
                 }
             }" @click.outside="open = false">
                 <button type="button" class="btn btn-secondary-outline" @click="open = !open" :aria-expanded="open">エクスポート ▾</button>
@@ -1754,6 +1755,26 @@
 <div class="polish-overlay" x-data="polishModal()" x-show="show" x-cloak @keydown.escape.window="close()">
     <div class="polish-modal" @click.outside="close()">
 
+        {# ステップ0: プレフライトチェック（話者未設定の警告） #}
+        <div x-show="step === 'preflight'">
+            <h2 class="polish-modal-title">整文の前に確認してください</h2>
+            <div class="preflight-warning-body">
+                <div class="preflight-warning-icon">⚠️</div>
+                <p class="preflight-warning-desc">以下の話者が <strong>未設定</strong> のまま整文すると、AIが誰の発言か判断できず、精度が下がります。</p>
+                <ul class="preflight-speaker-list">
+                    <template x-for="sp in preflightIssues" :key="sp">
+                        <li x-text="sp"></li>
+                    </template>
+                </ul>
+                <p class="preflight-hint">「話者を設定する」を押してから整文すると品質が向上します。</p>
+            </div>
+            <div class="polish-modal-actions">
+                <button class="btn btn-primary" @click="doAction('scroll_speakers'); close()">話者を設定する</button>
+                <button class="btn btn-secondary-outline" @click="continueToConfirm()">このまま整文する</button>
+                <button class="btn btn-ghost" @click="close()">キャンセル</button>
+            </div>
+        </div>
+
         {# ステップ1: 確認画面 #}
         <div x-show="step === 'confirm'">
             <h2 class="polish-modal-title">整文の確認</h2>
@@ -1880,6 +1901,56 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+{# 品質ゲートオーバーレイ #}
+<div class="quality-gate-overlay" x-data="qualityGate()" x-show="show" x-cloak @keydown.escape.window="close()">
+    <div class="quality-gate-modal" @click.outside="close()">
+        <h2 class="quality-gate-title">エクスポート前の品質確認</h2>
+        <div x-show="loading" class="quality-gate-loading">スコアを計算中…</div>
+        <template x-if="!loading && scoreData">
+            <div>
+                <div class="quality-gate-score-row">
+                    <div class="quality-gate-score-circle" :class="'level-' + scoreData.level">
+                        <span class="quality-gate-score-num" x-text="scoreData.score"></span>
+                        <span class="quality-gate-score-denom">/100</span>
+                    </div>
+                    <div>
+                        <p class="quality-gate-level-label" x-text="scoreData.level_label"></p>
+                        <p class="quality-gate-level-hint" x-show="scoreData.level === 'unverified'">このドキュメントをAIに渡す場合は鵜呑みにしないよう注意が必要です。</p>
+                        <p class="quality-gate-level-hint" x-show="scoreData.level === 'partial'">主要な情報は確認されていますが、一部未検証の箇所があります。</p>
+                        <p class="quality-gate-level-hint" x-show="scoreData.level === 'trusted'">人間によって確認・整備されたドキュメントです。</p>
+                    </div>
+                </div>
+                <div class="quality-gate-breakdown">
+                    <template x-for="item in scoreData.breakdown" :key="item.label">
+                        <div class="quality-gate-breakdown-row">
+                            <span class="quality-gate-breakdown-label" x-text="item.label"></span>
+                            <div class="quality-gate-breakdown-bar-wrap">
+                                <div class="quality-gate-breakdown-bar" :style="'width:' + (item.points / item.max * 100) + '%'" :class="item.points === item.max ? 'bar-full' : item.points > 0 ? 'bar-partial' : 'bar-zero'"></div>
+                            </div>
+                            <span class="quality-gate-breakdown-pts" x-text="item.points + '/' + item.max + 'pt'"></span>
+                            <span class="quality-gate-breakdown-detail" x-text="item.detail"></span>
+                        </div>
+                    </template>
+                </div>
+                <template x-if="scoreData.improvements.length > 0">
+                    <div class="quality-gate-improvements">
+                        <p class="quality-gate-improvements-title">スコアを上げるには:</p>
+                        <ul>
+                            <template x-for="imp in scoreData.improvements" :key="imp">
+                                <li x-text="imp"></li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <div class="quality-gate-actions">
+            <button class="btn btn-primary" @click="download()" :disabled="loading">エクスポートする</button>
+            <button class="btn btn-ghost" @click="close()">キャンセル</button>
+        </div>
     </div>
 </div>
 
@@ -5566,7 +5637,7 @@ function polishModal() {
     const transcriptId = (window.__TRANSCRIPT_INIT || {}).id;
     return {
         show: false,
-        step: 'confirm',   // confirm | pickup | running | result
+        step: 'confirm',   // preflight | confirm | pickup | running | result
         loading: false,
         saving: false,
         modelKey: 'haiku',
@@ -5577,9 +5648,23 @@ function polishModal() {
         totalChanged: 0,
         unknownCount: 0,
         polishProgress: { done: 0, total: 0 },
+        preflightIssues: [],
+
+        _checkPreflight() {
+            const speakers = window.__SPEAKERS || [];
+            return speakers
+                .filter(s => /^未設定話者/.test(s.name))
+                .map(s => s.name);
+        },
 
         async open() {
             this.show = true;
+            const issues = this._checkPreflight();
+            this.preflightIssues = issues;
+            if (issues.length > 0) {
+                this.step = 'preflight';
+                return;
+            }
             this.step = 'confirm';
             this.loading = true;
             this.estimate = null;
@@ -5592,6 +5677,17 @@ function polishModal() {
 
         close() {
             this.show = false;
+        },
+
+        async continueToConfirm() {
+            this.step = 'confirm';
+            this.loading = true;
+            this.estimate = null;
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/estimate');
+                if (res.ok) this.estimate = await res.json();
+            } catch (e) { /* ignore */ }
+            this.loading = false;
         },
 
         doAction(action) {
@@ -6168,5 +6264,42 @@ function projectAssigner(transcriptId, initialProjectId) {
     }, { rootMargin: '300px' });
     observer.observe(sentinel);
 })();
+
+function qualityGate() {
+    const transcriptId = (window.__TRANSCRIPT_INIT || {}).id;
+    return {
+        show: false,
+        loading: false,
+        scoreData: null,
+        downloadUrl: null,
+
+        init() {
+            window.addEventListener('open-quality-gate', (e) => {
+                this.downloadUrl = e.detail.url;
+                this.show = true;
+                this._loadScore();
+            });
+        },
+
+        async _loadScore() {
+            this.loading = true;
+            this.scoreData = null;
+            try {
+                const res = await fetch('/api/transcripts/' + transcriptId + '/quality-score');
+                if (res.ok) this.scoreData = await res.json();
+            } catch (e) { /* ignore */ }
+            this.loading = false;
+        },
+
+        download() {
+            if (this.downloadUrl) window.location.href = this.downloadUrl;
+            this.close();
+        },
+
+        close() {
+            this.show = false;
+        },
+    };
+}
 </script>
 {% endblock %}
