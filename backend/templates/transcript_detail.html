@@ -531,7 +531,7 @@
                         <button type="button" class="btn btn-outline btn-sm" @click="addVocab()" :disabled="!newVocabWord.trim()">追加</button>
                     </div>
                     <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
-                        <textarea class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方を1行1つで入力（複数の場合は改行）&#10;例）えのさん&#10;　　えんさん" rows="2" style="resize:vertical" maxlength="200"></textarea>
+                        <textarea class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（複数の場合は改行：えのさん&#10;えんさん）" rows="1" style="resize:vertical" maxlength="200"></textarea>
                         <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
                         <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="何なのかを書く（例: 地域活性化の年次サミット）→ AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                     </div>
@@ -543,7 +543,7 @@
                             <li class="vocab-item">
                                 <div x-show="editingVocabId !== v.id" class="vocab-item-view">
                                     <span class="vocab-word" x-text="v.word"></span>
-                                    <span class="vocab-reading text-muted" x-show="v.reading" x-text="'(' + v.reading + ')'"></span>
+                                    <span class="vocab-reading text-muted" x-show="v.reading" x-text="'読み: ' + v.reading.replace(/[\n,、]+/g, '・').replace(/・+/g, '・').trim()"></span>
                                     <span class="vocab-meaning text-muted" x-show="v.meaning" x-text="v.meaning"></span>
                                     <div class="vocab-item-actions"
                                          x-show="window.__IS_OWNER || v.created_by === null || v.created_by === window.__CURRENT_USER_ID">
@@ -557,7 +557,7 @@
                                 </div>
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
-                                    <textarea class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（複数の場合は改行）" rows="2" style="resize:vertical"></textarea>
+                                    <textarea class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（複数の場合は改行）" rows="1" style="resize:vertical"></textarea>
                                     <textarea class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
                                     <div style="display:flex;gap:6px">
                                         <button type="button" class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
