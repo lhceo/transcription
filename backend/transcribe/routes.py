@@ -68,11 +68,12 @@ router = APIRouter()
 # ── バックグラウンドタスク エラーロギング ─────────────────────────────────────
 
 def _reading_to_from_list(reading: str) -> list[str]:
-    """読み欄をカンマ区切りで分割して custom_spelling の from リストを返す。
-    例: "えのさん, えんさん" → ["えのさん", "えんさん"]
+    """読み欄を分割して custom_spelling の from リストを返す。
+    改行・カンマ・読点のいずれで区切っても OK。
+    例: "えのさん\nえんさん" → ["えのさん", "えんさん"]
     """
     import re as _re
-    parts = [p.strip() for p in _re.split(r'[,、]', reading) if p.strip()]
+    parts = [p.strip() for p in _re.split(r'[\n,、]', reading) if p.strip()]
     return parts if parts else [reading]
 
 

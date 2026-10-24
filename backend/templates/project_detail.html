@@ -373,8 +373,8 @@
                     <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="if (!$event.isComposing) addWord()" style="width:100%; min-width:0;">
                 </div>
                 <div class="pjt-vocab-subfields" x-show="newWord.trim()">
-                    <input type="text" class="form-input form-input-sm" x-model="newReading" placeholder="読み方（例: えのさん, えんさん）カンマ区切りで複数可">
-                    <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。<br>誤認識しそうな読み方も複数登録できます（例: えのさん, えんさん → えのさん）</p>
+                    <textarea class="form-input form-input-sm" x-model="newReading" placeholder="読み方を1行1つで入力（複数の場合は改行）&#10;例）えのさん&#10;　　えんさん" rows="2" style="resize:vertical"></textarea>
+                    <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
                     <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                     <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
                 </div>
@@ -401,7 +401,7 @@
                                 </div>
                                 <div x-show="editingVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1;">
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.word" placeholder="単語 *">
-                                    <input type="text" class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（カンマ区切りで複数可：例 えのさん, えんさん）">
+                                    <textarea class="form-input form-input-sm" x-model="editVocab.reading" placeholder="読み方（複数の場合は改行）" rows="2" style="resize:vertical"></textarea>
                                     <input type="text" class="form-input form-input-sm" x-model="editVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                                     <div style="display:flex;gap:6px;margin-top:2px;">
                                         <button class="btn btn-primary btn-sm" @click="saveEditVocab(v)">保存</button>
@@ -436,7 +436,7 @@
                                 </div>
                                 <div x-show="editingTranscriptVocabId === v.id" style="display:flex;flex-direction:column;gap:5px;flex:1;padding:2px 0;">
                                     <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.word" placeholder="単語 *">
-                                    <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.reading" placeholder="読み方（カンマ区切りで複数可：例 えのさん, えんさん）">
+                                    <textarea class="form-input form-input-sm" x-model="editTranscriptVocab.reading" placeholder="読み方（複数の場合は改行）" rows="2" style="resize:vertical"></textarea>
                                     <input type="text" class="form-input form-input-sm" x-model="editTranscriptVocab.meaning" placeholder="何なのかを書く → AIの文脈理解に使います">
                                     <div style="display:flex;gap:6px;margin-top:2px;">
                                         <button class="btn btn-primary btn-sm" @click="saveEditTranscriptVocab(v)">保存</button>
