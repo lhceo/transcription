@@ -2313,6 +2313,9 @@ function segmentsApp(transcriptId, historyNames) {
         // 進捗バー: 編集済みセグメント数
         editedCount: 0,
 
+        // ── 整文 ──────────────────────────────────────────────────
+        polishResumeState: { show: false, status: null, jobId: null, result: null },
+
         // ── 整文インラインレビュー ─────────────────────────────────
         reviewMode: false,
         diffReviewMode: false,  // true = 採用後の差分確認モード（スキップ=元に戻す）
