@@ -10,11 +10,26 @@ import json
 import logging
 import math
 import re
+import unicodedata
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r'https?://\S+')
+
+
+def _is_trivial_suggestion(original: str, suggested: str) -> bool:
+    """整文案が原文と実質同一かどうかを判定する。
+
+    句読点の全角/半角差・スペース差のみは「変更なし」と見なす。
+    ユーザーにビフォア・アフターを見せる必要のない提案を除去するために使う。
+    """
+    if original == suggested:
+        return True
+    def _n(s: str) -> str:
+        # NFKC正規化（?→？、半角スペース統一 等）してから空白を正規化
+        return ' '.join(unicodedata.normalize('NFKC', s).split())
+    return _n(original) == _n(suggested)
 
 
 async def _fetch_url_text(url: str, max_chars: int = 2500) -> str | None:
@@ -602,6 +617,14 @@ POLISH_SYSTEM = """あなたは日本語のMTG文字起こし整文アシスタ�
 
   ※ 全角括弧 （） = 「発言にはなかったが文脈から補った」という慣習的マーカー
 
+【ルールA 厳守事項】
+（）は原文に存在しない語句を新たに追加する場合のみ使う。
+原文にすでに存在する語句を言い換えたり丁寧にしたりする場合は（）で囲まない。
+例（NG）: 発言「嫁からしたら都会だとか」→ 整文「（妻からしたら）都会だとか」
+  ← 「嫁からしたら」は原文にあるので（）不要。言い換えるだけなら直接置き換える。
+例（OK）: 発言「嫁からしたら都会だとか」→ 整文「妻からしたら都会だとか」（言い換えのみ）
+例（OK）: 発言「都会だとか」→ 整文「（妻からしたら）都会だとか」（主語が省略されている場合）
+
 【ルールB】指示語（これ・それ・あれ・ここ・そこ・あの件・先日の・例のやつ 等）
 → 文脈から特定できる場合、具体的な語句に置き換える
   発言: 「それを進めておいて」
@@ -851,6 +874,19 @@ async def run_polish(
             total_output += out
             if progress_callback:
                 progress_callback(i + 1, n_batches)
+
+    # 原文と実質同一の提案を除去：句読点の全半角差のみ等はユーザーに見せない
+    seg_text_map = {s["id"]: s["text"] for s in segments}
+    merged = {
+        seg_id: text
+        for seg_id, text in merged.items()
+        if not _is_trivial_suggestion(seg_text_map.get(seg_id, ""), text)
+    }
+    merged_flags = {
+        seg_id: flags
+        for seg_id, flags in merged_flags.items()
+        if seg_id in merged
+    }
 
     cost = actual_cost_yen(total_input, total_output, model_key)
     return PolishResult(

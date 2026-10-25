@@ -3222,6 +3222,39 @@ mark.find-highlight-active {
 }
 .review-undo-btn:hover { color: #1e293b; }
 
+/* 編集モードで確認する → 整文前テキスト参照 */
+.polish-ref-detail {
+    margin-top: 4px;
+}
+.polish-ref-summary {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.polish-ref-summary::before {
+    content: '▶';
+    font-size: 9px;
+    transition: transform 0.15s;
+}
+details.polish-ref-detail[open] .polish-ref-summary::before {
+    transform: rotate(90deg);
+}
+.polish-ref-text {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    background: #f8fafc;
+    border-left: 3px solid #cbd5e1;
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.6;
+}
+
 /* ── セグメントカードのレビュー状態スタイル ── */
 .segment-card.review-accepted     { border-left: 3px solid #86efac; }
 .segment-card.review-skipped .segment-text { opacity: .4; }
