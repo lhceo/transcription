@@ -3085,12 +3085,15 @@ mark.find-highlight-active {
 /* 旧バナー（後方互換）*/
 .polish-resume-bar { display: none; }
 
-/* 整文ステータスバナー（処理中 / 完了） */
+/* 整文ステータスバナー（処理中 / 完了）— 画面下部に固定 */
 .polish-status-banner {
-    position: sticky;
-    top: 0;
-    z-index: 120;
-    border-bottom: 2px solid;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    border-top: 2px solid;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.12);
 }
 .polish-status-banner--running {
     background: #fffbeb;
