@@ -559,5 +559,7 @@ class PolishLog(Base):
     # 採用前の整文結果JSON。採用 or キャンセル後にNULLクリア。
     # サーバー再起動後もページロード時に結果を復元できるようにする。
     pending_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'running' | 'done' | 'error' | 'dismissed'
+    job_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default='done')
 
     transcript: Mapped["Transcript"] = relationship(back_populates="polish_logs")

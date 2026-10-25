@@ -320,6 +320,16 @@ def get_polish_status_map(transcript_ids: list[int], db: Session) -> dict[int, s
             if tid in id_set:
                 result[tid] = "running"
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    # DB上でrunning状態のログ（サーバー再起動で_polish_jobsが消えた場合のフォールバック）
+    running_logs = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id.in_(transcript_ids))
+        .where(PolishLog.job_status == 'running')
+        .where(PolishLog.created_at >= cutoff)
+    ).all()
+    for log in running_logs:
+        if log.transcript_id not in result:
+            result[log.transcript_id] = "running"
     logs = db.scalars(
         select(PolishLog)
         .where(PolishLog.transcript_id.in_(transcript_ids))
@@ -1263,21 +1273,32 @@ async def _polish_bg_task(
         }
         db = SessionLocal()
         try:
-            log = PolishLog(
-                transcript_id=transcript_id,
-                model=model_key,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                cost_yen=result.cost_yen,
-                created_by_user_id=user_id,
-                pending_result=_json.dumps(result_payload, ensure_ascii=False),
-            )
-            db.add(log)
+            log_id = job.get("_log_id")
+            if log_id:
+                log = db.get(PolishLog, log_id)
+                if log:
+                    log.input_tokens = result.input_tokens
+                    log.output_tokens = result.output_tokens
+                    log.cost_yen = result.cost_yen
+                    log.pending_result = _json.dumps(result_payload, ensure_ascii=False)
+                    log.job_status = 'done'
+            else:
+                log = PolishLog(
+                    transcript_id=transcript_id,
+                    model=model_key,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    cost_yen=result.cost_yen,
+                    created_by_user_id=user_id,
+                    pending_result=_json.dumps(result_payload, ensure_ascii=False),
+                    job_status='done',
+                )
+                db.add(log)
+                _polish_jobs[job_id]["_log_id"] = log.id if log else None
             transcript = db.get(Transcript, transcript_id)
             if transcript:
                 transcript.last_polished_at = datetime.now(_tz.utc)
             db.commit()
-            _polish_jobs[job_id]["_log_id"] = log.id
         finally:
             db.close()
 
@@ -1313,6 +1334,18 @@ async def _polish_bg_task(
         if job_id in _polish_jobs:
             _polish_jobs[job_id]["status"] = "error"
             _polish_jobs[job_id]["error"] = f"Claude API エラー: {e}"
+        _log_id = _polish_jobs.get(job_id, {}).get("_log_id")
+        if _log_id:
+            _db_err = SessionLocal()
+            try:
+                _log_err = _db_err.get(PolishLog, _log_id)
+                if _log_err and _log_err.job_status == 'running':
+                    _log_err.job_status = 'error'
+                    _db_err.commit()
+            except Exception:
+                pass
+            finally:
+                _db_err.close()
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/run")
@@ -1391,9 +1424,26 @@ async def polish_run(
     n_batches_est = max(1, _math.ceil(estimated_output / _POLISH_SAFE_TOKENS))
 
     # 古いジョブを掃除（60分超）
-    cutoff = _time.time() - 3600
-    for old_id in [k for k, v in list(_polish_jobs.items()) if v.get("started_at", 0) < cutoff]:
+    cutoff_ts = _time.time() - 3600
+    for old_id in [k for k, v in list(_polish_jobs.items()) if v.get("started_at", 0) < cutoff_ts]:
         _polish_jobs.pop(old_id, None)
+
+    # ジョブ開始時点でDBにログを作成（サーバー再起動後も状態を復元できるよう）
+    import json as _json_run
+    log_record = PolishLog(
+        transcript_id=transcript_id,
+        model=model_key,
+        input_tokens=0,
+        output_tokens=0,
+        cost_yen=0.0,
+        created_by_user_id=user["id"],
+        pending_result=None,
+        job_status='running',
+    )
+    db.add(log_record)
+    db.commit()
+    db.refresh(log_record)
+    log_id = log_record.id
 
     job_id = str(_uuid.uuid4())
     _polish_jobs[job_id] = {
@@ -1402,6 +1452,7 @@ async def polish_run(
         "batch_total": n_batches_est,
         "started_at": _time.time(),
         "transcript_id": transcript_id,
+        "_log_id": log_id,
     }
 
     _asyncio.create_task(_polish_bg_task(job_id, transcript_id, user["id"], seg_dicts, context_text, model_key))
@@ -1447,6 +1498,24 @@ async def polish_active(
         payload = {k: v for k, v in job.items() if k not in ("started_at", "_log_id")}
         payload["job_id"] = jid
         return JSONResponse(payload)
+
+    # ①.5 メモリにない & DB上でrunning → サーバー再起動による中断
+    from sqlalchemy import desc as _desc_active
+    from datetime import datetime as _dt_active, timezone as _tz_active, timedelta as _td_active
+    cutoff_active = _dt_active.now(_tz_active.utc) - _td_active(hours=2)
+    interrupted_log = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.job_status == 'running')
+        .where(PolishLog.created_at >= cutoff_active)
+        .order_by(_desc_active(PolishLog.created_at))
+        .limit(1)
+    ).first()
+    if interrupted_log:
+        return JSONResponse({
+            "job_id": f"interrupted-{interrupted_log.id}",
+            "status": "interrupted",
+        })
 
     # ② メモリになければDBのpending_resultを確認（サーバー再起動後の復元）
     from sqlalchemy import desc
@@ -1508,6 +1577,7 @@ async def polish_accept(
     ).all()
     for lg in stale_logs:
         lg.pending_result = None
+        lg.job_status = 'dismissed'
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
 
@@ -1521,14 +1591,25 @@ async def polish_dismiss(
     """整文完了バナーを × で閉じたとき pending_result をクリアしてダッシュボードバッジを消す。"""
     from datetime import timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-    logs = db.scalars(
+    # 完了済みログのクリア
+    done_logs = db.scalars(
         select(PolishLog)
         .where(PolishLog.transcript_id == transcript_id)
         .where(PolishLog.pending_result.isnot(None))
         .where(PolishLog.created_at >= cutoff)
     ).all()
-    for lg in logs:
+    for lg in done_logs:
         lg.pending_result = None
+        lg.job_status = 'dismissed'
+    # 中断ログのクリア（サーバー再起動で running のまま残ったもの）
+    interrupted_logs = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.job_status == 'running')
+        .where(PolishLog.created_at >= cutoff)
+    ).all()
+    for lg in interrupted_logs:
+        lg.job_status = 'dismissed'
     db.commit()
     return JSONResponse({"ok": True})
 

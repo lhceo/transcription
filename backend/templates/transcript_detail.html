@@ -849,7 +849,7 @@
          x-show="!reviewMode && polishResumeState.show"
          x-cloak
          style="display:none"
-         :class="polishResumeState.status === 'running' ? 'polish-status-banner--running' : 'polish-status-banner--done'">
+         :class="polishResumeState.status === 'running' ? 'polish-status-banner--running' : polishResumeState.status === 'interrupted' ? 'polish-status-banner--interrupted' : 'polish-status-banner--done'">
         <div class="polish-status-banner-inner">
             <div class="polish-status-banner-left">
                 <template x-if="polishResumeState.status === 'running'">
@@ -858,9 +858,13 @@
                 <template x-if="polishResumeState.status === 'done'">
                     <span class="polish-status-check">✓</span>
                 </template>
+                <template x-if="polishResumeState.status === 'interrupted'">
+                    <span class="polish-status-warn">!</span>
+                </template>
                 <div class="polish-status-text">
-                    <strong x-text="polishResumeState.status === 'running' ? '整文処理中…' : '整文が完了しました'"></strong>
+                    <strong x-text="polishResumeState.status === 'running' ? '整文処理中…' : polishResumeState.status === 'interrupted' ? '整文が中断されました' : '整文が完了しました'"></strong>
                     <span x-show="polishResumeState.status === 'running'" x-cloak class="polish-status-sub">AIがテキストを整えています。このままページを閉じても安全です。</span>
+                    <span x-show="polishResumeState.status === 'interrupted'" x-cloak class="polish-status-sub">サーバーの再起動により整文処理が中断されました。再度実行してください。</span>
                     <span x-show="polishResumeState.status === 'done'" x-cloak class="polish-status-sub">結果を確認・採用してください。編集中の内容は上書きされる場合があります。</span>
                 </div>
             </div>
@@ -4029,6 +4033,10 @@ function segmentsApp(transcriptId, historyNames) {
                             this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
                             this._dismissPolish();
                             return;
+                        } else if (data.status === 'interrupted') {
+                            this.polishResumeState = { show: true, status: 'interrupted', jobId, result: null };
+                            this._dismissInterrupted(jobId);
+                            return;
                         } else if (data.status === 'running' || data.status === 'pending') {
                             this.polishResumeState = { show: true, status: 'running', jobId, result: null };
                             this._polishStartedAt = Date.now();
@@ -4075,6 +4083,13 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async _dismissPolish() {
+            try {
+                await fetch(`/api/transcripts/${this.transcriptId}/polish/dismiss`, { method: 'POST' });
+            } catch (_) {}
+        },
+
+        async _dismissInterrupted(jobId) {
+            // interrupted log の job_status を 'dismissed' にしてバッジを消す
             try {
                 await fetch(`/api/transcripts/${this.transcriptId}/polish/dismiss`, { method: 'POST' });
             } catch (_) {}
