@@ -2527,6 +2527,13 @@ def _calculate_quality_score(
     if ctx_pts < 7:
         improvements.append("MTG情報（目的・議題）を入力する")
 
+    # コメントに関するヒント（スコアには影響しない）
+    # コメントは整文AI に segment 単位で直接渡され、文脈補完に活用される
+    commented = sum(1 for s in segments if s.comment)
+    tips: list[str] = []
+    if commented == 0 and total_s > 0:
+        tips.append("💬 セグメントへのコメントは整文AIに直接届きます。「この発言は○○の件について」など会話の背景を書くと、主語補完や言い換えの精度が上がります")
+
     if score >= 80:
         level = "trusted"
         level_label = "✅ 信頼できるコンテキスト"
@@ -2543,6 +2550,7 @@ def _calculate_quality_score(
         "level_label": level_label,
         "breakdown": breakdown,
         "improvements": improvements,
+        "tips": tips,
     }
 
 

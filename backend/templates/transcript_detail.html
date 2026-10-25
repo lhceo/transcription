@@ -1952,6 +1952,13 @@
                         </ul>
                     </div>
                 </template>
+                <template x-if="scoreData.tips && scoreData.tips.length > 0">
+                    <div class="quality-gate-tips">
+                        <template x-for="tip in scoreData.tips" :key="tip">
+                            <p x-text="tip"></p>
+                        </template>
+                    </div>
+                </template>
             </div>
         </template>
         <div class="quality-gate-actions">
