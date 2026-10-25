@@ -3389,8 +3389,6 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .segment-card.review-pending-unknown { border-left: 3px solid #fcd34d; background: #fffdf5; }
 
 /* スクロール追跡・3色状態（未読/スクロール済み/編集済み） */
-.segment-card.seg-state-scrolled { border-left: 3px solid #bfdbfe; }
-.segment-card.seg-state-edited   { border-left: 3px solid #86efac; }
 
 /* 保存失敗状態 */
 .segment-card.seg-save-error { border-left: 3px solid #ef4444; }
