@@ -2088,6 +2088,14 @@ a.history-item-filename:hover {
     white-space: nowrap;
 }
 
+.edit-toggle.edit-toggle--polish-running {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.edit-toggle.edit-toggle--polish-running .edit-toggle-track {
+    background: var(--color-border);
+}
+
 /* 自動保存チップ（色付きバッジ） */
 .autosave-chip {
     display: inline-flex;

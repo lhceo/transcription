@@ -624,7 +624,9 @@
                 class="edit-toggle"
                 role="switch"
                 :aria-checked="editMode ? 'true' : 'false'"
-                @click="toggleEditMode()"
+                :class="{ 'edit-toggle--polish-running': polishResumeState.status === 'running' }"
+                :title="polishResumeState.status === 'running' ? '整文処理中は編集できません' : ''"
+                @click="polishResumeState.status === 'running' ? window.showToast('整文処理中です。完了後に編集してください。', 'warning') : toggleEditMode()"
             >
                 <span class="edit-toggle-track" :class="editMode ? 'is-on' : ''">
                     <span class="edit-toggle-thumb"></span>
@@ -864,7 +866,10 @@
                 </template>
                 <div class="polish-status-text">
                     <strong x-text="polishResumeState.status === 'running' ? '整文処理中…' : polishResumeState.status === 'interrupted' ? '整文が中断されました' : '整文が完了しました'"></strong>
-                    <span x-show="polishResumeState.status === 'running'" x-cloak class="polish-status-sub">AIがテキストを整えています。このままページを閉じても安全です。</span>
+                    <span x-show="polishResumeState.status === 'running'" x-cloak class="polish-status-sub">
+                        <span x-show="polishProgress.total === 0">AIがテキストを整えています。このままページを閉じても安全です。</span>
+                        <span x-show="polishProgress.total > 0">バッチ <strong x-text="polishProgress.done"></strong>/<span x-text="polishProgress.total"></span> 処理中<span x-show="polishProgress.etaSeconds !== null" style="margin-left:6px;opacity:.7" x-text="polishProgress.etaSeconds < 60 ? '　まもなく完了' : '　あと約' + Math.ceil(polishProgress.etaSeconds / 60) + '分'"></span></span>
+                    </span>
                     <span x-show="polishResumeState.status === 'interrupted'" x-cloak class="polish-status-sub">サーバーの再起動により整文処理が中断されました。再度実行してください。</span>
                     <span x-show="polishResumeState.status === 'done'" x-cloak class="polish-status-sub">結果を確認・採用してください。編集中の内容は上書きされる場合があります。</span>
                 </div>
@@ -2367,6 +2372,8 @@ function segmentsApp(transcriptId, historyNames) {
             }
             return { show: false, status: null, jobId: null, result: null };
         })(),
+        polishProgress: { done: 0, total: 0, etaSeconds: null },
+        _polishStartedAt: null,
 
         // ── 整文インラインレビュー ─────────────────────────────────
         reviewMode: false,
@@ -4091,7 +4098,7 @@ function segmentsApp(transcriptId, historyNames) {
                         } else if (data.status === 'running' || data.status === 'pending') {
                             this.polishResumeState = { show: true, status: 'running', jobId, result: null };
                             this._polishStartedAt = Date.now();
-                            const result = await this._pollPolishJob(jobId);
+                            const result = await this._pollPolishJobResume(jobId);
                             this.polishResumeState = { show: true, status: 'done', jobId, result };
                             this._dismissPolish();
                             return;
@@ -4119,7 +4126,7 @@ function segmentsApp(transcriptId, historyNames) {
                 } else if (data.status === 'running' || data.status === 'pending') {
                     this.polishResumeState = { show: true, status: 'running', jobId, result: null };
                     this._polishStartedAt = saved.started_at || Date.now();
-                    const result = await this._pollPolishJob(jobId);
+                    const result = await this._pollPolishJobResume(jobId);
                     this.polishResumeState = { show: true, status: 'done', jobId, result };
                     this._dismissPolish();
                 } else {
@@ -4131,6 +4138,30 @@ function segmentsApp(transcriptId, historyNames) {
                     this.polishResumeState = { show: false, status: null, jobId: null, result: null };
                 }
             }
+        },
+
+        async _pollPolishJobResume(jobId) {
+            for (let i = 0; i < 1200; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                const res = await fetch(`/api/transcripts/${transcriptId}/polish/status/${jobId}`);
+                if (!res.ok) throw new Error('ステータス確認に失敗しました');
+                const data = await res.json();
+                if (data.batch_total > 0) {
+                    const elapsed = (Date.now() - (this._polishStartedAt || Date.now())) / 1000;
+                    let etaSeconds = null;
+                    if (data.batch_done > 0) {
+                        const perBatch = elapsed / data.batch_done;
+                        etaSeconds = Math.max(0, perBatch * (data.batch_total - data.batch_done));
+                    }
+                    this.polishProgress = { done: data.batch_done, total: data.batch_total, etaSeconds };
+                }
+                if (data.status === 'done') {
+                    try { localStorage.removeItem('noto_polish_job'); } catch (_) {}
+                    return data.result;
+                }
+                if (data.status === 'error') throw new Error(data.error || '整文中にエラーが発生しました');
+            }
+            throw new Error('整文がタイムアウトしました');
         },
 
         async _dismissPolish() {
