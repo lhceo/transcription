@@ -55,13 +55,16 @@ def _is_filler_segment(text: str) -> bool:
 def _is_trivial_suggestion(original: str, suggested: str) -> bool:
     """整文案が原文と実質同一かどうかを判定する。
 
-    句読点の全角/半角差・スペース差のみは「変更なし」と見なす。
-    ユーザーにビフォア・アフターを見せる必要のない提案を除去するために使う。
+    以下の差異は「変更なし」と見なしてユーザーに見せない:
+    - 完全一致
+    - NFKC正規化・スペース差のみ（全角半角統一等）
+    - 語尾の句読点変化のみ（「うん、」→「うん。」等）
     """
     if original == suggested:
         return True
+    _TRAILING_PUNCT = '、。！？…'
     def _n(s: str) -> str:
-        # NFKC正規化（?→？、半角スペース統一 等）してから空白を正規化
+        s = s.rstrip(_TRAILING_PUNCT)
         return ' '.join(unicodedata.normalize('NFKC', s).split())
     return _n(original) == _n(suggested)
 
@@ -912,9 +915,13 @@ async def run_polish(
 
             # オーバーラップ部分（前バッチが担当）は採用しない
             own_ids = {s["id"] for s in segments[own_start:own_end]}
+            adopted = 0
             for seg_id, text in suggestions.items():
                 if seg_id in own_ids:
                     merged[seg_id] = text
+                    adopted += 1
+            if adopted == 0:
+                logger.warning("整文バッチ%d: own_ids=%d件に対して採用提案0件 (suggestions=%d件)", i, len(own_ids), len(suggestions))
             for seg_id, flag_list in batch_flags.items():
                 if seg_id in own_ids:
                     merged_flags[seg_id] = flag_list
