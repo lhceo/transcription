@@ -1280,6 +1280,21 @@ async def transcript_detail(
         reverse=True,
     )
 
+    # 整文中ジョブをページ初期描画に埋め込む（非同期fetchより先にバナーを表示するため）
+    from backend.projects.routes import _polish_jobs
+    active_polish_init = None
+    _best: tuple | None = None
+    _best_started = -1
+    for _jid, _job in _polish_jobs.items():
+        if _job.get("transcript_id") != transcript_id:
+            continue
+        if _job.get("status") in ("running", "pending", "done"):
+            if _job.get("started_at", 0) > _best_started:
+                _best_started = _job.get("started_at", 0)
+                _best = (_jid, _job)
+    if _best:
+        active_polish_init = {"job_id": _best[0], "status": _best[1]["status"]}
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1311,6 +1326,7 @@ async def transcript_detail(
             "current_user_permissions": current_user_permissions,
             "reviewed_segments": reviewed_segments,
             "speaker_stats": speaker_stats,
+            "active_polish_init": active_polish_init,
         },
     )
 

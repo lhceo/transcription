@@ -28,6 +28,7 @@
     window.__SEGMENT_TIMES = [{% for seg in segments %}{"id":{{ seg.id }},"s":{{ seg.start_seconds }},"e":{{ seg.end_seconds }}}{% if not loop.last %},{% endif %}{% endfor %}];
     window.__TOTAL_SEGMENTS = {{ segments|length }};
     window.__SPEAKERS = [{% for s in speakers %}{"label":{{ s.speaker_label|tojson }},"name":{{ s.display_name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+    window.__ACTIVE_POLISH_INIT = {{ active_polish_init | tojson }};
     window.__TRANSCRIPT_INIT = {
         id: {{ transcript.id }},
         initialName: {{ initial_no_ext|tojson }},
@@ -2358,7 +2359,14 @@ function segmentsApp(transcriptId, historyNames) {
         editedCount: 0,
 
         // ── 整文 ──────────────────────────────────────────────────
-        polishResumeState: { show: false, status: null, jobId: null, result: null },
+        // サーバー提供データで同期初期化（async fetchより先にバナー・ボタン無効化を確実に出す）
+        polishResumeState: (() => {
+            const pi = window.__ACTIVE_POLISH_INIT;
+            if (pi && pi.job_id && (pi.status === 'running' || pi.status === 'pending')) {
+                return { show: true, status: 'running', jobId: pi.job_id, result: null };
+            }
+            return { show: false, status: null, jobId: null, result: null };
+        })(),
 
         // ── 整文インラインレビュー ─────────────────────────────────
         reviewMode: false,
@@ -2770,9 +2778,12 @@ function segmentsApp(transcriptId, historyNames) {
 
         init() {
             // レビュー進捗を優先復元。なければ未完ジョブのバナーを確認。
+            // 整文中（running）のときは復元有無に関わらず必ずポーリングを起動する。
             this.$nextTick(async () => {
                 const restored = this._tryRestoreReviewProgress();
-                if (!restored) { await this._checkPolishResume(); }
+                if (!restored || this.polishResumeState.status === 'running') {
+                    await this._checkPolishResume();
+                }
             });
 
             // textarea の自動サイズ調整を初期化
