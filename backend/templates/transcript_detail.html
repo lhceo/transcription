@@ -1288,7 +1288,7 @@
                                                                :id="'sf-{{ seg.id }}-' + idx"
                                                                x-model="segFills[{{ seg.id }}].fills[idx]"
                                                                @blur.stop="stopSegFillEdit({{ seg.id }})"
-                                                               @keydown.enter.stop="stopSegFillEdit({{ seg.id }})"
+                                                               @keydown.enter.stop="if (!$event.isComposing) stopSegFillEdit({{ seg.id }})"
                                                                @keydown.escape.stop="segFills[{{ seg.id }}].fills[idx] = ''; stopSegFillEdit({{ seg.id }})"
                                                                @click.stop>
                                                     </span>
@@ -1472,7 +1472,7 @@
                                                             <input type="text" class="flag-word-input"
                                                                    x-model="flagWordInputs[flagWordKey({{ seg.id }}, word)].value"
                                                                    @click.stop
-                                                                   @keydown.enter.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word, flagWordInputs[flagWordKey({{ seg.id }}, word)].saveToVocab) : registerFlagVocab({{ seg.id }}, word)"
+                                                                   @keydown.enter.stop="if (!$event.isComposing) { flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word, flagWordInputs[flagWordKey({{ seg.id }}, word)].saveToVocab) : registerFlagVocab({{ seg.id }}, word) }"
                                                                    @keydown.escape.stop="closeFlagWordInput({{ seg.id }}, word)"
                                                                    :placeholder="flag.type === 'unresolved_pronoun' ? '指示対象を入力…' : '意味・説明を入力…'"
                                                                    x-init="$el.focus()">
@@ -1576,7 +1576,7 @@
                                                            :id="'fill-{{ seg.id }}-' + idx"
                                                            x-model="reviewData[{{ seg.id }}].fills[idx]"
                                                            @blur.stop="stopFillEdit({{ seg.id }})"
-                                                           @keydown.enter.stop="stopFillEdit({{ seg.id }})"
+                                                           @keydown.enter.stop="if (!$event.isComposing) stopFillEdit({{ seg.id }})"
                                                            @keydown.escape.stop="reviewData[{{ seg.id }}].fills[idx] = ''; stopFillEdit({{ seg.id }})"
                                                            @click.stop>
                                                 </span>
