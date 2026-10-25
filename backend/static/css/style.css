@@ -6045,7 +6045,6 @@ textarea.form-input-sm {
 .vocab-add-row {
     display: flex;
     gap: 8px;
-    margin-bottom: 12px;
     align-items: center;
 }
 
@@ -6089,11 +6088,29 @@ textarea.form-input-sm {
     flex: 1;
     min-width: 0;
 }
+/* 入力モード時にフォーム全体をカード化して「入力中」を視覚的に示す */
+.vocab-add-panel {
+    border-radius: 6px;
+    border: 1.5px solid transparent;
+    margin-bottom: 10px;
+    transition: background 0.2s ease, border-color 0.2s ease, padding 0.2s ease;
+}
+.vocab-add-panel.is-active {
+    background: #f5f8ff;
+    border-color: #c7d2fe;
+    border-left: 3px solid #6366f1;
+    padding: 10px 12px 12px;
+}
+.vocab-add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 10px;
+}
 .vocab-subfields {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: 8px;
 }
 .vocab-list {
     list-style: none;

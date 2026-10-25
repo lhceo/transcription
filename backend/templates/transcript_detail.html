@@ -552,18 +552,25 @@
                     </span>
                 </label>
                 <div class="vocab-editor">
-                    <div class="vocab-add-row">
-                        <input type="text" class="form-input form-input-sm" x-model="newVocabWord"
-                               placeholder="単語（例: ライオンハート）" maxlength="200"
-                               @keydown.enter.prevent="if (!$event.isComposing) addVocab()"
-                               @compositionstart="$event.target._composing = true"
-                               @compositionend="$event.target._composing = false">
-                        <button type="button" class="btn btn-outline btn-sm" @click="addVocab()" :disabled="!newVocabWord.trim()">追加</button>
-                    </div>
-                    <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
-                        <textarea class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（複数の場合は改行：えのさん&#10;えんさん）" rows="1" style="resize:vertical" maxlength="200"></textarea>
-                        <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
-                        <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="何なのかを書く（例: 地域活性化の年次サミット）→ AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
+                    <div class="vocab-add-panel" :class="{ 'is-active': newVocabWord.trim() }">
+                        <div class="vocab-add-row">
+                            <input type="text" class="form-input form-input-sm" x-model="newVocabWord"
+                                   placeholder="単語（例: ライオンハート）" maxlength="200"
+                                   @keydown.enter.prevent="if (!$event.isComposing) addVocab()"
+                                   @compositionstart="$event.target._composing = true"
+                                   @compositionend="$event.target._composing = false">
+                        </div>
+                        <div class="vocab-subfields" x-show="newVocabWord.trim()" x-cloak>
+                            <textarea class="form-input form-input-sm" x-model="newVocabReading" placeholder="読み方（複数の場合は改行：えのさん&#10;えんさん）" rows="1" style="resize:vertical" maxlength="200"></textarea>
+                            <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
+                            <textarea class="form-input form-input-sm" x-model="newVocabMeaning" placeholder="何なのかを書く（例: 地域活性化の年次サミット）→ AIの文脈理解に使います" rows="2" style="resize:vertical"></textarea>
+                            <div class="vocab-add-actions">
+                                <button type="button" class="btn btn-ghost btn-sm"
+                                        @click="newVocabWord = ''; newVocabReading = ''; newVocabMeaning = ''">クリア</button>
+                                <button type="button" class="btn btn-primary btn-sm"
+                                        @click="addVocab()" :disabled="!newVocabWord.trim()">追加する</button>
+                            </div>
+                        </div>
                     </div>
                     <template x-if="vocabulary.length === 0">
                         <p class="form-hint" style="margin-top:6px">まだ登録されていません</p>

@@ -398,14 +398,20 @@
                 </div>
                 <p class="pjt-sidebar-hint">文字起こし精度と整文の両方に反映されます。会話に頻出する固有名詞・専門用語を登録してください。</p>
 
-                <div class="pjt-vocab-add">
-                    <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="if (!$event.isComposing) addWord()" style="width:100%; min-width:0;">
-                </div>
-                <div class="pjt-vocab-subfields" x-show="newWord.trim()">
-                    <textarea class="form-input form-input-sm" x-model="newReading" placeholder="読み方（複数の場合は改行：えのさん&#10;えんさん）" rows="1" style="resize:vertical"></textarea>
-                    <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
-                    <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="何なのかを書く → AIの文脈理解に使います">
-                    <button class="btn btn-outline btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加</button>
+                <div class="vocab-add-panel" :class="{ 'is-active': newWord.trim() }">
+                    <div class="pjt-vocab-add">
+                        <input type="text" class="form-input form-input-sm" x-model="newWord" placeholder="単語" @keydown.enter="if (!$event.isComposing) addWord()" style="width:100%; min-width:0;">
+                    </div>
+                    <div class="pjt-vocab-subfields" x-show="newWord.trim()">
+                        <textarea class="form-input form-input-sm" x-model="newReading" placeholder="読み方（複数の場合は改行：えのさん&#10;えんさん）" rows="1" style="resize:vertical"></textarea>
+                        <p style="font-size:11px;color:var(--color-text-muted);margin:2px 0 4px;line-height:1.5;">発音を入れると、次回の文字起こし時に「この音 → 単語」と自動変換されます。誤認識しそうな読み方も改行で複数登録できます。</p>
+                        <input type="text" class="form-input form-input-sm" x-model="newMeaning" placeholder="何なのかを書く → AIの文脈理解に使います">
+                        <div class="vocab-add-actions">
+                            <button class="btn btn-ghost btn-sm"
+                                    @click="newWord = ''; newReading = ''; newMeaning = ''">クリア</button>
+                            <button class="btn btn-primary btn-sm" @click="addWord()" :disabled="!newWord.trim()">追加する</button>
+                        </div>
+                    </div>
                 </div>
 
                 <template x-if="vocabulary.length === 0">
