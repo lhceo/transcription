@@ -4036,7 +4036,11 @@ function segmentsApp(transcriptId, historyNames) {
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) {
+                if (this.polishResumeState.status === 'running') {
+                    this.polishResumeState = { show: false, status: null, jobId: null, result: null };
+                }
+            }
 
             // ② サーバーに該当ジョブがなければ localStorage を確認（期限内に戻った場合など）
             let saved;
@@ -4059,7 +4063,12 @@ function segmentsApp(transcriptId, historyNames) {
                 } else {
                     localStorage.removeItem('noto_polish_job');
                 }
-            } catch (_) { localStorage.removeItem('noto_polish_job'); }
+            } catch (_) {
+                localStorage.removeItem('noto_polish_job');
+                if (this.polishResumeState.status === 'running') {
+                    this.polishResumeState = { show: false, status: null, jobId: null, result: null };
+                }
+            }
         },
 
         async _dismissPolish() {
