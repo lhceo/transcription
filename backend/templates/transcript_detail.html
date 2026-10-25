@@ -1468,11 +1468,19 @@
                                                             <input type="text" class="flag-word-input"
                                                                    x-model="flagWordInputs[flagWordKey({{ seg.id }}, word)].value"
                                                                    @click.stop
-                                                                   @keydown.enter.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word) : registerFlagVocab({{ seg.id }}, word)"
+                                                                   @keydown.enter.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word, flagWordInputs[flagWordKey({{ seg.id }}, word)].saveToVocab) : registerFlagVocab({{ seg.id }}, word)"
                                                                    @keydown.escape.stop="closeFlagWordInput({{ seg.id }}, word)"
                                                                    :placeholder="flag.type === 'unresolved_pronoun' ? '指示対象を入力…' : '意味・説明を入力…'"
                                                                    x-init="$el.focus()">
-                                                            <button class="flag-word-submit" @click.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word) : registerFlagVocab({{ seg.id }}, word)"
+                                                            <template x-if="flag.type === 'unresolved_pronoun'">
+                                                                <label class="flag-word-save-vocab" @click.stop>
+                                                                    <input type="checkbox"
+                                                                           x-model="flagWordInputs[flagWordKey({{ seg.id }}, word)].saveToVocab"
+                                                                           @click.stop>
+                                                                    辞書にも登録
+                                                                </label>
+                                                            </template>
+                                                            <button class="flag-word-submit" @click.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word, flagWordInputs[flagWordKey({{ seg.id }}, word)].saveToVocab) : registerFlagVocab({{ seg.id }}, word)"
                                                                     x-text="flag.type === 'unresolved_pronoun' ? '補完' : '登録'"></button>
                                                             <button class="flag-word-cancel" @click.stop="closeFlagWordInput({{ seg.id }}, word)">×</button>
                                                         </span>
@@ -4494,7 +4502,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         openFlagWordInput(segId, word) {
             const key = this.flagWordKey(segId, word);
-            this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: true, value: '', registered: false } };
+            this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: true, value: '', registered: false, saveToVocab: false } };
         },
 
         closeFlagWordInput(segId, word) {
@@ -4532,7 +4540,7 @@ function segmentsApp(transcriptId, historyNames) {
             }
         },
 
-        async fillPronoun(segId, word) {
+        async fillPronoun(segId, word, saveToVocab = false) {
             const key = this.flagWordKey(segId, word);
             const input = this.flagWordInputs[key];
             if (!input || !input.value.trim()) return;
@@ -4545,10 +4553,8 @@ function segmentsApp(transcriptId, historyNames) {
                 `（${referent}）`
             );
             this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: false, value: referent, registered: true } };
-            // 固有名詞っぽい語句（ひらがな・カタカナ・漢字が含まれる）は辞書にも登録する
-            const tId = (window.__TRANSCRIPT_INIT || {}).id;
-            const looksLikeProperNoun = /[ぁ-んァ-ヶー一-龯]/.test(word);
-            if (looksLikeProperNoun) {
+            if (saveToVocab) {
+                const tId = (window.__TRANSCRIPT_INIT || {}).id;
                 try {
                     await fetch(`/api/transcripts/${tId}/vocabulary`, {
                         method: 'POST',
