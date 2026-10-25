@@ -1368,6 +1368,7 @@ async def polish_run(
         "batch_done": 0,
         "batch_total": n_batches_est,
         "started_at": _time.time(),
+        "transcript_id": transcript_id,
     }
 
     _asyncio.create_task(_polish_bg_task(job_id, transcript_id, user["id"], seg_dicts, context_text, model_key))
@@ -1386,6 +1387,31 @@ async def polish_status(
     if not job:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません（期限切れの可能性）")
     return JSONResponse({k: v for k, v in job.items() if k != "started_at"})
+
+
+@router.get("/api/transcripts/{transcript_id}/polish/active")
+async def polish_active(
+    transcript_id: int,
+    user: CurrentUser,
+) -> JSONResponse:
+    """このトランスクリプトに対して実行中 or 完了済みの最新ジョブを返す。
+    job_id を知らなくてもページロード時にステータスを確認できる。"""
+    best = None
+    best_started = -1
+    for jid, job in _polish_jobs.items():
+        if job.get("transcript_id") != transcript_id:
+            continue
+        if job.get("status") not in ("running", "pending", "done"):
+            continue
+        if job.get("started_at", 0) > best_started:
+            best_started = job.get("started_at", 0)
+            best = (jid, job)
+    if not best:
+        return JSONResponse({"job_id": None})
+    jid, job = best
+    payload = {k: v for k, v in job.items() if k != "started_at"}
+    payload["job_id"] = jid
+    return JSONResponse(payload)
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/accept")

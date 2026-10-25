@@ -3990,7 +3990,30 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async _checkPolishResume() {
-            // ページロード時に保留中の整文ジョブがあるか確認する
+            // ① まずサーバーに直接問い合わせ（localStorage 不要）
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/polish/active`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.job_id) {
+                        const jobId = data.job_id;
+                        // localStorage も同期しておく
+                        try { localStorage.setItem('noto_polish_job', JSON.stringify({ job_id: jobId, transcript_id: transcriptId, started_at: Date.now() })); } catch (_) {}
+                        if (data.status === 'done') {
+                            this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
+                            return;
+                        } else if (data.status === 'running' || data.status === 'pending') {
+                            this.polishResumeState = { show: true, status: 'running', jobId, result: null };
+                            this._polishStartedAt = Date.now();
+                            const result = await this._pollPolishJob(jobId);
+                            this.polishResumeState = { show: true, status: 'done', jobId, result };
+                            return;
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // ② サーバーに該当ジョブがなければ localStorage を確認（期限内に戻った場合など）
             let saved;
             try { saved = JSON.parse(localStorage.getItem('noto_polish_job') || 'null'); } catch (_) { return; }
             if (!saved || saved.transcript_id !== transcriptId) return;
@@ -4003,7 +4026,6 @@ function segmentsApp(transcriptId, historyNames) {
                     this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
                 } else if (data.status === 'running' || data.status === 'pending') {
                     this.polishResumeState = { show: true, status: 'running', jobId, result: null };
-                    // ポーリング再開
                     this._polishStartedAt = saved.started_at || Date.now();
                     const result = await this._pollPolishJob(jobId);
                     this.polishResumeState = { show: true, status: 'done', jobId, result };
