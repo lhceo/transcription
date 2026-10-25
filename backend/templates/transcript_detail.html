@@ -1438,9 +1438,10 @@
                         <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
                     </div>
 
-                    {# diff 未対応 #}
+                    {# diff: 整文テキストを主役に、元文は折りたたみ #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'diff' && !reviewData[{{ seg.id }}].done">
                     <div>
+                        {# AIフラグ（副次情報として上部に表示） #}
                         <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
                         <div class="review-flag-list">
                             <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
@@ -1496,32 +1497,51 @@
                             </template>
                         </div>
                         </template>
-                        <div class="review-pending-header">
-                            <span class="review-pending-badge diff-badge">整文あり</span>
-                            <span style="font-size:11px;color:#64748b">下のテキストを確認・編集して採用してください</span>
+                        {# 整文後テキスト（主役：常に先に表示・直接編集可） #}
+                        <div class="review-edit-section review-edit-primary">
+                            <div class="review-edit-header-row">
+                                <span class="review-edit-label">整文後のテキスト（編集して採用）</span>
+                                <button class="review-compare-btn" type="button"
+                                        @click.stop="reviewData[{{ seg.id }}].showOriginal = !reviewData[{{ seg.id }}].showOriginal"
+                                        x-text="reviewData[{{ seg.id }}].showOriginal ? '比較を閉じる' : '元文と比較'"></button>
+                            </div>
+                            <textarea class="review-edit-textarea review-edit-textarea-primary"
+                                      x-model="reviewData[{{ seg.id }}].polishedText"
+                                      rows="4" @click.stop></textarea>
                         </div>
-                        <div class="review-original-box">
+                        {# 元の文字起こし（折りたたみ、比較用） #}
+                        <div class="review-original-box review-original-collapsible"
+                             x-show="reviewData[{{ seg.id }}].showOriginal" style="display:none">
                             <span class="review-original-label" x-text="diffReviewMode ? 'あなたの文字起こし' : '元の文字起こし'"></span>
                             <span x-text="reviewData[{{ seg.id }}]?.original || ''"></span>
-                        </div>
-                        <div class="review-edit-section">
-                            <span class="review-edit-label" x-text="diffReviewMode ? 'AIの整文案（編集して調整可）' : '整文後（編集可）'"></span>
-                            <textarea class="review-edit-textarea" x-model="reviewData[{{ seg.id }}].polishedText" rows="3" @click.stop></textarea>
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b"
                                     x-text="diffReviewMode ? '元に戻す' : 'スキップ'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
                             <button class="btn btn-sm btn-primary"
-                                    x-text="diffReviewMode ? '採用' : '採用'"
-                                    @click.stop="reviewData[{{ seg.id }}].done = 'accepted'"></button>
+                                    @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
                         </div>
                     </div>
                     </template>
 
-                    {# unknown（？）補完 未対応 #}
+                    {# unknown（？）補完 + 直接編集テキストエリア #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
                     <div>
+                        {# AIフラグ（unknown でも表示） #}
+                        <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
+                        <div class="review-flag-list">
+                            <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
+                                <div class="review-flag-row">
+                                    <span class="review-flag-badge"
+                                          :class="'review-flag-' + flagTypeRisk(flag.type)"
+                                          x-text="flagTypeLabel(flag.type)"></span>
+                                    <span class="review-flag-note" x-text="flag.note"></span>
+                                </div>
+                            </template>
+                        </div>
+                        </template>
+                        {# fill-in チップ（AIが補完を求める箇所） #}
                         <div class="review-pending-header">
                             <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
                             <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
@@ -1565,6 +1585,15 @@
                                     </template>
                                 </span>
                             </template>
+                        </div>
+                        {# 直接編集エリア（チップ以外の箇所も修正できる） #}
+                        <div class="review-edit-section review-edit-direct">
+                            <span class="review-edit-label">テキストを直接編集することもできます</span>
+                            <textarea class="review-edit-textarea"
+                                      :value="reviewData[{{ seg.id }}].editedText ?? ''"
+                                      @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value"
+                                      :placeholder="_getUnknownPreviewText({{ seg.id }})"
+                                      rows="3" @click.stop></textarea>
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">スキップ</button>
@@ -4142,6 +4171,8 @@ function segmentsApp(transcriptId, historyNames) {
                     activeFillIdx: null,
                     preview: null,
                     flags: flags[id] || [],
+                    showOriginal: false,
+                    editedText: null,
                 };
             });
 
@@ -4230,7 +4261,7 @@ function segmentsApp(transcriptId, historyNames) {
                         parts = d.polishedText.split('（？）');
                         fills = new Array(parts.length - 1).fill('');
                     }
-                    this.reviewData[intId] = { ...d, parts, fills, activeFillIdx: null, preview: null };
+                    this.reviewData[intId] = { ...d, parts, fills, activeFillIdx: null, preview: null, showOriginal: d.showOriginal || false, editedText: d.editedText || null };
                 }
                 this.diffReviewMode = diff || false;
                 this.reviewMode = true;
@@ -4275,11 +4306,27 @@ function segmentsApp(transcriptId, historyNames) {
             d.preview = result;
         },
 
+        _getUnknownPreviewText(segId) {
+            const d = this.reviewData[segId];
+            if (!d || !d.parts) return '';
+            return d.parts.reduce((acc, part, idx) => {
+                acc += part;
+                if (idx < d.fills.length) acc += d.fills[idx].trim() || '（？）';
+                return acc;
+            }, '');
+        },
+
         buildAndAcceptReview(segId) {
             const d = this.reviewData[segId];
             if (!d) return;
-            this._buildUnknownPreview(d);
-            d.polishedText = d.preview;
+            if (d.editedText !== null && d.editedText !== undefined && d.editedText.trim()) {
+                // テキストエリアで直接編集された場合はそちらを優先
+                d.polishedText = d.editedText.trim();
+            } else {
+                // fill-in チップの結果を使用
+                this._buildUnknownPreview(d);
+                d.polishedText = d.preview;
+            }
             d.done = 'accepted';
         },
 
