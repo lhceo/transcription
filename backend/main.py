@@ -273,7 +273,7 @@ async def lifespan(app: FastAPI):
                 #   alembic_version が毎起動 REPAIR_HEAD に戻り、そのマイグレーション
                 #   (batch_alter_table など) が毎起動再実行される。テーブル再作成で
                 #   display_name 等が消えた 2026-09-08/09 の教訓。
-                _REPAIR_HEAD = 'b2d4f6a8c0e1'
+                _REPAIR_HEAD = 'c3e5f7a9b1d2'
                 _MIGRATION_CHAIN = [
                     '345631e1988b', '724191df3d68', 'ae525721359b', 'b1c2d3e4f5a6',
                     'c2d4e6f8a0b1', 'c4f7e9a3b021', 'd1a9f3c8e042', 'd3e5f7a9b1c2',
@@ -281,7 +281,7 @@ async def lifespan(app: FastAPI):
                     'a1b2c3d4e5f6', 'b2c3d4e5f6a7', 'c4d5e6f7a8b9',
                     'b3c4d5e6f7a8', 'c5d6e7f8a9b0', 'a3c5e7b9d1f2', 'b4d5e6f7a8c9',
                     'd6e8f0a2b4c6', 'e5f7a9b1c3d4', 'f7b9c1d3e5a6', 'a1b3c5d7e9f0',
-                    'b2d4f6a8c0e1',
+                    'b2d4f6a8c0e1', 'c3e5f7a9b1d2',
                 ]
                 def _ver_idx(v):
                     if not v:
@@ -302,11 +302,18 @@ async def lifespan(app: FastAPI):
                     logger.info("alembic_version 維持: %s (修復ヘッド %s 以上)", _cur_ver, _REPAIR_HEAD)
                 _co.commit()
                 # 重要カラムの存在を検証（不足があれば ERROR ログ → Railway で即確認できる）
+                for _stmt in [
+                    "ALTER TABLE polish_logs ADD COLUMN pending_result TEXT",
+                ]:
+                    try: _cu.execute(_stmt)
+                    except Exception: pass
+                _co.commit()
                 for _tbl, _col in [
                     ("segments", "reviewed_by_user_id"),
                     ("segments", "reviewed_at"),
                     ("transcript_shares", "status"),
                     ("transcript_shares", "can_edit_segments"),
+                    ("polish_logs", "pending_result"),
                 ]:
                     _cols = {r[1] for r in _cu.execute(f"PRAGMA table_info({_tbl})").fetchall()}
                     if _col in _cols:

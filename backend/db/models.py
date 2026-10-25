@@ -556,5 +556,8 @@ class PolishLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
+    # 採用前の整文結果JSON。採用 or キャンセル後にNULLクリア。
+    # サーバー再起動後もページロード時に結果を復元できるようにする。
+    pending_result: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     transcript: Mapped["Transcript"] = relationship(back_populates="polish_logs")

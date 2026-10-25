@@ -1223,6 +1223,15 @@ async def _polish_bg_task(
 
         result = await run_polish(client, seg_dicts, context_text, model_key, progress_callback=on_progress)
 
+        import json as _json
+        result_payload = {
+            "suggestions": result.suggestions,
+            "flags": result.flags,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cost_yen": result.cost_yen,
+            "model_key": model_key,
+        }
         db = SessionLocal()
         try:
             log = PolishLog(
@@ -1232,24 +1241,19 @@ async def _polish_bg_task(
                 output_tokens=result.output_tokens,
                 cost_yen=result.cost_yen,
                 created_by_user_id=user_id,
+                pending_result=_json.dumps(result_payload, ensure_ascii=False),
             )
             db.add(log)
             transcript = db.get(Transcript, transcript_id)
             if transcript:
                 transcript.last_polished_at = datetime.now(_tz.utc)
             db.commit()
+            _polish_jobs[job_id]["_log_id"] = log.id
         finally:
             db.close()
 
         job["status"] = "done"
-        job["result"] = {
-            "suggestions": result.suggestions,
-            "flags": result.flags,
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "cost_yen": result.cost_yen,
-            "model_key": model_key,
-        }
+        job["result"] = result_payload
 
         # 整文完了通知（Chatwork）
         try:
@@ -1393,9 +1397,12 @@ async def polish_status(
 async def polish_active(
     transcript_id: int,
     user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """このトランスクリプトに対して実行中 or 完了済みの最新ジョブを返す。
-    job_id を知らなくてもページロード時にステータスを確認できる。"""
+    """このトランスクリプトに対して実行中 or 完了済み（未採用）の最新ジョブを返す。
+    メモリ上のジョブを優先し、なければDBの pending_result を参照する。"""
+    import json as _json
+    # ① メモリ上の最新ジョブを確認
     best = None
     best_started = -1
     for jid, job in _polish_jobs.items():
@@ -1406,12 +1413,37 @@ async def polish_active(
         if job.get("started_at", 0) > best_started:
             best_started = job.get("started_at", 0)
             best = (jid, job)
-    if not best:
+    if best:
+        jid, job = best
+        payload = {k: v for k, v in job.items() if k not in ("started_at", "_log_id")}
+        payload["job_id"] = jid
+        return JSONResponse(payload)
+
+    # ② メモリになければDBのpending_resultを確認（サーバー再起動後の復元）
+    from sqlalchemy import desc
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    log = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.pending_result.isnot(None))
+        .where(PolishLog.created_at >= cutoff)
+        .order_by(desc(PolishLog.created_at))
+        .limit(1)
+    ).first()
+    if not log or not log.pending_result:
         return JSONResponse({"job_id": None})
-    jid, job = best
-    payload = {k: v for k, v in job.items() if k != "started_at"}
-    payload["job_id"] = jid
-    return JSONResponse(payload)
+    try:
+        result = _json.loads(log.pending_result)
+    except Exception:
+        return JSONResponse({"job_id": None})
+    return JSONResponse({
+        "job_id": f"db-{log.id}",
+        "status": "done",
+        "result": result,
+        "batch_done": 0,
+        "batch_total": 0,
+    })
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/accept")
@@ -1436,6 +1468,17 @@ async def polish_accept(
                 seg.is_polished = True
                 updated += 1
 
+    # 採用完了 → pending_result をクリア（DBを節約 + 次回ロード時に復元されないようにする）
+    from datetime import timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    stale_logs = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.pending_result.isnot(None))
+        .where(PolishLog.created_at >= cutoff)
+    ).all()
+    for lg in stale_logs:
+        lg.pending_result = None
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
 

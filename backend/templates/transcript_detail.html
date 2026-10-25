@@ -840,16 +840,37 @@
     </div>
     {% endif %}
 
-    {# ──── 整文再開バナー（ページを閉じて戻ってきたとき） ──── #}
-    <div class="polish-resume-bar" x-show="!reviewMode && polishResumeState.show" x-cloak style="display:none">
-        <span class="polish-resume-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </span>
-        <span x-text="polishResumeState.status === 'running' ? '整文が処理中です…' : '整文が完了しています'"></span>
-        <button type="button" class="polish-resume-btn"
-                x-show="polishResumeState.status === 'done'"
-                @click="resumePolishFromStorage()">結果を確認する</button>
-        <button type="button" class="polish-resume-dismiss" @click="polishResumeState.show = false" aria-label="閉じる">×</button>
+    {# ──── 整文ステータスバナー（処理中 or 完了・要確認） ──── #}
+    <div class="polish-status-banner"
+         x-show="!reviewMode && polishResumeState.show"
+         x-cloak
+         style="display:none"
+         :class="polishResumeState.status === 'running' ? 'polish-status-banner--running' : 'polish-status-banner--done'">
+        <div class="polish-status-banner-inner">
+            <div class="polish-status-banner-left">
+                <template x-if="polishResumeState.status === 'running'">
+                    <span class="polish-status-spinner"></span>
+                </template>
+                <template x-if="polishResumeState.status === 'done'">
+                    <span class="polish-status-check">✓</span>
+                </template>
+                <div class="polish-status-text">
+                    <strong x-text="polishResumeState.status === 'running' ? '整文処理中…' : '整文が完了しました'"></strong>
+                    <span x-show="polishResumeState.status === 'running'" x-cloak class="polish-status-sub">AIがテキストを整えています。このままページを閉じても安全です。</span>
+                    <span x-show="polishResumeState.status === 'done'" x-cloak class="polish-status-sub">結果を確認・採用してください。編集中の内容は上書きされる場合があります。</span>
+                </div>
+            </div>
+            <div class="polish-status-banner-right">
+                <button type="button" class="polish-status-action"
+                        x-show="polishResumeState.status === 'done'"
+                        x-cloak
+                        @click="resumePolishFromStorage()">結果を確認する →</button>
+                <button type="button" class="polish-status-dismiss"
+                        x-show="polishResumeState.status !== 'running'"
+                        x-cloak
+                        @click="polishResumeState.show = false" aria-label="閉じる">×</button>
+            </div>
+        </div>
     </div>
 
     {# ──── チェック済み進捗バー ──── #}
