@@ -4477,6 +4477,32 @@ function segmentsApp(transcriptId, historyNames) {
         async enterEditModeFromFirstReview() {
             // 採用済み分だけDBに保存してページリロードなしで編集モードへ移行。
             // 未決（pending）セグメントはreviewDataに残し「整文前を見る」参照が使える。
+
+            // ── 未採用でも編集済みのセグメントを自動採用 ──────────────────
+            // テキストエリアを直接編集 or fill-inを埋めたが「採用」を押していない場合、
+            // ユーザーの作業が消えてしまう問題を防ぐ
+            let autoAccepted = 0;
+            Object.entries(this.reviewData).forEach(([, d]) => {
+                if (d.done) return; // 既に採用 or スキップ済み
+                if (d.state === 'unknown') {
+                    const hasEdited = d.editedText && d.editedText.trim();
+                    const hasFills  = d.fills && d.fills.some(f => f && f.trim());
+                    if (hasEdited || hasFills) {
+                        if (hasEdited) {
+                            d.polishedText = d.editedText.trim();
+                        } else {
+                            this._buildUnknownPreview(d);
+                            d.polishedText = d.preview;
+                        }
+                        d.done = 'accepted';
+                        autoAccepted++;
+                    }
+                } else if (d.state === 'diff') {
+                    // テキストエリアが元のpolishedTextから変更されているか判定は難しいため
+                    // ここでは自動採用せず、明示的に採用したものだけ保存する
+                }
+            });
+
             const accepted_texts = {};
             Object.entries(this.reviewData).forEach(([id, d]) => {
                 if (d.done === 'accepted') accepted_texts[parseInt(id)] = d.polishedText || '';
@@ -4510,7 +4536,12 @@ function segmentsApp(transcriptId, historyNames) {
             this._flagNavIdx = 0;
             this._clearReviewProgress();
             const n = Object.keys(accepted_texts).length;
-            window.showToast(n > 0 ? `${n}件を採用して保存。編集モードで確認中（整文前を見る も使えます）。` : '編集モードに切り替えました。');
+            const msg = n > 0
+                ? (autoAccepted > 0
+                    ? `${n}件を保存（うち${autoAccepted}件は編集内容を自動採用）。編集モードで確認中。`
+                    : `${n}件を採用して保存。編集モードで確認中（整文前を見る も使えます）。`)
+                : '編集モードに切り替えました。';
+            window.showToast(msg);
         },
 
         flagCount() {
