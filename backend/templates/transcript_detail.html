@@ -691,19 +691,15 @@
             </button>
 
             <button type="button" class="btn btn-polish"
-                    @click="polishResumeState.status === 'running' ? null : openPolish()"
+                    @click="openPolish()"
                     :disabled="polishResumeState.status === 'running'"
                     :class="{ 'btn-polish--running': polishResumeState.status === 'running' }"
                     :title="polishResumeState.status === 'running' ? '整文処理中です。完了までお待ちください。' : '整文する'">
-                <span class="polish-status-spinner" x-show="polishResumeState.status === 'running'" x-cloak
-                      style="width:12px;height:12px;flex-shrink:0;border-width:2px;border-color:rgba(99,102,241,0.25);border-top-color:#6366f1"></span>
-                <svg x-show="polishResumeState.status !== 'running'"
-                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;flex-shrink:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;flex-shrink:0">
                     <path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                 </svg>
-                <span x-show="polishResumeState.status !== 'running'">整文する</span>
-                <span x-show="polishResumeState.status === 'running'" x-cloak>整文処理中…</span>
-                {% if has_pickup_suggestions %}<span class="pickup-ready-dot" title="固有名詞候補あり" x-show="polishResumeState.status !== 'running'"></span>{% endif %}
+                整文する
+                {% if has_pickup_suggestions %}<span class="pickup-ready-dot" title="固有名詞候補あり"></span>{% endif %}
             </button>
 
             <div class="export-menu" x-data="{
