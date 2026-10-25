@@ -5058,7 +5058,69 @@ function segmentsApp(transcriptId, historyNames) {
             try {
             const entry = this.undoStack.pop();
             if (!entry) return;
-            if (entry.type === 'split') {
+            if (entry.type === 'speaker_single') {
+                // 話者名の個別変更を取り消す
+                try {
+                    const res = await fetch(`/api/segments/${entry.segmentId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ display_name: entry.oldName }),
+                    });
+                    if (!res.ok) throw new Error(res.status);
+                    const card = document.getElementById('segment-' + entry.segmentId);
+                    if (card) {
+                        const txt = card.querySelector('.speaker-badge-text');
+                        if (txt) txt.textContent = entry.oldName;
+                        const badge = card.querySelector('.speaker-badge');
+                        if (badge) {
+                            badge.dataset.effectiveName = entry.oldName;
+                            badge.dataset.currentDisplayName = entry.oldName;
+                        }
+                    }
+                    // __SPEAKERS キャッシュを逆方向に更新
+                    const speakers = window.__SPEAKERS || [];
+                    const sp = speakers.find(s => s.name === entry.newName);
+                    if (sp) sp.name = entry.oldName;
+                    this.recolorByName?.();
+                    window.showToast(`話者「${entry.newName}」→「${entry.oldName}」に戻しました`);
+                } catch (e) {
+                    this.undoStack.push(entry);
+                    window.showToast('取り消しに失敗しました', 'error');
+                }
+            } else if (entry.type === 'speaker_all') {
+                // 話者名の一括変更を取り消す
+                // rename-by-name は segment_ids フィルター非対応のため個別 PATCH で安全に戻す
+                try {
+                    await Promise.all(entry.segmentIds.map(segId =>
+                        fetch(`/api/segments/${segId}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ display_name: entry.fromName }),
+                        })
+                    ));
+                    // DOM 更新（変更したセグメントIDのみ対象）
+                    const idSet = new Set(entry.segmentIds);
+                    document.querySelectorAll('#segment-list .speaker-badge').forEach(badge => {
+                        const segCard = badge.closest('.segment-card');
+                        const segId = segCard ? parseInt(segCard.dataset.segmentId, 10) : null;
+                        if (segId && idSet.has(segId)) {
+                            const txt = badge.querySelector('.speaker-badge-text');
+                            if (txt) txt.textContent = entry.fromName;
+                            badge.dataset.effectiveName = entry.fromName;
+                            badge.dataset.currentDisplayName = entry.fromName;
+                        }
+                    });
+                    // __SPEAKERS キャッシュを逆方向に更新
+                    const speakers = window.__SPEAKERS || [];
+                    const sp = speakers.find(s => s.name === entry.toName);
+                    if (sp) sp.name = entry.fromName;
+                    this.recolorByName?.();
+                    window.showToast(`話者「${entry.toName}」→「${entry.fromName}」に一括で戻しました`);
+                } catch (e) {
+                    this.undoStack.push(entry);
+                    window.showToast('取り消しに失敗しました', 'error');
+                }
+            } else if (entry.type === 'split') {
                 // 分割で生まれた新セグメントの未保存状態を先にクリア（デバウンス残留を防ぐ）
                 if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
                 this.pendingSegments.delete(entry.newSegId);
@@ -6050,6 +6112,7 @@ function segmentsApp(transcriptId, historyNames) {
             if (this._speakerApplying) return;
             const name = (this.editor.input || '').trim();
             if (!name) return;
+            const oldName = this.editor.originalName || this.editor.currentDisplayName || '';
             this._speakerApplying = true;
             try {
                 const res = await fetch(`/api/segments/${this.editor.segmentId}`, {
@@ -6070,9 +6133,13 @@ function segmentsApp(transcriptId, historyNames) {
                         badge.dataset.currentDisplayName = name;
                     }
                 }
+                // window.__SPEAKERS を更新してpreflightが古い名前を参照しないようにする
+                this._updateSpeakersCache(oldName, name);
                 this.recolorByName();
                 if (this.history.indexOf(name) < 0) this.history.unshift(name);
                 this._addToParticipants(name);
+                // undoスタックに積む
+                this._pushSpeakerUndo({ type: 'speaker_single', segmentId: this.editor.segmentId, oldName, newName: name });
                 this.closeEditor();
             } catch (e) {
                 window.showToast(e.message, 'error');
@@ -6105,22 +6172,45 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!res.ok) {
                     throw new Error(await this._extractErrorMessage(res));
                 }
+                // undo用に変更対象のsegmentIdを収集してからDOM更新
+                const changedSegIds = [];
                 document.querySelectorAll('#segment-list .speaker-badge').forEach(badge => {
                     if (badge.dataset.effectiveName === fromName) {
+                        const segCard = badge.closest('.segment-card');
+                        if (segCard) changedSegIds.push(parseInt(segCard.dataset.segmentId, 10));
                         const txt = badge.querySelector('.speaker-badge-text');
                         if (txt) txt.textContent = newName;
                         badge.dataset.effectiveName = newName;
                         badge.dataset.currentDisplayName = newName;
                     }
                 });
+                // window.__SPEAKERS を更新してpreflightが古い名前を参照しないようにする
+                this._updateSpeakersCache(fromName, newName);
                 this.recolorByName();
                 if (this.history.indexOf(newName) < 0) this.history.unshift(newName);
                 this._addToParticipants(newName);
+                // undoスタックに積む
+                this._pushSpeakerUndo({ type: 'speaker_all', segmentIds: changedSegIds, fromName, toName: newName });
                 this.closeEditor();
                 window.showToast(`「${fromName}」${count}件を「${newName}」に変更しました`, 'success');
             } catch (e) {
                 window.showToast(e.message, 'error');
             }
+        },
+
+        // window.__SPEAKERS キャッシュを更新（preflight が古い名前を見ないようにする）
+        _updateSpeakersCache(oldName, newName) {
+            const speakers = window.__SPEAKERS || [];
+            const sp = speakers.find(s => s.name === oldName);
+            if (sp) sp.name = newName;
+        },
+
+        // segmentsApp の undoStack に話者変更エントリを積む
+        _pushSpeakerUndo(entry) {
+            const app = Alpine.$data(document.querySelector('[x-data^="segmentsApp"]'));
+            if (!app) return;
+            app.undoStack.push(entry);
+            if (app.undoStack.length > 20) app.undoStack.shift();
         },
 
         // 話者リネーム時に参加者リストへ自動追加し、APIに保存
