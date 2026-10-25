@@ -86,6 +86,12 @@
                 {% endif %}
             </span>
             {% endif %}
+            {%- set _pstatus = (polish_status_map.get(transcript.id) if polish_status_map is defined else none) -%}
+            {% if _pstatus == 'running' %}
+            <span class="history-item-status status-polish-running"><span class="processing-dot processing-dot--amber"></span>整文中…</span>
+            {% elif _pstatus == 'done' %}
+            <span class="history-item-status status-polish-done">✓ 整文完了</span>
+            {% endif %}
             {% set eta = eta_text(transcript) %}
             {% if eta %}
                 <span class="history-item-eta">{{ eta }}</span>

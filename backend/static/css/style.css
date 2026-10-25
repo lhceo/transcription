@@ -1771,6 +1771,20 @@ body:has(.audio-player-fixed) {
     color: #991b1b;
 }
 
+.history-item-status.status-polish-running {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.history-item-status.status-polish-done {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.processing-dot--amber {
+    background: #d97706;
+}
+
 .processing-dot {
     display: inline-block;
     width: 6px;
@@ -6511,6 +6525,17 @@ textarea.form-input-sm {
 }
 .pjt-status-processing { background: var(--color-warning, #f59e0b); animation: pulse 1.5s infinite; }
 .pjt-status-failed { background: var(--color-danger, #ef4444); }
+.pjt-polish-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.pjt-polish-running { background: #fef3c7; color: #92400e; }
+.pjt-polish-done { background: #d1fae5; color: #065f46; }
 .pjt-empty { padding: 24px 0; text-align: center; }
 .pjt-empty p { margin: 4px 0; }
 

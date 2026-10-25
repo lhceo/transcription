@@ -69,6 +69,9 @@
                             <span class="pjt-status-dot pjt-status-failed" title="失敗"></span>
                             {% endif %}
                             <span class="pjt-transcript-name">{{ display_name(t) }}</span>
+                            {%- set _ps = (polish_status_map.get(t.id) if polish_status_map is defined else none) -%}
+                            {% if _ps == 'running' %}<span class="pjt-polish-badge pjt-polish-running">整文中…</span>
+                            {% elif _ps == 'done' %}<span class="pjt-polish-badge pjt-polish-done">✓ 整文完了</span>{% endif %}
                         </div>
                         <div class="pjt-transcript-meta">
                             {% if t.meeting_date %}

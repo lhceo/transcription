@@ -1074,6 +1074,10 @@ async def home(
     transcripts = list(db.scalars(stmt))
 
     from backend.transcribe.storage_usage import get_effective_max_upload_bytes
+    from backend.projects.routes import get_polish_status_map
+    transcript_ids = [t.id for t in transcripts]
+    polish_status_map = get_polish_status_map(transcript_ids, db)
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -1084,6 +1088,7 @@ async def home(
             "is_admin": user["email"].lower() == settings.admin_email,
             "transcripts": transcripts,
             "max_upload_bytes": get_effective_max_upload_bytes(),
+            "polish_status_map": polish_status_map,
         },
     )
 

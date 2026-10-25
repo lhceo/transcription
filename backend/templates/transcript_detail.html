@@ -873,11 +873,11 @@
                 <button type="button" class="polish-status-action"
                         x-show="polishResumeState.status === 'done'"
                         x-cloak
-                        @click="resumePolishFromStorage()">結果を確認する →</button>
+                        @click="_dismissPolish(); resumePolishFromStorage()">結果を確認する →</button>
                 <button type="button" class="polish-status-dismiss"
                         x-show="polishResumeState.status !== 'running'"
                         x-cloak
-                        @click="polishResumeState.show = false" aria-label="閉じる">×</button>
+                        @click="polishResumeState.show = false; _dismissPolish()" aria-label="閉じる">×</button>
             </div>
         </div>
     </div>
@@ -4031,12 +4031,14 @@ function segmentsApp(transcriptId, historyNames) {
                         try { localStorage.setItem('noto_polish_job', JSON.stringify({ job_id: jobId, transcript_id: transcriptId, started_at: Date.now() })); } catch (_) {}
                         if (data.status === 'done') {
                             this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
+                            this._dismissPolish();
                             return;
                         } else if (data.status === 'running' || data.status === 'pending') {
                             this.polishResumeState = { show: true, status: 'running', jobId, result: null };
                             this._polishStartedAt = Date.now();
                             const result = await this._pollPolishJob(jobId);
                             this.polishResumeState = { show: true, status: 'done', jobId, result };
+                            this._dismissPolish();
                             return;
                         }
                     }
@@ -4054,15 +4056,23 @@ function segmentsApp(transcriptId, historyNames) {
                 const data = await res.json();
                 if (data.status === 'done') {
                     this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
+                    this._dismissPolish();
                 } else if (data.status === 'running' || data.status === 'pending') {
                     this.polishResumeState = { show: true, status: 'running', jobId, result: null };
                     this._polishStartedAt = saved.started_at || Date.now();
                     const result = await this._pollPolishJob(jobId);
                     this.polishResumeState = { show: true, status: 'done', jobId, result };
+                    this._dismissPolish();
                 } else {
                     localStorage.removeItem('noto_polish_job');
                 }
             } catch (_) { localStorage.removeItem('noto_polish_job'); }
+        },
+
+        async _dismissPolish() {
+            try {
+                await fetch(`/api/transcripts/${this.transcriptId}/polish/dismiss`, { method: 'POST' });
+            } catch (_) {}
         },
 
         resumePolishFromStorage() {

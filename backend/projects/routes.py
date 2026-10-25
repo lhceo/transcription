@@ -307,6 +307,31 @@ async def create_standalone_project(
     return JSONResponse({"id": proj.id, "name": proj.name}, status_code=201)
 
 
+def get_polish_status_map(transcript_ids: list[int], db: Session) -> dict[int, str]:
+    """transcript_id → 'running' | 'done' のマップを返す。ダッシュボード・プロジェクトページのバッジ表示用。"""
+    from datetime import datetime, timedelta, timezone
+    result: dict[int, str] = {}
+    if not transcript_ids:
+        return result
+    id_set = set(transcript_ids)
+    for job in _polish_jobs.values():
+        if job.get("status") == "running":
+            tid = job.get("transcript_id")
+            if tid in id_set:
+                result[tid] = "running"
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    logs = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id.in_(transcript_ids))
+        .where(PolishLog.pending_result.isnot(None))
+        .where(PolishLog.created_at >= cutoff)
+    ).all()
+    for log in logs:
+        if log.transcript_id not in result:
+            result[log.transcript_id] = "done"
+    return result
+
+
 @router.get("/projects/{project_id}", response_class=HTMLResponse)
 async def project_detail_page(
     project_id: int,
@@ -359,6 +384,9 @@ async def project_detail_page(
             seen_words.add(key)
             transcript_vocab_items.append({"id": v.id, "transcript_id": v.transcript_id, "word": v.word, "meaning": v.meaning or "", "reading": v.reading or ""})
 
+    transcript_ids = [t.id for t in related_transcripts]
+    polish_status_map = get_polish_status_map(transcript_ids, db)
+
     ctx = _common_ctx(user, db)
     ctx.update({
         "project": proj,
@@ -366,6 +394,7 @@ async def project_detail_page(
         "all_users": all_users,
         "member_display_name": _member_display_name,
         "transcript_vocab_items": transcript_vocab_items,
+        "polish_status_map": polish_status_map,
     })
     return templates.TemplateResponse(request, "project_detail.html", ctx)
 
@@ -1481,6 +1510,27 @@ async def polish_accept(
         lg.pending_result = None
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/dismiss")
+async def polish_dismiss(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """整文完了バナーを × で閉じたとき pending_result をクリアしてダッシュボードバッジを消す。"""
+    from datetime import timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    logs = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.pending_result.isnot(None))
+        .where(PolishLog.created_at >= cutoff)
+    ).all()
+    for lg in logs:
+        lg.pending_result = None
+    db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.get("/api/transcripts/{transcript_id}/polish/diff")
