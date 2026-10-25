@@ -936,11 +936,17 @@ async def run_polish(
 
     # 原文と実質同一の提案を除去：句読点の全半角差のみ等はユーザーに見せない
     seg_text_map = {s["id"]: s["text"] for s in segments}
+    before_trivial_filter = len(merged)
     merged = {
         seg_id: text
         for seg_id, text in merged.items()
         if not _is_trivial_suggestion(seg_text_map.get(seg_id, ""), text)
     }
+    trivial_removed = before_trivial_filter - len(merged)
+    if trivial_removed > 0:
+        logger.info("trivialフィルター: %d件を除去 (残%d件)", trivial_removed, len(merged))
+    if len(merged) == 0 and before_trivial_filter > 0:
+        logger.warning("trivialフィルター後に提案が0件になりました (除去前=%d件) — 原文がすでにきれいな可能性あり", before_trivial_filter)
     merged_flags = {
         seg_id: flags
         for seg_id, flags in merged_flags.items()
