@@ -1454,7 +1454,10 @@
                                             <template x-for="word in flag.words" :key="'fw-{{ seg.id }}-' + word">
                                                 <span>
                                                     <template x-if="flagWordInputs[flagWordKey({{ seg.id }}, word)]?.registered">
-                                                        <span class="flag-word-chip flag-word-done" x-text="word + ' ✓'"></span>
+                                                        <button class="flag-word-chip flag-word-done"
+                                                                @click.stop="reopenFlagWordInput({{ seg.id }}, word)"
+                                                                title="クリックして編集"
+                                                                x-text="word + ' ✓'"></button>
                                                     </template>
                                                     <template x-if="!flagWordInputs[flagWordKey({{ seg.id }}, word)]?.registered && !flagWordInputs[flagWordKey({{ seg.id }}, word)]?.active">
                                                         <button class="flag-word-chip"
@@ -4510,6 +4513,13 @@ function segmentsApp(transcriptId, historyNames) {
             if (this.flagWordInputs[key]) {
                 this.flagWordInputs = { ...this.flagWordInputs, [key]: { ...this.flagWordInputs[key], active: false } };
             }
+        },
+
+        reopenFlagWordInput(segId, word) {
+            const key = this.flagWordKey(segId, word);
+            const prev = this.flagWordInputs[key] || {};
+            // 登録済み値を保持したままフォームを再表示
+            this.flagWordInputs = { ...this.flagWordInputs, [key]: { ...prev, active: true, registered: false } };
         },
 
         async registerFlagVocab(segId, word) {
