@@ -6960,9 +6960,9 @@ textarea.form-input-sm {
 
 /* ── 整文ボタン ── */
 .btn-polish {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: #fff;
-    border: none;
+    background: #f5f3ff;
+    color: #5b21b6;
+    border: 1px solid #c4b5fd;
     padding: 7px 14px;
     border-radius: 6px;
     font-size: 13px;
@@ -6970,9 +6970,12 @@ textarea.form-input-sm {
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    transition: opacity 0.15s;
+    gap: 5px;
+    transition: background 0.15s;
 }
-.btn-polish:hover { opacity: 0.88; }
+.btn-polish:hover:not(:disabled) { background: #ede9fe; }
+.btn-polish.btn-polish--running,
+.btn-polish:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .pickup-ready-dot {
     position: absolute;
