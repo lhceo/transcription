@@ -1449,7 +1449,7 @@
                                           :class="'review-flag-' + flagTypeRisk(flag.type)"
                                           x-text="flagTypeLabel(flag.type)"></span>
                                     <span class="review-flag-note" x-text="flag.note"></span>
-                                    <template x-if="flag.words && flag.words.length > 0">
+                                    <template x-if="flag.words && flag.words.length > 0 && (flag.type === 'meaning_unclear' || flag.type === 'unresolved_pronoun')">
                                         <div class="flag-word-chips">
                                             <template x-for="word in flag.words" :key="'fw-{{ seg.id }}-' + word">
                                                 <span>
@@ -4509,21 +4509,30 @@ function segmentsApp(transcriptId, historyNames) {
             const input = this.flagWordInputs[key];
             if (!input) return;
             const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            // 語尾の助詞を除去してベース形で登録（例: 「ライオンハートが」→「ライオンハート」）
+            const particles = ['について','において','として','にて','から','より','まで','が','を','に','へ','で','と','も','は','か'];
+            let baseWord = word;
+            for (const p of particles) {
+                if (baseWord.endsWith(p) && baseWord.length > p.length) {
+                    baseWord = baseWord.slice(0, -p.length);
+                    break;
+                }
+            }
             try {
                 const res = await fetch(`/api/transcripts/${tId}/vocabulary`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ word, meaning: input.value }),
+                    body: JSON.stringify({ word: baseWord, meaning: input.value }),
                 });
                 if (!res.ok) throw new Error(res.status);
                 this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: false, value: input.value, registered: true } };
-                window.showToast(`「${word}」を辞書に登録しました`);
+                window.showToast(`「${baseWord}」を辞書に登録しました`);
             } catch (e) {
                 window.showToast('登録に失敗しました', 'error');
             }
         },
 
-        fillPronoun(segId, word) {
+        async fillPronoun(segId, word) {
             const key = this.flagWordKey(segId, word);
             const input = this.flagWordInputs[key];
             if (!input || !input.value.trim()) return;
@@ -4536,7 +4545,23 @@ function segmentsApp(transcriptId, historyNames) {
                 `（${referent}）`
             );
             this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: false, value: referent, registered: true } };
-            window.showToast(`「${word}」→「（${referent}）」に補完しました`);
+            // 固有名詞っぽい語句（ひらがな・カタカナ・漢字が含まれる）は辞書にも登録する
+            const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            const looksLikeProperNoun = /[ぁ-んァ-ヶー一-龯]/.test(word);
+            if (looksLikeProperNoun) {
+                try {
+                    await fetch(`/api/transcripts/${tId}/vocabulary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ word, meaning: referent }),
+                    });
+                    window.showToast(`「${word}」→「（${referent}）」に補完し、辞書にも登録しました`);
+                } catch (_) {
+                    window.showToast(`「${word}」→「（${referent}）」に補完しました`);
+                }
+            } else {
+                window.showToast(`「${word}」→「（${referent}）」に補完しました`);
+            }
         },
 
         async applyReview() {
