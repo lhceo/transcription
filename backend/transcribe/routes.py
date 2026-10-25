@@ -2497,21 +2497,39 @@ def _calculate_quality_score(
     elif vc < 3:
         improvements.append("さらに固有名詞を登録する")
 
-    # 整文の実施 (15pt)
+    # 内容確認・整文 (15pt)
+    # 人間が編集 + AI整文を両方行うのが最高。人による編集の方が整文のみより信頼性が高い。
     polished = sum(1 for s in segments if s.is_polished)
-    if total_s == 0 or polished == 0:
+    edited_and_polished = sum(1 for s in segments if s.is_edited and s.is_polished)
+    edited_only = sum(1 for s in segments if s.is_edited and not s.is_polished)
+    polished_only = sum(1 for s in segments if s.is_polished and not s.is_edited)
+    if total_s == 0:
         p_pts = 0
-    elif polished / total_s >= 0.5:
+        p_detail = "未実施"
+    elif edited_and_polished >= 1 and (edited_and_polished / total_s >= 0.1 or edited_and_polished >= 3):
         p_pts = 15
-    elif polished / total_s >= 0.2:
-        p_pts = 8
+        p_detail = f"編集＋整文済み {edited_and_polished}件"
+    elif edited_only >= 1 and (edit_ratio >= 0.1 or edited_only >= 3):
+        p_pts = 10
+        p_detail = f"手動編集確認済み {edited_only}件（整文も実行するとさらに向上）"
+    elif polished_only >= 1 and polished / total_s >= 0.2:
+        p_pts = 6
+        p_detail = f"整文済み {polished_only}件（内容を手動確認するとさらに向上）"
+    elif polished >= 1:
+        p_pts = 3
+        p_detail = f"整文済み {polished}件"
     else:
-        p_pts = 4
+        p_pts = 0
+        p_detail = "未実施"
     score += p_pts
-    breakdown.append({"label": "整文の実施", "points": p_pts, "max": 15,
-                       "detail": f"{polished}/{total_s}セグメントを整文済み"})
-    if polished == 0:
-        improvements.append("整文を実行してテキストを整える")
+    breakdown.append({"label": "内容確認・整文", "points": p_pts, "max": 15,
+                       "detail": p_detail})
+    if polished == 0 and edited == 0:
+        improvements.append("整文を実行するか、セグメントを手動で確認・編集する")
+    elif polished == 0:
+        improvements.append("整文を実行して内容をAIにチェックさせる")
+    elif edited_and_polished == 0:
+        improvements.append("整文後に内容を手動で確認・編集するとさらに品質が上がる")
 
     # MTGメタ情報 (10pt)
     ctx_pts = 0

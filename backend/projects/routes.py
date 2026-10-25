@@ -1251,15 +1251,29 @@ async def _polish_bg_task(
             "model_key": model_key,
         }
 
-        # 整文完了後に Anthropic クレジット残高をチェックして低残高通知
+        # 整文完了通知（Chatwork）
         try:
+            from backend.transcribe.chatwork import notify_polish_done, maybe_notify_low_anthropic_credit
             from backend.transcribe.cost import get_anthropic_balance_summary
-            from backend.transcribe.chatwork import maybe_notify_low_anthropic_credit
+            from backend.transcribe.display import transcript_display_name
+            changed_count = len(result.suggestions)
+            _db2 = SessionLocal()
+            try:
+                _tr = _db2.get(Transcript, transcript_id)
+                _user = _db2.get(User, user_id)
+                _title = transcript_display_name(_tr) if _tr else f"#{transcript_id}"
+                _uname = (_user.name or _user.email) if _user else "不明"
+            finally:
+                _db2.close()
+            base = settings.app_base_url
+            url = f"{base}/transcripts/{transcript_id}" if base else f"/transcripts/{transcript_id}"
+            await notify_polish_done(_title, changed_count, _uname, url)
+            # クレジット残高チェック
             balance = get_anthropic_balance_summary()
             if balance.is_configured:
                 await maybe_notify_low_anthropic_credit(balance.remaining_yen)
         except Exception as _ce:
-            logger.warning("残高チェック失敗: %s", _ce)
+            logger.warning("整文完了通知エラー: %s", _ce)
 
     except Exception as e:
         logger.error("整文バックグラウンドジョブエラー [%s]: %s (type=%s)", job_id, e, type(e).__name__, exc_info=True)

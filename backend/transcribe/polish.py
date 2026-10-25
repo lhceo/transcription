@@ -16,6 +16,40 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r'https?://\S+')
+_KANJI_RE = re.compile(r'[一-龯]')
+_PARENTHETICAL_RE = re.compile(r'[（(].+?[）)]')
+# 純粋な音の繰り返し（なるほど・そう・はい等の意味ある相槌は含めない）
+_REPEAT_FILLER_RE = re.compile(
+    r'^(うん|ん|あ|え|へぇ|ほぉ|まあ|いや){2,}[、。！？]?$'
+)
+
+
+def _is_filler_segment(text: str) -> bool:
+    """整文バッチから除外すべきフィラーセグメントかどうかを判定する。
+
+    （）で囲まれた内容はユーザーの意図的な補足（感情表現・固有名詞・状況説明等）
+    なので必ず保持する。漢字を含む場合も意味があると判断して保持する。
+    """
+    t = text.strip()
+    if not t:
+        return True
+    # （）内容を含む → ユーザーの意図的補足 → 保持
+    if _PARENTHETICAL_RE.search(t):
+        return False
+    # 句読点・括弧を除いた実質テキスト
+    core = re.sub(r'[、。！？…・「」（）【】\s]', '', t)
+    if not core:
+        return True
+    # 漢字含む → 意味ある語句として保持（笑・確かに・結局・例えば 等）
+    if _KANJI_RE.search(core):
+        return False
+    # 2文字以内 + 漢字なし → フィラー（で、まあ、うん、ー 等）
+    if len(core) <= 2:
+        return True
+    # 純粋な音の繰り返し（うんうん、ああ 等）
+    if _REPEAT_FILLER_RE.match(t):
+        return True
+    return False
 
 
 def _is_trivial_suggestion(original: str, suggested: str) -> bool:
@@ -626,15 +660,19 @@ POLISH_SYSTEM = """あなたは日本語のMTG文字起こし整文アシスタ�
 例（OK）: 発言「都会だとか」→ 整文「（妻からしたら）都会だとか」（主語が省略されている場合）
 
 【ルールB】指示語（これ・それ・あれ・ここ・そこ・あの件・先日の・例のやつ 等）
-→ 文脈から特定できる場合、具体的な語句に置き換える
+→ 文脈から特定できる場合、具体的な語句に置き換え type:"pronoun_resolved" フラグを付与
   発言: 「それを進めておいて」
   整文: 「ランディングページの原稿を進めておいて」
+→ 文脈から特定できない場合、元の表現を残し （？） を挿入し
+  type:"unresolved_pronoun", words:["それ"] フラグを付与する
 
 【ルールC】推察できない・確信が持てない場合
 → 元の表現を残し （？） を挿入する
   例: 「（？）対応してもらえますか」
   例: 「あの件（？）については次回確認します」
   ※ （？） は「参加者以外には判断できない箇所」のマーカー
+→ 意味不明瞭な語句（固有名詞・略称・社内用語）は type:"meaning_unclear",
+  words:["語句1","語句2"] フラグで列挙する（noteに説明を記載）
 
 補完の優先根拠:
   1. 直前・直後の発言の流れ
@@ -651,10 +689,12 @@ speakerに含まれる会社・役職・役割の情報を推察の補強に使�
 
 ステップ7: 各セグメントをフラグ付きのJSON形式で返す
 以下の操作を行った場合、対応するフラグを付与すること:
-- 指示語（これ・それ・あれ・あの件等）を具体的な語句に置き換えた → type: "pronoun_resolved"
-- 省略された主語・目的語・間接目的語を（補完）形式で追加した → type: "subject_added"
-- テキストが意味不明・断片的で前後の文脈から内容を推察して書いた → type: "meaning_unclear"
-- 固有名詞辞書の読みをもとに表記を変換した → type: "proper_noun_fixed"
+- 指示語を具体的な語句に置き換えた → type:"pronoun_resolved"
+- 指示語の指示対象が不明で置き換えられなかった → type:"unresolved_pronoun", words:["それ","あの件"]
+- 省略された主語・目的語を（補完）形式で追加した → type:"subject_added"
+- 意味不明・文脈不明瞭な語句がある → type:"meaning_unclear", words:["語句1","語句2"]
+- 固有名詞辞書の読みをもとに表記を変換した → type:"proper_noun_fixed", words:["変換語"]
+wordsフィールド: UIでユーザーに該当語句をクリック登録させるために使う。必ず含めること。
 noteには日本語で何を行ったか簡潔に説明すること。フラグがない場合はflags: []とすること。
 
 【整文例】
@@ -665,7 +705,13 @@ noteには日本語で何を行ったか簡潔に説明すること。フラグ�
 出力: {"id": 2, "text": "（村プロジェクトの補助金申請の件は）どうなっていますか？", "flags": [{"type": "pronoun_resolved", "note": "「あの件」を「村プロジェクトの補助金申請の件」に置き換えました"}]}
 
 入力: {"id": 3, "speaker": "蒲社長", "text": "えのさんが来週対応してくれるって言ってたよ"}
-出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。", "flags": [{"type": "proper_noun_fixed", "note": "「えのさん」を固有名詞辞書をもとに「榎本計介（えのさん）」に展開しました"}]}"""
+出力: {"id": 3, "text": "榎本計介（えのさん）が来週対応してくれると言っていました。", "flags": [{"type": "proper_noun_fixed", "words": ["えのさん"], "note": "「えのさん」を固有名詞辞書をもとに「榎本計介（えのさん）」に展開しました"}]}
+
+入力: {"id": 4, "speaker": "営業Aさん", "text": "それはないですよね（笑）"}
+出力: {"id": 4, "text": "それはないですよね（笑）", "flags": [{"type": "unresolved_pronoun", "words": ["それ"], "note": "「それ」の指示対象が文脈から特定できません。ユーザーによる補足が必要です"}]}
+
+入力: {"id": 5, "speaker": "未設定話者3", "text": "アクセスさんところに行った時に"}
+出力: {"id": 5, "text": "アクセスさんのところに行った時に", "flags": [{"type": "meaning_unclear", "words": ["アクセスさん"], "note": "「アクセスさん」が何を指すか判断できません（企業名・人名等）"}]}"""
 
 POLISH_USER_TEMPLATE = """{context}
 {meeting_summary}
@@ -680,7 +726,7 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 推察できない箇所のみ （？） を挿入してください。
 
 必ず以下のJSON形式のみで返してください（前後に説明文を付けないこと。セグメント数・idは変えないこと）:
-{{"segments": [{{"id": <id>, "text": "<整文後のテキスト>", "flags": [{{"type": "<種別>", "note": "<説明>"}}]}}]}}"""
+{{"segments": [{{"id": <id>, "text": "<整文後のテキスト>", "flags": [{{"type": "<種別>", "words": ["<語句1>"], "note": "<説明>"}}]}}]}}"""
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
@@ -802,6 +848,12 @@ async def run_polish(
         model_key: "haiku" | "sonnet"
     """
     model_id = MODELS.get(model_key, MODELS["haiku"])["id"]
+
+    # フィラーセグメントを除外（AIに送らない → コスト削減 + レビューノイズ低減）
+    filler_ids = {s["id"] for s in segments if _is_filler_segment(s["text"])}
+    if filler_ids:
+        logger.info("フィラーセグメント除外: %d件", len(filler_ids))
+    segments = [s for s in segments if s["id"] not in filler_ids]
 
     # ── 全文サマリー先行抽出（バッチをまたぐ文脈補完の精度向上）──────────────
     # 一括送信でも分割でも全バッチに同じサマリーを添付する

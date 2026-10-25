@@ -840,6 +840,18 @@
     </div>
     {% endif %}
 
+    {# ──── 整文再開バナー（ページを閉じて戻ってきたとき） ──── #}
+    <div class="polish-resume-bar" x-show="!reviewMode && polishResumeState.show" x-cloak style="display:none">
+        <span class="polish-resume-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </span>
+        <span x-text="polishResumeState.status === 'running' ? '整文が処理中です…' : '整文が完了しています'"></span>
+        <button type="button" class="polish-resume-btn"
+                x-show="polishResumeState.status === 'done'"
+                @click="resumePolishFromStorage()">結果を確認する</button>
+        <button type="button" class="polish-resume-dismiss" @click="polishResumeState.show = false" aria-label="閉じる">×</button>
+    </div>
+
     {# ──── チェック済み進捗バー ──── #}
     <div class="review-check-progress-bar" x-show="!reviewMode && reviewedCount > 0" x-cloak style="display:none">
         <span class="review-check-icon">
@@ -915,9 +927,11 @@
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
                 x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りをスキップして保存')"></button>
         <button class="btn btn-outline btn-sm"
-                @click="diffReviewMode ? enterEditModeFromReview() : cancelReview()"
+                @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()"
                 style="color:#64748b"
-                x-text="diffReviewMode ? '編集モードで確認する' : 'キャンセル'"></button>
+                x-text="diffReviewMode ? '編集モードで確認する' : '編集モードで続ける'"></button>
+        <button class="btn btn-link btn-sm" x-show="!diffReviewMode" @click="cancelReview()"
+                style="color:#94a3b8;font-size:11px;padding:2px 6px;text-decoration:underline">全破棄</button>
         <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
             グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
         </span>
@@ -1007,7 +1021,10 @@
                         'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
                         'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
                         'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,
-                        'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done
+                        'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done,
+                        'seg-state-edited':   !reviewMode && editedSegs[{{ seg.id }}],
+                        'seg-state-scrolled': !reviewMode && !editedSegs[{{ seg.id }}] && scrolledSegs[{{ seg.id }}],
+                        'seg-save-error':     saveFailedSegs[{{ seg.id }}]
                     }">
                     <header class="segment-header">
                         <button
@@ -1084,6 +1101,13 @@
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                             <span x-text="qualityTypeLabel(qualityIssues[{{ seg.id }}]?.type)"></span>
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px;opacity:0.6;flex-shrink:0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </span>
+                        {# 保存失敗バッジ: 保存エラー時のみ表示 #}
+                        <span class="seg-badge seg-save-error-badge"
+                              x-show="saveFailedSegs[{{ seg.id }}]"
+                              x-cloak
+                              title="保存に失敗しました。ツールバーの「再試行」ボタンで再保存できます。">
+                            ⚠ 保存未確認
                         </span>
                         {# セグメントレビューボタン（常時表示） #}
                         <button type="button"
@@ -1393,13 +1417,45 @@
                         <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
                         <div class="review-flag-list">
                             <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
-                                <span class="review-flag-badge"
-                                      :class="'review-flag-' + flagTypeRisk(flag.type)"
-                                      :title="flag.note"
-                                      x-text="flagTypeLabel(flag.type)"></span>
+                                <div class="review-flag-row">
+                                    <span class="review-flag-badge"
+                                          :class="'review-flag-' + flagTypeRisk(flag.type)"
+                                          x-text="flagTypeLabel(flag.type)"></span>
+                                    <span class="review-flag-note" x-text="flag.note"></span>
+                                    <template x-if="flag.words && flag.words.length > 0">
+                                        <div class="flag-word-chips">
+                                            <template x-for="word in flag.words" :key="'fw-{{ seg.id }}-' + word">
+                                                <span>
+                                                    <template x-if="flagWordInputs[flagWordKey({{ seg.id }}, word)]?.registered">
+                                                        <span class="flag-word-chip flag-word-done" x-text="word + ' ✓'"></span>
+                                                    </template>
+                                                    <template x-if="!flagWordInputs[flagWordKey({{ seg.id }}, word)]?.registered && !flagWordInputs[flagWordKey({{ seg.id }}, word)]?.active">
+                                                        <button class="flag-word-chip"
+                                                                :class="flag.type === 'unresolved_pronoun' ? 'flag-word-pronoun' : 'flag-word-vocab'"
+                                                                @click.stop="openFlagWordInput({{ seg.id }}, word)"
+                                                                x-text="flag.type === 'unresolved_pronoun' ? word + ' ？' : word + ' ＋'"></button>
+                                                    </template>
+                                                    <template x-if="flagWordInputs[flagWordKey({{ seg.id }}, word)]?.active">
+                                                        <span class="flag-word-input-wrap">
+                                                            <span class="flag-word-label" x-text="flag.type === 'unresolved_pronoun' ? '「' + word + '」は何を指す？' : '「' + word + '」の意味'"></span>
+                                                            <input type="text" class="flag-word-input"
+                                                                   x-model="flagWordInputs[flagWordKey({{ seg.id }}, word)].value"
+                                                                   @click.stop
+                                                                   @keydown.enter.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word) : registerFlagVocab({{ seg.id }}, word)"
+                                                                   @keydown.escape.stop="closeFlagWordInput({{ seg.id }}, word)"
+                                                                   :placeholder="flag.type === 'unresolved_pronoun' ? '指示対象を入力…' : '意味・説明を入力…'"
+                                                                   x-init="$el.focus()">
+                                                            <button class="flag-word-submit" @click.stop="flag.type === 'unresolved_pronoun' ? fillPronoun({{ seg.id }}, word) : registerFlagVocab({{ seg.id }}, word)"
+                                                                    x-text="flag.type === 'unresolved_pronoun' ? '補完' : '登録'"></button>
+                                                            <button class="flag-word-cancel" @click.stop="closeFlagWordInput({{ seg.id }}, word)">×</button>
+                                                        </span>
+                                                    </template>
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
                             </template>
-                            <span class="review-flag-note"
-                                  x-text="reviewData[{{ seg.id }}].flags.map(f => f.note).join(' / ')"></span>
                         </div>
                         </template>
                         <div class="review-pending-header">
@@ -1886,8 +1942,10 @@
                 <p x-show="polishProgress.total === 0">Claudeが文字起こしを整えています。しばらくお待ちください。</p>
                 <p x-show="polishProgress.total > 0">
                     処理中 <strong x-text="polishProgress.done"></strong> / <span x-text="polishProgress.total"></span> バッチ完了
+                    <span x-show="polishProgress.etaSeconds !== null" style="margin-left:8px;color:#94a3b8;font-size:12px"
+                          x-text="polishProgress.etaSeconds < 60 ? 'まもなく完了' : 'あと約' + Math.ceil(polishProgress.etaSeconds / 60) + '分'"></span>
                 </p>
-                <p style="font-size:11px;color:#94a3b8;margin-top:4px">セグメント数が多い場合、数分かかります</p>
+                <p style="font-size:11px;color:#94a3b8;margin-top:4px">このタブを閉じても作業はサーバーで続きます。戻ってきたときに再開できます。</p>
             </div>
         </div>
 
@@ -2236,6 +2294,7 @@ function segmentsApp(transcriptId, historyNames) {
         reviewMode: false,
         diffReviewMode: false,  // true = 採用後の差分確認モード（スキップ=元に戻す）
         reviewData: {},   // { [segId]: { state, done, polishedText, original, parts, fills, activeFillIdx, preview, flags } }
+        flagWordInputs: {}, // { "segId_word": { active, value, registered } } — フラグ語句チップの入力状態
         _flaggedSegIds: [],  // 要確認ナビゲーター: フラグ付きsegId (DOM順)
         _flagNavIdx: 0,
         revertConfirmSegId: null,
@@ -2243,6 +2302,9 @@ function segmentsApp(transcriptId, historyNames) {
         revertConfirmBeforeText: '',
         segFills: {},          // { [segId]: { parts, fills, activeFillIdx } } — （？）穴埋め用
         resolvedUnknowns: {}, // { [segId]: true } — 未解決バッジを解除済みのセグメント
+        scrolledSegs: {},  // { [segId]: true } — viewport に入ったことがあるセグメント
+        editedSegs: {},    // { [segId]: true } — is_edited = true のセグメント（DOM 初期化）
+        saveFailedSegs: {}, // { [segId]: true } — 保存失敗中のセグメント（成功でクリア）
 
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
@@ -2637,6 +2699,12 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         init() {
+            // レビュー進捗を優先復元。なければ未完ジョブのバナーを確認。
+            this.$nextTick(async () => {
+                const restored = this._tryRestoreReviewProgress();
+                if (!restored) { await this._checkPolishResume(); }
+            });
+
             // textarea の自動サイズ調整を初期化
             this.$nextTick(() => {
                 this.resizeAllTextareas();
@@ -2646,6 +2714,31 @@ function segmentsApp(transcriptId, historyNames) {
                     if (text.includes('（？）')) card.classList.add('segment-card-has-unknown');
                 });
             });
+            // スクロール追跡: viewport に入ったセグメントを「閲覧済み」としてマーク
+            this.$nextTick(() => {
+                const cards = document.querySelectorAll('#segment-list .segment-card');
+                // 編集済みセグメントを DOM から初期化
+                cards.forEach(card => {
+                    const id = parseInt(card.dataset.segmentId, 10);
+                    if (!id) return;
+                    if (card.querySelector('[data-edited="1"]')) {
+                        this.editedSegs = { ...this.editedSegs, [id]: true };
+                    }
+                });
+                // IntersectionObserver で閲覧済みをマーク
+                const scrollObs = new IntersectionObserver((entries) => {
+                    let changed = false;
+                    const patch = {};
+                    entries.forEach(e => {
+                        if (!e.isIntersecting) return;
+                        const id = parseInt(e.target.dataset.segmentId, 10);
+                        if (id && !this.scrolledSegs[id]) { patch[id] = true; changed = true; }
+                    });
+                    if (changed) this.scrolledSegs = { ...this.scrolledSegs, ...patch };
+                }, { threshold: 0.3 });
+                cards.forEach(card => scrollObs.observe(card));
+            });
+
             // Shift+Return で動的に追加されたカードには x-show が効かないので、
             // editMode / focusedEditingSegmentId の変化を監視して
             // view/edit 表示を手動同期する。
@@ -3896,6 +3989,38 @@ function segmentsApp(transcriptId, historyNames) {
             this._buildUnknownSegments();
         },
 
+        async _checkPolishResume() {
+            // ページロード時に保留中の整文ジョブがあるか確認する
+            let saved;
+            try { saved = JSON.parse(localStorage.getItem('noto_polish_job') || 'null'); } catch (_) { return; }
+            if (!saved || saved.transcript_id !== transcriptId) return;
+            const jobId = saved.job_id;
+            try {
+                const res = await fetch(`/api/transcripts/${transcriptId}/polish/status/${jobId}`);
+                if (!res.ok) { localStorage.removeItem('noto_polish_job'); return; }
+                const data = await res.json();
+                if (data.status === 'done') {
+                    this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
+                } else if (data.status === 'running' || data.status === 'pending') {
+                    this.polishResumeState = { show: true, status: 'running', jobId, result: null };
+                    // ポーリング再開
+                    this._polishStartedAt = saved.started_at || Date.now();
+                    const result = await this._pollPolishJob(jobId);
+                    this.polishResumeState = { show: true, status: 'done', jobId, result };
+                } else {
+                    localStorage.removeItem('noto_polish_job');
+                }
+            } catch (_) { localStorage.removeItem('noto_polish_job'); }
+        },
+
+        resumePolishFromStorage() {
+            if (!this.polishResumeState.result) return;
+            const r = this.polishResumeState.result;
+            this.polishResumeState.show = false;
+            localStorage.removeItem('noto_polish_job');
+            this.enterReviewMode(r.suggestions || {}, r.flags || {});
+        },
+
         enterReviewMode(suggestions, flags = {}) {
             this.reviewData = {};
             const cards = document.querySelectorAll('#segment-list .segment-card');
@@ -4171,16 +4296,81 @@ function segmentsApp(transcriptId, historyNames) {
             this._clearReviewProgress();
         },
 
-        enterEditModeFromReview() {
-            // reviewData（整文前テキスト）を保持したまま編集モードへ移行する。
-            // cancelReview() と違い reviewData を消さないため、
-            // セグメントカード上で「整文前を見る」参照が引き続き使える。
+        async enterEditModeFromReview() {
+            // diffMode: 明示的にskipされた（=整文前に戻す）分だけDBに保存してから編集モードへ
+            if (this.diffReviewMode) {
+                const revertIds = Object.entries(this.reviewData)
+                    .filter(([, d]) => d.done === 'skipped')
+                    .map(([id]) => parseInt(id));
+                if (revertIds.length > 0) {
+                    try {
+                        const tId = (window.__TRANSCRIPT_INIT || {}).id;
+                        const res = await fetch(`/api/transcripts/${tId}/polish/revert`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ segment_ids: revertIds }),
+                        });
+                        if (!res.ok) throw new Error(res.status);
+                        Object.entries(this.reviewData).forEach(([id, d]) => {
+                            if (d.done !== 'skipped' || !d.original) return;
+                            const card = document.getElementById(`segment-${id}`);
+                            if (!card) return;
+                            const textDiv = card.querySelector('.segment-text');
+                            if (textDiv) this.setSegmentTextContent(textDiv, d.original);
+                            const ta = card.querySelector('.segment-text-edit');
+                            if (ta) { ta.value = d.original; ta.dataset.originalText = d.original; this.fitToContent(ta); }
+                        });
+                    } catch (e) {
+                        window.showToast('保存に失敗しました', 'error');
+                        return;
+                    }
+                }
+            }
             this.reviewMode = false;
             this.diffReviewMode = false;
             this.editMode = true;
             this._flaggedSegIds = [];
             this._flagNavIdx = 0;
             this._clearReviewProgress();
+        },
+
+        async enterEditModeFromFirstReview() {
+            // 採用済み分だけDBに保存してページリロードなしで編集モードへ移行。
+            // 未決（pending）セグメントはreviewDataに残し「整文前を見る」参照が使える。
+            const accepted_texts = {};
+            Object.entries(this.reviewData).forEach(([id, d]) => {
+                if (d.done === 'accepted') accepted_texts[parseInt(id)] = d.polishedText || '';
+            });
+            if (Object.keys(accepted_texts).length > 0) {
+                try {
+                    const tId = (window.__TRANSCRIPT_INIT || {}).id;
+                    const res = await fetch(`/api/transcripts/${tId}/polish/accept`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accepted_texts }),
+                    });
+                    if (!res.ok) throw new Error(res.status);
+                    Object.entries(accepted_texts).forEach(([id, text]) => {
+                        const card = document.getElementById(`segment-${id}`);
+                        if (!card) return;
+                        const textDiv = card.querySelector('.segment-text');
+                        if (textDiv) this.setSegmentTextContent(textDiv, text);
+                        const ta = card.querySelector('.segment-text-edit');
+                        if (ta) { ta.value = text; ta.dataset.originalText = text; this.fitToContent(ta); }
+                    });
+                } catch (e) {
+                    window.showToast('保存に失敗しました', 'error');
+                    return;
+                }
+            }
+            this.reviewMode = false;
+            this.diffReviewMode = false;
+            this.editMode = true;
+            this._flaggedSegIds = [];
+            this._flagNavIdx = 0;
+            this._clearReviewProgress();
+            const n = Object.keys(accepted_texts).length;
+            window.showToast(n > 0 ? `${n}件を採用して保存。編集モードで確認中（整文前を見る も使えます）。` : '編集モードに切り替えました。');
         },
 
         flagCount() {
@@ -4202,15 +4392,69 @@ function segmentsApp(transcriptId, historyNames) {
 
         flagTypeLabel(type) {
             return {
-                pronoun_resolved: '指示語補完',
-                subject_added:    '主語補完',
-                meaning_unclear:  '文意推察',
-                proper_noun_fixed:'固有名詞変換',
+                pronoun_resolved:    '指示語補完',
+                unresolved_pronoun:  '指示語不明',
+                subject_added:       '主語補完',
+                meaning_unclear:     '文意推察',
+                proper_noun_fixed:   '固有名詞変換',
             }[type] || type;
         },
 
         flagTypeRisk(type) {
-            return ['pronoun_resolved', 'subject_added', 'meaning_unclear'].includes(type) ? 'high' : 'mid';
+            return ['pronoun_resolved', 'subject_added', 'meaning_unclear', 'unresolved_pronoun'].includes(type) ? 'high' : 'mid';
+        },
+
+        // ── フラグ語句チップ（辞書登録 / 指示語補完）────────────────────────
+
+        flagWordKey(segId, word) {
+            return `${segId}_${word}`;
+        },
+
+        openFlagWordInput(segId, word) {
+            const key = this.flagWordKey(segId, word);
+            this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: true, value: '', registered: false } };
+        },
+
+        closeFlagWordInput(segId, word) {
+            const key = this.flagWordKey(segId, word);
+            if (this.flagWordInputs[key]) {
+                this.flagWordInputs = { ...this.flagWordInputs, [key]: { ...this.flagWordInputs[key], active: false } };
+            }
+        },
+
+        async registerFlagVocab(segId, word) {
+            const key = this.flagWordKey(segId, word);
+            const input = this.flagWordInputs[key];
+            if (!input) return;
+            const tId = (window.__TRANSCRIPT_INIT || {}).id;
+            try {
+                const res = await fetch(`/api/transcripts/${tId}/vocabulary`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word, meaning: input.value }),
+                });
+                if (!res.ok) throw new Error(res.status);
+                this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: false, value: input.value, registered: true } };
+                window.showToast(`「${word}」を辞書に登録しました`);
+            } catch (e) {
+                window.showToast('登録に失敗しました', 'error');
+            }
+        },
+
+        fillPronoun(segId, word) {
+            const key = this.flagWordKey(segId, word);
+            const input = this.flagWordInputs[key];
+            if (!input || !input.value.trim()) return;
+            const d = this.reviewData[segId];
+            if (!d) return;
+            const referent = input.value.trim();
+            // 指示語を（指示対象）形式に置き換える
+            d.polishedText = d.polishedText.replace(
+                new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                `（${referent}）`
+            );
+            this.flagWordInputs = { ...this.flagWordInputs, [key]: { active: false, value: referent, registered: true } };
+            window.showToast(`「${word}」→「（${referent}）」に補完しました`);
         },
 
         async applyReview() {
@@ -4821,6 +5065,12 @@ function segmentsApp(transcriptId, historyNames) {
                 if (this.undoStack.length > 20) this.undoStack.shift();
                 ta.dataset.originalText = newText;
                 this.pendingSegments.delete(segmentId);
+                // 保存失敗バッジをクリア（再試行成功）
+                if (this.saveFailedSegs[segmentId]) {
+                    const p = { ...this.saveFailedSegs };
+                    delete p[segmentId];
+                    this.saveFailedSegs = p;
+                }
                 // 表示用 div も同期
                 const card = ta.closest('.segment-card');
                 if (card) {
@@ -4849,6 +5099,10 @@ function segmentsApp(transcriptId, historyNames) {
                 console.error('save failed:', e);
                 // テキストをリバートしない・pendingも残す → beforeunloadが警告を出せる状態を維持
                 this.saveStatus = 'error';
+                // セグメント単位の保存未確認バッジを表示
+                this.saveFailedSegs = { ...this.saveFailedSegs, [segmentId]: true };
+                // 管理者へ通知（keepalive で確実に届ける）
+                this._reportSaveFailure(segmentId, e.message || 'network_error');
                 if (!this._saveErrorToast || !this._saveErrorToast.parentNode) {
                     this._saveErrorToast = window.showToast(
                         'ネットワークエラーのため保存できませんでした。',
@@ -4882,6 +5136,21 @@ function segmentsApp(transcriptId, historyNames) {
                 this._saveErrorToast.addEventListener('animationend', () => this._saveErrorToast?.remove(), { once: true });
             }
             this._saveErrorToast = null;
+        },
+
+        _reportSaveFailure(segmentId, errorType) {
+            try {
+                fetch('/api/save-failure-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transcript_id: this.transcriptId,
+                        segment_id: segmentId,
+                        error_type: String(errorType).slice(0, 200),
+                    }),
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (_) {}
         },
 
         // サーバー側で保存件数を確認（バックグラウンド）
@@ -5684,7 +5953,9 @@ function polishModal() {
         flags: {},         // {segId: [{type, note}]}
         totalChanged: 0,
         unknownCount: 0,
-        polishProgress: { done: 0, total: 0 },
+        polishProgress: { done: 0, total: 0, etaSeconds: null },
+        _polishStartedAt: null,
+        polishResumeState: { show: false, status: null, jobId: null, result: null },
         preflightIssues: [],
 
         _checkPreflight() {
@@ -5772,7 +6043,8 @@ function polishModal() {
 
         async runPolish() {
             this.step = 'running';
-            this.polishProgress = { done: 0, total: 0 };
+            this._polishStartedAt = Date.now();
+            this.polishProgress = { done: 0, total: 0, etaSeconds: null };
             const extra = this.pickupWords
                 .filter(w => w.meaning.trim())
                 .map(w => ({ word: w.word, meaning: w.meaning.trim() }));
@@ -5788,6 +6060,9 @@ function polishModal() {
                     throw new Error(errJson.detail || startRes.status);
                 }
                 const { job_id } = await startRes.json();
+
+                // ページを閉じても戻れるよう job_id を保存
+                try { localStorage.setItem('noto_polish_job', JSON.stringify({ job_id, transcript_id: transcriptId, started_at: Date.now() })); } catch (_) {}
 
                 // バックグラウンドジョブをポーリング
                 const data = await this._pollPolishJob(job_id);
@@ -5806,6 +6081,7 @@ function polishModal() {
                     : msg.includes('タイムアウト')
                     ? '整文がタイムアウトしました。時間をおいて再試行してください'
                     : '整文に失敗しました。時間をおいて再試行してください';
+                try { localStorage.removeItem('noto_polish_job'); } catch (_) {}
                 window.showToast(friendly, 'error');
                 this.step = 'confirm';
             }
@@ -5818,9 +6094,18 @@ function polishModal() {
                 if (!res.ok) throw new Error('ステータス確認に失敗しました');
                 const data = await res.json();
                 if (data.batch_total > 0) {
-                    this.polishProgress = { done: data.batch_done, total: data.batch_total };
+                    const elapsed = (Date.now() - this._polishStartedAt) / 1000;
+                    let etaSeconds = null;
+                    if (data.batch_done > 0) {
+                        const perBatch = elapsed / data.batch_done;
+                        etaSeconds = Math.max(0, perBatch * (data.batch_total - data.batch_done));
+                    }
+                    this.polishProgress = { done: data.batch_done, total: data.batch_total, etaSeconds };
                 }
-                if (data.status === 'done') return data.result;
+                if (data.status === 'done') {
+                    try { localStorage.removeItem('noto_polish_job'); } catch (_) {}
+                    return data.result;
+                }
                 if (data.status === 'error') throw new Error(data.error || '整文中にエラーが発生しました');
             }
             throw new Error('整文がタイムアウトしました');

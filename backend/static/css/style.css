@@ -3082,6 +3082,23 @@ mark.find-highlight-active {
 .polish-history-btn-revert { border-color: #fca5a5; color: #b91c1c; }
 .polish-history-btn-revert:hover { background: #fef2f2; }
 
+.polish-resume-bar {
+    background: #fefce8; border-bottom: 1px solid #fde68a;
+    padding: 7px 16px; display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: #92400e;
+}
+.polish-resume-icon { display: flex; align-items: center; gap: 4px; font-weight: 700; }
+.polish-resume-btn {
+    background: none; border: 1px solid #fcd34d; border-radius: 5px;
+    color: #92400e; font-size: 12px; padding: 3px 10px; cursor: pointer;
+    white-space: nowrap; margin-left: auto;
+}
+.polish-resume-btn:hover { background: #fef9c3; }
+.polish-resume-dismiss {
+    background: none; border: none; color: #a16207; cursor: pointer;
+    font-size: 16px; padding: 0 4px; line-height: 1;
+}
+
 .review-progress-bar {
     position: sticky; top: 8px;
     background: #fffbeb; border-bottom: 2px solid #fcd34d;
@@ -3161,6 +3178,41 @@ mark.find-highlight-active {
 .review-flag-mid  { background: #fef3c7; color: #92400e; }
 .review-flag-note {
     font-size: 11px; color: #92400e; line-height: 1.5; flex: 1; min-width: 0;
+}
+.review-flag-row {
+    display: flex; flex-direction: column; gap: 4px; width: 100%;
+}
+.flag-word-chips {
+    display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px;
+}
+.flag-word-chip {
+    font-size: 11px; border-radius: 20px; padding: 2px 10px;
+    cursor: pointer; white-space: nowrap; border: 1px dashed;
+    background: none; font-family: inherit;
+}
+.flag-word-vocab   { border-color: #7dd3fc; color: #0369a1; }
+.flag-word-vocab:hover { background: #e0f2fe; }
+.flag-word-pronoun { border-color: #fca5a5; color: #b91c1c; }
+.flag-word-pronoun:hover { background: #fee2e2; }
+.flag-word-done    { font-size: 11px; border-radius: 20px; padding: 2px 10px;
+                     background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.flag-word-input-wrap {
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.flag-word-label { font-size: 11px; color: #64748b; white-space: nowrap; }
+.flag-word-input {
+    font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px;
+    padding: 2px 6px; outline: none; min-width: 120px; max-width: 200px;
+}
+.flag-word-input:focus { border-color: #60a5fa; }
+.flag-word-submit {
+    font-size: 11px; background: #3b82f6; color: #fff; border: none;
+    border-radius: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap;
+}
+.flag-word-submit:hover { background: #2563eb; }
+.flag-word-cancel {
+    font-size: 14px; background: none; border: none; color: #94a3b8;
+    cursor: pointer; padding: 0 2px; line-height: 1;
 }
 
 /* ── 要確認ナビゲーター（プログレスバー内） ── */
@@ -3260,6 +3312,31 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .segment-card.review-skipped .segment-text { opacity: .4; }
 .segment-card.review-pending-diff    { border-left: 3px solid #93c5fd; background: #fafeff; }
 .segment-card.review-pending-unknown { border-left: 3px solid #fcd34d; background: #fffdf5; }
+
+/* スクロール追跡・3色状態（未読/スクロール済み/編集済み） */
+.segment-card.seg-state-scrolled { border-left: 3px solid #bfdbfe; }
+.segment-card.seg-state-edited   { border-left: 3px solid #86efac; }
+
+/* 保存失敗状態 */
+.segment-card.seg-save-error { border-left: 3px solid #ef4444; }
+.seg-save-error-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ef4444;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: default;
+    animation: pulse-error 2s infinite;
+}
+@keyframes pulse-error {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.6; }
+}
 
 .segment-text {
     font-size: 15px;

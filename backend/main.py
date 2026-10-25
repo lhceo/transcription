@@ -37,6 +37,16 @@ from typing import Annotated
 logger = logging.getLogger(__name__)
 
 
+def _utc_iso(dt) -> str | None:
+    """naive datetime (UTC) を 'Z' 付き ISO 文字列に変換する。JS が正しく UTC 解釈できるようにする。"""
+    if dt is None:
+        return None
+    from datetime import timezone as _tz
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_tz.utc)
+    return dt.isoformat().replace('+00:00', 'Z')
+
+
 def _log_task_error(task) -> None:
     """asyncio.create_task() の done callback。例外が握りつぶされないようにログへ記録する。"""
     if not task.cancelled() and task.exception():
@@ -506,6 +516,38 @@ async def heartbeat(
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/save-failure-report")
+async def save_failure_report(
+    request: Request,
+    user: CurrentUser,
+) -> JSONResponse:
+    """セグメント保存失敗をサーバー側でログ＆Chatwork 通知する。"""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False}, status_code=400)
+
+    transcript_id = body.get("transcript_id")
+    segment_id = body.get("segment_id")
+    error_type = body.get("error_type", "unknown")
+
+    logger.error(
+        "セグメント保存失敗報告: user=%s transcript=%s segment=%s error=%s",
+        user.get("email"), transcript_id, segment_id, error_type,
+    )
+
+    import asyncio
+    from backend.transcribe.chatwork import notify_save_failure
+    asyncio.create_task(notify_save_failure(
+        user_name=user.get("name") or user.get("email", "不明"),
+        user_email=user.get("email", ""),
+        transcript_id=transcript_id,
+        segment_id=segment_id,
+        error_type=error_type,
+    ))
+    return JSONResponse({"ok": True})
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     """Railway などのヘルスチェック用エンドポイント。認証不要。"""
@@ -614,9 +656,9 @@ async def admin_users_stats(
             "polish_count_this_month": polish_stats["count"],
             "total_cost_this_month_yen": total_cost_month,
             "total_cost_this_month_pretty": f"¥{total_cost_month:,}" if total_cost_month > 0 else "¥0",
-            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
-            "last_upload_at": last_upload.isoformat() if last_upload else None,
-            "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,
+            "last_login_at": _utc_iso(u.last_login_at),
+            "last_upload_at": _utc_iso(last_upload),
+            "last_seen_at": _utc_iso(u.last_seen_at),
         })
 
     # 処理中ジョブ数（デプロイ安全チェック用）

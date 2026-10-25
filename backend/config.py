@@ -29,7 +29,7 @@ load_dotenv(_REPO_ROOT / ".env", override=False)
 # - v1.5.0 (キーボードショートカット強化・メディアキー対応・Undo/Redo)
 # - v1.6.0 (デプロイ安全チェック・話者分析バー・セグメントタグ（決定/ToDo）)
 # - v1.7.0 (プレフライトチェック・エクスポート品質ゲート・品質スタンプ埋め込み)
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
@@ -89,6 +89,8 @@ class Settings:
     # Chatwork 通知設定。未設定の場合は通知をスキップ。
     chatwork_api_token: str    # CHATWORK_API_TOKEN
     chatwork_room_id: str      # CHATWORK_ROOM_ID
+    # アプリのベース URL（Chatwork 通知リンク用）。Railway は自動設定、ローカルは空。
+    app_base_url: str           # APP_BASE_URL (例: https://transcription-production-f1c1.up.railway.app)
 
     # Anthropic クレジット残高管理。USD と JPY のどちらかで設定する。
     # USD を設定した場合は USD が優先される。
@@ -203,6 +205,8 @@ def load_settings() -> Settings:
         smtp_password=_env("SMTP_PASSWORD", ""),
         chatwork_api_token=_env("CHATWORK_API_TOKEN", ""),
         chatwork_room_id=_env("CHATWORK_ROOM_ID", ""),
+        app_base_url=_env("APP_BASE_URL",
+            "https://" + _env("RAILWAY_PUBLIC_DOMAIN", "") if _env("RAILWAY_PUBLIC_DOMAIN", "") else ""),
         anthropic_credit_usd=_safe_float(_env("ANTHROPIC_CREDIT_USD", "0")),
         anthropic_credit_yen=_safe_int(_env("ANTHROPIC_CREDIT_YEN", "0")),
         anthropic_credit_since=_env("ANTHROPIC_CREDIT_SINCE", ""),
