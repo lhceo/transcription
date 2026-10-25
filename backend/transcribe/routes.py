@@ -2431,8 +2431,21 @@ def _calculate_quality_score(
     _unnamed = _re.compile(r"^未設定話者")
 
     # 話者確定 (25pt)
+    # Speaker.display_name だけでなく Segment.display_name の実効名も考慮する。
+    # 個別セグメントのみリネームした場合、Speaker テーブルは更新されないため。
+    _seg_names_by_label: dict[str, set[str]] = {}
+    for _seg in segments:
+        if _seg.display_name:
+            _seg_names_by_label.setdefault(_seg.speaker_label, set()).add(_seg.display_name)
+
     total_sp = len(speakers)
-    named_sp = sum(1 for s in speakers if not _unnamed.match(s.display_name or ""))
+    named_sp = 0
+    for _s in speakers:
+        if not _unnamed.match(_s.display_name or ""):
+            named_sp += 1
+        elif any(not _unnamed.match(n) for n in _seg_names_by_label.get(_s.speaker_label, set())):
+            named_sp += 1
+
     if total_sp == 0:
         sp_pts = 0
     else:
@@ -2445,20 +2458,25 @@ def _calculate_quality_score(
         improvements.append(f"話者名を設定する（{unnamed_count}人が未設定）")
 
     # 手動編集の痕跡 (30pt)
+    # 3% 以上 または 絶対数 5 以上で初めてポイントを付与。
+    # 極少数（1〜2件）の偶発的な編集がカウントされるのを防ぐ。
     total_s = len(segments)
     edited = sum(1 for s in segments if s.is_edited)
+    edit_ratio = edited / total_s if total_s > 0 else 0
     if total_s == 0 or edited == 0:
         ed_pts = 0
-    elif edited / total_s >= 0.3:
+    elif edit_ratio >= 0.3:
         ed_pts = 30
-    elif edited / total_s >= 0.1:
+    elif edit_ratio >= 0.1:
         ed_pts = 20
-    else:
+    elif edit_ratio >= 0.03 or edited >= 5:
         ed_pts = 10
+    else:
+        ed_pts = 0
     score += ed_pts
     breakdown.append({"label": "手動編集の痕跡", "points": ed_pts, "max": 30,
                        "detail": f"{edited}セグメントを手動で確認・編集"})
-    if edited == 0:
+    if ed_pts == 0:
         improvements.append("セグメントを手動で確認・修正する")
 
     # 固有名詞辞書 (20pt)
