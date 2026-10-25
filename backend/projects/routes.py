@@ -1065,20 +1065,25 @@ async def polish_estimate(
     has_agenda = bool(transcript.meeting_agenda)
 
     vocab_count = 0
-    member_count = 0
     from sqlalchemy import func
     if transcript.project_id:
         vocab_count = db.scalar(
             select(func.count()).where(ProjectVocabulary.project_id == transcript.project_id)
-        ) or 0
-        member_count = db.scalar(
-            select(func.count()).where(ProjectMember.project_id == transcript.project_id)
         ) or 0
     # 個別音声の固有名詞も合算する
     transcript_vocab_count = db.scalar(
         select(func.count()).where(TranscriptVocabulary.transcript_id == transcript_id)
     ) or 0
     vocab_count += transcript_vocab_count
+
+    # 参加者情報 = transcript.meeting_participants（会議の出席者リスト）
+    # ProjectMember（プロジェクト共同編集者）とは別物なので混同しない
+    import json as _json_est
+    try:
+        _participants = _json_est.loads(transcript.meeting_participants) if transcript.meeting_participants else []
+    except Exception:
+        _participants = []
+    participant_count = len(_participants)
 
     # 話者名設定チェック（「未設定話者X」のままだと整文の主語補完精度が大幅低下）
     all_speakers = list(db.scalars(
@@ -1101,7 +1106,7 @@ async def polish_estimate(
         {"label": f"固有名詞辞書（{vocab_count}件）", "ok": vocab_count > 0, "action": None},
         {"label": "MTGの目的が設定されている", "ok": has_purpose, "action": "scroll_mtg"},
         {"label": "アジェンダが設定されている", "ok": has_agenda, "action": "scroll_mtg"},
-        {"label": f"参加者情報（{member_count}人）", "ok": member_count > 0, "action": "scroll_mtg"},
+        {"label": f"参加者情報（{participant_count}人）", "ok": participant_count > 0, "action": "scroll_mtg"},
     ]
     context_score = sum(1 for c in context_items if c["ok"])
 
