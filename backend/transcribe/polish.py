@@ -124,12 +124,14 @@ MODELS = {
         "label": "Haiku（標準・低コスト）",
         "input_price_per_mtok": 0.80,   # USD per million tokens
         "output_price_per_mtok": 4.00,
+        "max_output_tokens": 8192,      # Haiku の上限
     },
     "sonnet": {
         "id": "claude-sonnet-4-6",
         "label": "Sonnet（高精度・高コスト）",
         "input_price_per_mtok": 3.00,
         "output_price_per_mtok": 15.00,
+        "max_output_tokens": 16000,     # Sonnet はより大きなバッチを捌ける
     },
 }
 
@@ -733,12 +735,14 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
-# max_tokens=8192 に対して安全マージンを確保。
-# 実測でテキストトークンの他に JSON 構造オーバーヘッドが大きいため低めに設定。
-_SAFE_OUTPUT_TOKENS = 4000
+# フラグJSON（type/note/words）が1件あたり100〜300 tok になるため
+# テキスト推定値だけでは足りない。_PER_SEG_JSON_OVERHEAD で吸収する。
+_SAFE_OUTPUT_TOKENS = 2500
 # 1セグメントあたりの JSON 構造オーバーヘッド (tokens):
-# {"id":X,"text":"...","flags":[{"type":"Y","note":"Z"}]} のキー等 ≈ 40 tokens/seg
-_PER_SEG_JSON_OVERHEAD = 40
+# フラグなし: {"id":X,"text":"..."} ≈ 40 tok
+# フラグあり: + {"type":"...","note":"...","words":[...]} × N ≈ 100〜300 tok
+# 平均的に半数のセグメントにフラグがつくと仮定して 120 tok/seg で概算
+_PER_SEG_JSON_OVERHEAD = 120
 # バッチ間のオーバーラップ（文脈保持のため前バッチ末尾を次バッチ先頭に重複させる）
 _OVERLAP_SEGMENTS = 5
 
@@ -758,6 +762,7 @@ async def _run_polish_batch(
     context_text: str,
     model_id: str,
     meeting_summary: str = "",
+    max_tokens: int = 8192,
 ) -> tuple[dict[int, str], int, int]:
     """セグメントのリストを1回のAPI呼び出しで整文し、(suggestions, input_tokens, output_tokens) を返す。"""
     segments_json = json.dumps(
@@ -787,7 +792,7 @@ async def _run_polish_batch(
         # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
         async with client.messages.stream(
             model=model_id,
-            max_tokens=8192,
+            max_tokens=max_tokens,
             system=[
                 {
                     "type": "text",
@@ -850,7 +855,9 @@ async def run_polish(
         context_text: build_context_text() で構築したコンテキスト
         model_key: "haiku" | "sonnet"
     """
-    model_id = MODELS.get(model_key, MODELS["haiku"])["id"]
+    model_cfg = MODELS.get(model_key, MODELS["haiku"])
+    model_id = model_cfg["id"]
+    model_max_tokens = model_cfg["max_output_tokens"]
 
     # フィラーセグメントを除外（AIに送らない → コスト削減 + レビューノイズ低減）
     filler_ids = {s["id"] for s in segments if _is_filler_segment(s["text"])}
@@ -877,7 +884,8 @@ async def run_polish(
     if estimated_output <= _SAFE_OUTPUT_TOKENS:
         # 一括送信
         suggestions, flags, inp, out = await _run_polish_batch(
-            client, segments, context_text, model_id, meeting_summary=meeting_summary
+            client, segments, context_text, model_id, meeting_summary=meeting_summary,
+            max_tokens=model_max_tokens,
         )
         merged.update(suggestions)
         merged_flags.update(flags)
@@ -910,7 +918,8 @@ async def run_polish(
                     batch_segs.append(s)
 
             suggestions, batch_flags, inp, out = await _run_polish_batch(
-                client, batch_segs, context_text, model_id, meeting_summary=meeting_summary
+                client, batch_segs, context_text, model_id, meeting_summary=meeting_summary,
+                max_tokens=model_max_tokens,
             )
 
             # オーバーラップ部分（前バッチが担当）は採用しない
