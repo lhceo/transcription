@@ -4088,6 +4088,8 @@ function segmentsApp(transcriptId, historyNames) {
                         // localStorage も同期しておく
                         try { localStorage.setItem('noto_polish_job', JSON.stringify({ job_id: jobId, transcript_id: transcriptId, started_at: Date.now() })); } catch (_) {}
                         if (data.status === 'done') {
+                            // ダッシュボードバッジを「整文レビュー中」に遷移
+                            fetch(`/api/transcripts/${transcriptId}/polish/start-review`, { method: 'POST' }).catch(() => {});
                             this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
                             this._dismissPolish();
                             return;
@@ -4121,6 +4123,7 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!res.ok) { localStorage.removeItem('noto_polish_job'); return; }
                 const data = await res.json();
                 if (data.status === 'done') {
+                    fetch(`/api/transcripts/${transcriptId}/polish/start-review`, { method: 'POST' }).catch(() => {});
                     this.polishResumeState = { show: true, status: 'done', jobId, result: data.result };
                     this._dismissPolish();
                 } else if (data.status === 'running' || data.status === 'pending') {

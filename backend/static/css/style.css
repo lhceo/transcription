@@ -1781,6 +1781,11 @@ body:has(.audio-player-fixed) {
     color: #065f46;
 }
 
+.history-item-status.status-polish-reviewing {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 .processing-dot--amber {
     background: #d97706;
 }
@@ -6573,6 +6578,7 @@ textarea.form-input-sm {
 }
 .pjt-polish-running { background: #fef3c7; color: #92400e; }
 .pjt-polish-done { background: #d1fae5; color: #065f46; }
+.pjt-polish-reviewing { background: #dbeafe; color: #1e40af; }
 .pjt-empty { padding: 24px 0; text-align: center; }
 .pjt-empty p { margin: 4px 0; }
 

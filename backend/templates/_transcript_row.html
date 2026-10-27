@@ -91,6 +91,8 @@
             <span class="history-item-status status-polish-running"><span class="processing-dot processing-dot--amber"></span>整文中…</span>
             {% elif _pstatus == 'done' %}
             <span class="history-item-status status-polish-done">✓ 整文完了</span>
+            {% elif _pstatus == 'reviewing' %}
+            <span class="history-item-status status-polish-reviewing">整文レビュー中</span>
             {% endif %}
             {% set eta = eta_text(transcript) %}
             {% if eta %}

@@ -315,10 +315,13 @@ def get_polish_status_map(transcript_ids: list[int], db: Session) -> dict[int, s
         return result
     id_set = set(transcript_ids)
     for job in _polish_jobs.values():
+        tid = job.get("transcript_id")
+        if tid not in id_set:
+            continue
         if job.get("status") == "running":
-            tid = job.get("transcript_id")
-            if tid in id_set:
-                result[tid] = "running"
+            result[tid] = "running"
+        elif job.get("status") == "reviewing" and tid not in result:
+            result[tid] = "reviewing"
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     # DB上でrunning状態のログ（サーバー再起動で_polish_jobsが消えた場合のフォールバック）
     running_logs = db.scalars(
@@ -1580,6 +1583,20 @@ async def polish_accept(
         lg.job_status = 'dismissed'
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/start-review")
+async def polish_start_review(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """ユーザーがファイルを開いてレビューを開始したとき done → reviewing に遷移する。"""
+    for job in _polish_jobs.values():
+        if job.get("transcript_id") == transcript_id and job.get("status") == "done":
+            job["status"] = "reviewing"
+            break
+    return JSONResponse({"ok": True})
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/dismiss")
