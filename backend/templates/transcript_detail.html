@@ -101,25 +101,6 @@
         <span class="meta-item">{{ transcript.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
     </div>
 
-    {# オンラインユーザー表示（他ユーザーがページを開いている場合） #}
-    <div class="online-users-strip" x-show="onlineUsers.length > 0" x-cloak>
-        <span class="online-strip-label">オンライン：</span>
-        <template x-for="u in onlineUsers" :key="u.user_id">
-            <span class="online-avatar-wrap"
-                  :title="u.name + (u.segment_id != null ? ' さんが編集中' : ' さんが閲覧中')">
-                <template x-if="u.picture_url">
-                    <img :src="u.picture_url"
-                         :class="{'online-avatar': true, 'is-editing-now': u.segment_id != null}"
-                         :alt="u.name" referrerpolicy="no-referrer">
-                </template>
-                <template x-if="!u.picture_url">
-                    <span :class="{'online-avatar': true, 'online-avatar-initials': true, 'is-editing-now': u.segment_id != null}"
-                          x-text="u.name.charAt(0)"></span>
-                </template>
-                <span class="online-avatar-dot" :class="u.segment_id != null ? 'is-active' : ''"></span>
-            </span>
-        </template>
-    </div>
 
     {# 共有されたファイルのバナー（非オーナー向け） #}
     {% if not is_owner %}
@@ -647,6 +628,25 @@
                     @click="_flushPending()" title="クリックして再試行">
                 ↻ 保存失敗 — 再試行
             </button>
+        </div>
+
+        {# 中央グループ: 他ユーザーのアバター（Google Docs スタイル） #}
+        <div class="toolbar-avatars" x-show="onlineUsers.length > 0" x-cloak>
+            <template x-for="u in onlineUsers" :key="u.user_id">
+                <span class="online-avatar-wrap"
+                      :title="u.name + (u.segment_id != null ? ' さんが編集中' : ' さんが閲覧中')">
+                    <template x-if="u.picture_url">
+                        <img :src="u.picture_url"
+                             :class="{'online-avatar': true, 'is-editing-now': u.segment_id != null}"
+                             :alt="u.name" referrerpolicy="no-referrer">
+                    </template>
+                    <template x-if="!u.picture_url">
+                        <span :class="{'online-avatar': true, 'online-avatar-initials': true, 'is-editing-now': u.segment_id != null}"
+                              x-text="u.name.charAt(0)"></span>
+                    </template>
+                    <span class="online-avatar-dot" :class="u.segment_id != null ? 'is-active' : ''"></span>
+                </span>
+            </template>
         </div>
 
         {# 右グループ: プロジェクト選択 + 整文する + エクスポート（常に右端固定） #}
@@ -2881,6 +2881,13 @@ function segmentsApp(transcriptId, historyNames) {
             this._presenceInterval = setInterval(() => this.refreshPresence(), 5000);
             // 初回取得
             this.refreshPresence();
+            // ページ離脱時にプレゼンスを即時クリア（sendBeacon はアンロード中も確実に送信される）
+            window.addEventListener('beforeunload', () => {
+                navigator.sendBeacon(
+                    `/api/transcripts/${this.transcriptId}/presence`,
+                    new Blob([JSON.stringify({ leaving: true })], { type: 'application/json' })
+                );
+            });
             // タイプするたびに不活動タイマーをリセット
             document.getElementById('segment-list')?.addEventListener('input', (e) => {
                 if (e.target.closest('.segment-text-edit') && this.focusedEditingSegmentId !== null) {

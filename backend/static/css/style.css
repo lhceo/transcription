@@ -8241,6 +8241,11 @@ body:has(.multi-float-bar:not([style*="none"])) {
 .segment-card.seg-presence-active {
     border-left: 3px solid var(--color-primary, #3b82f6);
     background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface));
+    animation: seg-presence-pulse 2.4s ease-in-out infinite;
+}
+@keyframes seg-presence-pulse {
+    0%, 100% { box-shadow: inset 3px 0 8px -4px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent); }
+    50%       { box-shadow: inset 3px 0 14px -2px color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent); }
 }
 
 /* 「○○さんが編集中」オーバーレイ */
@@ -8322,16 +8327,19 @@ body:has(.multi-float-bar:not([style*="none"])) {
     color: #fff;
     background: var(--color-primary, #6366f1);
 }
-/* 編集中のユーザーにはリングアニメーション */
+/* 編集中のユーザーにはハートビートアニメーション */
 .online-avatar.is-editing-now {
     border-color: var(--color-primary, #6366f1);
-    animation: online-editing-ring 1.5s ease-in-out infinite;
+    animation: avatar-heartbeat 1.8s ease-in-out infinite;
 }
-@keyframes online-editing-ring {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 50%, transparent); }
-    50%       { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 0%, transparent); }
+@keyframes avatar-heartbeat {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-primary) 45%, transparent); }
+    8%        { transform: scale(1.14); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 22%, transparent); }
+    18%       { transform: scale(1);    box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-primary) 0%,  transparent); }
+    30%       { transform: scale(1.07); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 12%, transparent); }
+    45%       { transform: scale(1); }
 }
-/* グリーンドット（オンライン表示） */
+/* グリーンドット（閲覧中）/ ブルードット（編集中） */
 .online-avatar-dot {
     position: absolute;
     bottom: -1px;
@@ -8344,11 +8352,21 @@ body:has(.multi-float-bar:not([style*="none"])) {
 }
 .online-avatar-dot.is-active {
     background: var(--color-primary, #6366f1);
-    animation: dot-pulse 1.5s ease-in-out infinite;
+    animation: dot-heartbeat 1.8s ease-in-out infinite;
 }
-@keyframes dot-pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50%       { transform: scale(1.4); opacity: 0.7; }
+@keyframes dot-heartbeat {
+    0%, 100% { transform: scale(1); }
+    8%        { transform: scale(1.5); }
+    18%       { transform: scale(1); }
+    30%       { transform: scale(1.3); }
+    45%       { transform: scale(1); }
+}
+
+/* ツールバー内アバター列 */
+.toolbar-avatars {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 /* ヘッダーアバター — プロフィール写真なしユーザーのイニシャル fallback */

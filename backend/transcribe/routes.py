@@ -2098,6 +2098,7 @@ async def unmark_segment_reviewed(
 
 class PresenceBody(BaseModel):
     segment_id: int | None = None
+    leaving: bool = False
 
 
 @router.post("/api/transcripts/{transcript_id}/presence")
@@ -2107,7 +2108,7 @@ async def update_presence(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """プレゼンスを更新する（編集開始・継続・終了）。"""
+    """プレゼンスを更新する（閲覧開始・編集開始・継続・離脱）。"""
     transcript = db.get(Transcript, transcript_id)
     if transcript is None or transcript.deleted_at is not None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
@@ -2115,7 +2116,7 @@ async def update_presence(
     from backend.transcribe.presence import update as presence_update, clear as presence_clear
 
     db_user = db.get(User, user["id"])
-    if body.segment_id is None:
+    if body.leaving:
         presence_clear(transcript_id, user["id"])
     else:
         presence_update(
