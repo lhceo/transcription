@@ -8237,6 +8237,12 @@ body:has(.multi-float-bar:not([style*="none"])) {
     flex-shrink: 0;
 }
 
+/* 他ユーザーが編集中のセグメントカード */
+.segment-card.seg-presence-active {
+    border-left: 3px solid var(--color-primary, #3b82f6);
+    background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface));
+}
+
 /* 「○○さんが編集中」オーバーレイ */
 .seg-editing-overlay {
     display: inline-flex;
