@@ -1037,6 +1037,12 @@ async def update_transcript_project(
         if project is None or project.created_by_user_id != user["id"]:
             raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
+    # project_id を非NULLからNULLにする（プロジェクトから外す）場合、
+    # completed_at を現在時刻にリセットして60日カウンターを再起動する。
+    # これがないと60日以上前のデータが翌日の retention スキャンで削除される。
+    if body.project_id is None and transcript.project_id is not None:
+        transcript.completed_at = datetime.utcnow()
+
     transcript.project_id = body.project_id
 
     # プロジェクトに追加する場合、話者→People リンクからメンバーを自動取り込み
@@ -1575,6 +1581,23 @@ async def update_segment(
             segment.display_name = name or None
             if name:
                 _record_speaker_history(user["id"], name, db)
+
+    # end_seconds 復元（Undo分割時に使用）
+    if "end_seconds" in payload:
+        val = payload.get("end_seconds")
+        if val is not None:
+            try:
+                segment.end_seconds = float(val)
+            except (TypeError, ValueError):
+                pass
+
+    # original_asr_text 復元（Undo分割時に使用）
+    if "original_asr_text" in payload:
+        segment.original_asr_text = payload.get("original_asr_text") or None
+
+    # pre_polish_text 復元（Undo分割時に使用）
+    if "pre_polish_text" in payload:
+        segment.pre_polish_text = payload.get("pre_polish_text") or None
 
     db.commit()
     db.refresh(segment)

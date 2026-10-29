@@ -212,15 +212,28 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     pass
                 # 古い DB（projects 追加以前）に対して projects 系テーブルを保証する
+                # 注意: カラム名は backend/db/models.py の ORM 定義と一致させること
+                try:
+                    _cu.execute("""
+                        CREATE TABLE IF NOT EXISTS themes (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            name VARCHAR(200) NOT NULL,
+                            description TEXT,
+                            created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            created_at DATETIME NOT NULL
+                        )
+                    """)
+                except Exception:
+                    pass
                 try:
                     _cu.execute("""
                         CREATE TABLE IF NOT EXISTS projects (
                             id INTEGER NOT NULL PRIMARY KEY,
-                            owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            theme_id INTEGER REFERENCES themes(id) ON DELETE SET NULL,
                             name VARCHAR(200) NOT NULL,
                             description TEXT,
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL
+                            created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            created_at DATETIME NOT NULL
                         )
                     """)
                 except Exception:
@@ -230,8 +243,11 @@ async def lifespan(app: FastAPI):
                         CREATE TABLE IF NOT EXISTS project_members (
                             id INTEGER NOT NULL PRIMARY KEY,
                             project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                            role VARCHAR(20) NOT NULL DEFAULT 'member',
+                            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                            name VARCHAR(200),
+                            company VARCHAR(200),
+                            job_title VARCHAR(200),
+                            project_role VARCHAR(200),
                             created_at DATETIME NOT NULL
                         )
                     """)
@@ -245,6 +261,7 @@ async def lifespan(app: FastAPI):
                             word VARCHAR(200) NOT NULL,
                             meaning TEXT,
                             reading VARCHAR(200),
+                            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
                             created_at DATETIME NOT NULL
                         )
                     """)
@@ -254,11 +271,15 @@ async def lifespan(app: FastAPI):
                     _cu.execute("""
                         CREATE TABLE IF NOT EXISTS polish_logs (
                             id INTEGER NOT NULL PRIMARY KEY,
-                            transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
-                            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                            segments_count INTEGER NOT NULL DEFAULT 0,
-                            cost_yen INTEGER NOT NULL DEFAULT 0,
-                            created_at DATETIME NOT NULL
+                            transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+                            model VARCHAR(20) NOT NULL,
+                            input_tokens INTEGER NOT NULL,
+                            output_tokens INTEGER NOT NULL,
+                            cost_yen REAL NOT NULL,
+                            created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            created_at DATETIME NOT NULL,
+                            pending_result TEXT,
+                            job_status VARCHAR(20) NOT NULL DEFAULT 'done'
                         )
                     """)
                 except Exception:

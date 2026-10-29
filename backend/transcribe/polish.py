@@ -6,11 +6,14 @@ Claude API を使って粗い音声認識テキストを正確に整える。
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import math
 import re
+import socket
 import unicodedata
+import urllib.parse
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -69,8 +72,22 @@ def _is_trivial_suggestion(original: str, suggested: str) -> bool:
     return _n(original) == _n(suggested)
 
 
+def _is_ssrf_blocked(host: str) -> bool:
+    """内部ネットワーク・メタデータエンドポイントへのSSRFを防ぐためにホストを検証する。
+    解決失敗または内部IPアドレスの場合はTrueを返す（ブロック）。"""
+    try:
+        addr = ipaddress.ip_address(socket.gethostbyname(host))
+        return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+    except Exception:
+        return True  # 解決失敗は安全側に倒す
+
+
 async def _fetch_url_text(url: str, max_chars: int = 2500) -> str | None:
-    """URLをフェッチしてプレーンテキストを返す。失敗・非テキストはNone。"""
+    """URLをフェッチしてプレーンテキストを返す。失敗・非テキスト・内部URLはNone。"""
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.hostname or _is_ssrf_blocked(parsed.hostname):
+        logger.debug("SSRF blocked: %s", url)
+        return None
     try:
         import httpx
         async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:

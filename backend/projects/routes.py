@@ -421,12 +421,13 @@ async def update_project(
 ) -> JSONResponse:
     """プロジェクトを更新する。"""
     proj = _get_project_or_404(project_id, user["id"], db)
-    if body.name is not None:
-        name = body.name.strip()
+    update_fields = body.model_fields_set
+    if "name" in update_fields or body.name is not None:
+        name = (body.name or "").strip()
         if not name:
             raise HTTPException(status_code=400, detail="プロジェクト名は必須です")
         proj.name = name
-    if body.description is not None:
+    if "description" in update_fields:
         proj.description = body.description
     db.commit()
     return JSONResponse({"id": proj.id, "name": proj.name})
@@ -870,8 +871,9 @@ async def update_transcript_metadata(
         if share is None or not share.can_edit_meeting_info:
             raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "MTG情報の編集権限がありません"})
 
-    if body.meeting_date is not None:
-        if body.meeting_date == "":
+    fields = body.model_fields_set
+    if "meeting_date" in fields:
+        if not body.meeting_date:
             transcript.meeting_date = None
         else:
             try:
@@ -883,17 +885,17 @@ async def update_transcript_metadata(
             except ValueError:
                 raise HTTPException(status_code=400, detail="meeting_date の形式が不正です")
 
-    if body.meeting_location is not None:
-        transcript.meeting_location = body.meeting_location.strip() or None
-    if body.overview is not None:
-        transcript.overview = body.overview.strip() or None
-    if body.meeting_purpose is not None:
-        transcript.meeting_purpose = body.meeting_purpose.strip() or None
-    if body.meeting_agenda is not None:
-        transcript.meeting_agenda = body.meeting_agenda.strip() or None
-    if body.meeting_participants is not None:
+    if "meeting_location" in fields:
+        transcript.meeting_location = (body.meeting_location or "").strip() or None
+    if "overview" in fields:
+        transcript.overview = (body.overview or "").strip() or None
+    if "meeting_purpose" in fields:
+        transcript.meeting_purpose = (body.meeting_purpose or "").strip() or None
+    if "meeting_agenda" in fields:
+        transcript.meeting_agenda = (body.meeting_agenda or "").strip() or None
+    if "meeting_participants" in fields:
         import json as _json
-        cleaned = [n.strip() for n in body.meeting_participants if n.strip()]
+        cleaned = [n.strip() for n in (body.meeting_participants or []) if n.strip()]
         transcript.meeting_participants = _json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
     db.commit()
@@ -1468,8 +1470,10 @@ async def polish_status(
     transcript_id: int,
     job_id: str,
     user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """整文ジョブのステータスを返す。"""
+    _get_transcript_or_404(transcript_id, user["id"], db)
     job = _polish_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません（期限切れの可能性）")
@@ -1484,6 +1488,7 @@ async def polish_active(
 ) -> JSONResponse:
     """このトランスクリプトに対して実行中 or 完了済み（未採用）の最新ジョブを返す。
     メモリ上のジョブを優先し、なければDBの pending_result を参照する。"""
+    _get_transcript_or_404(transcript_id, user["id"], db)
     import json as _json
     # ① メモリ上の最新ジョブを確認
     best = None
@@ -1592,6 +1597,7 @@ async def polish_start_review(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """ユーザーがファイルを開いてレビューを開始したとき done → reviewing に遷移する。"""
+    _get_transcript_or_404(transcript_id, user["id"], db)
     for job in _polish_jobs.values():
         if job.get("transcript_id") == transcript_id and job.get("status") == "done":
             job["status"] = "reviewing"
@@ -1606,6 +1612,7 @@ async def polish_dismiss(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """整文完了バナーを × で閉じたとき pending_result をクリアしてダッシュボードバッジを消す。"""
+    _get_transcript_or_404(transcript_id, user["id"], db)
     from datetime import timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     # 完了済みログのクリア
@@ -1706,10 +1713,11 @@ async def update_profile(
     db_user = db.get(User, user["id"])
     if not db_user:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-    if body.company is not None:
-        db_user.company = body.company.strip() or None
-    if body.job_title is not None:
-        db_user.job_title = body.job_title.strip() or None
+    fields = body.model_fields_set
+    if "company" in fields:
+        db_user.company = (body.company or "").strip() or None
+    if "job_title" in fields:
+        db_user.job_title = (body.job_title or "").strip() or None
     db.commit()
     return JSONResponse({"ok": True, "company": db_user.company, "job_title": db_user.job_title})
 

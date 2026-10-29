@@ -4415,7 +4415,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/segments/${segId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text_content: newText }),
+                    body: JSON.stringify({ text: newText }),
                 });
                 if (!res.ok) {
                     window.showToast('保存できませんでした', 'error');
@@ -4444,7 +4444,7 @@ function segmentsApp(transcriptId, historyNames) {
             const res = await fetch(`/api/segments/${segId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text_content: result }),
+                body: JSON.stringify({ text: result }),
             });
             if (!res.ok) {
                 window.showToast('保存できませんでした', 'error');
@@ -5163,10 +5163,14 @@ function segmentsApp(transcriptId, historyNames) {
                 try {
                     const delRes = await fetch(`/api/segments/${entry.newSegId}`, { method: 'DELETE' });
                     if (!delRes.ok) throw new Error('delete failed');
+                    const patchBody = { text: entry.originalText };
+                    if (entry.originalEndSeconds !== undefined) patchBody.end_seconds = entry.originalEndSeconds;
+                    if (entry.originalAsr !== undefined && entry.originalAsr !== null) patchBody.original_asr_text = entry.originalAsr;
+                    if (entry.originalPrePolish !== undefined && entry.originalPrePolish !== null) patchBody.pre_polish_text = entry.originalPrePolish;
                     const patchRes = await fetch(`/api/segments/${entry.originalId}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: entry.originalText }),
+                        body: JSON.stringify(patchBody),
                     });
                     if (!patchRes.ok) throw new Error('patch failed');
                     // DOM: 新カード削除
@@ -5233,19 +5237,21 @@ function segmentsApp(transcriptId, historyNames) {
                             if (window.Alpine) Alpine.initTree(restoredCard);
                         }
                         // 元の話者（B）に戻す
-                        if (entry.currentSpeakerLabel) {
-                            restoredCard.dataset.speakerLabel = entry.currentSpeakerLabel;
+                        if (entry.currentSpeakerLabel || entry.currentDisplayName) {
+                            const effectiveName = entry.currentDisplayName || entry.currentSpeakerLabel;
+                            restoredCard.dataset.speakerLabel = entry.currentSpeakerLabel || '';
                             const badge = restoredCard.querySelector('.speaker-badge');
                             if (badge) {
-                                badge.dataset.speakerLabel = entry.currentSpeakerLabel;
-                                badge.dataset.effectiveName = entry.currentDisplayName || entry.currentSpeakerLabel;
+                                badge.dataset.speakerLabel = entry.currentSpeakerLabel || '';
+                                badge.dataset.effectiveName = effectiveName;
                             }
                             const badgeText = restoredCard.querySelector('.speaker-badge-text');
-                            if (badgeText) badgeText.textContent = entry.currentDisplayName || entry.currentSpeakerLabel;
+                            if (badgeText) badgeText.textContent = effectiveName;
+                            // display_name を送ることでサーバー側の話者表示名を正しく復元する
                             fetch(`/api/segments/${splitData.new.id}`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ speaker_label: entry.currentSpeakerLabel }),
+                                body: JSON.stringify({ display_name: entry.currentDisplayName || null }),
                             }).catch(() => {});
                         }
                         this.recolorByName();
@@ -5660,6 +5666,8 @@ function segmentsApp(transcriptId, historyNames) {
                 // 「カードが分かれていないように見える」バグになる。
                 const currentCard = textarea.closest('.segment-card');
                 const originalEndSeconds = parseFloat(currentCard?.dataset.endSeconds || '0');
+                const originalAsr = currentCard?.dataset.originalAsrText ?? null;
+                const originalPrePolish = currentCard?.querySelector('.segment-text')?.dataset.before ?? null;
                 let hadBadge = false; // ブロック外でも参照するため if の前に宣言
                 if (currentCard) {
                     const viewDiv = currentCard.querySelector('.segment-text');
@@ -5709,6 +5717,8 @@ function segmentsApp(transcriptId, historyNames) {
                     originalId: segmentId,
                     originalText: original,
                     originalEndSeconds,
+                    originalAsr,
+                    originalPrePolish,
                     newSegId: data.new.id,
                     addedEditedBadge: !hadBadge,
                 });

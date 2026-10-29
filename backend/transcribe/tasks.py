@@ -447,6 +447,16 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
         #    程度なので問題ない範囲）
         _save_results_to_db(transcript_id, result)
 
+        # 5a. 音声を永続側へ移動する（結果保存直後・LLM処理の前に実施）。
+        #     LLM呼び出し中にサーバー再起動しても音声ファイルを失わないようにする。
+        #     失敗しても後続処理は継続する（音声なしでも文字起こしデータは保全する）。
+        try:
+            move_to_storage(audio_path, transcript_id)
+        except Exception:
+            logger.exception(
+                "音声の永続保管への移動に失敗: transcript_id=%s", transcript_id
+            )
+
         # 5b. 同一話者の連続短文セグメントを自動結合（ルールベース・失敗しても継続）
         _merged_count = 0
         try:
@@ -466,15 +476,6 @@ async def process_transcript(transcript_id: int, audio_path: Path, *, speakers_e
 
         # 5d. 品質チェック自動実行（結合件数・フィラー除去件数も一緒に保存）
         await _run_quality_check(transcript_id, merged_count=_merged_count, filler_cleaned_count=_filler_cleaned_count)
-
-        # 6. 成功時のみ音声を永続側へ移動する（後で再生に使う）。
-        #    失敗時は移動せず、一時領域ごと削除される。
-        try:
-            move_to_storage(audio_path, transcript_id)
-        except Exception:
-            logger.exception(
-                "音声の永続保管への移動に失敗: transcript_id=%s", transcript_id
-            )
 
     except AssemblyAIError as exc:
         logger.exception("AssemblyAI 呼び出しで失敗: %s", exc)
