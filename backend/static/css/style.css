@@ -8257,6 +8257,15 @@ body:has(.multi-float-bar:not([style*="none"])) {
     50%       { box-shadow: inset 3px 0 14px -2px color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent); }
 }
 
+/* 編集モード中に他ユーザーが占有しているセグメント: 選択不可を視覚化 */
+.segment-list-editing .segment-card.seg-presence-active {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+.segment-list-editing .segment-card.seg-presence-active * {
+    pointer-events: none;
+}
+
 /* 「○○さんが編集中」オーバーレイ */
 .seg-editing-overlay {
     display: inline-flex;

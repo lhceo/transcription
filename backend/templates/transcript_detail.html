@@ -1056,7 +1056,8 @@
                         'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
                         'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,
                         'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done,
-                        'seg-save-error':     saveFailedSegs[{{ seg.id }}]
+                        'seg-save-error':       saveFailedSegs[{{ seg.id }}],
+                        'seg-presence-active':  presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0
                     }">
                     <header class="segment-header">
                         <button
