@@ -3668,6 +3668,22 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
     transition: opacity .15s, height .15s;
 }
 .vert-progress-bookmark-mark:hover { opacity: 1; height: 5px; }
+/* 他ユーザーが編集したセグメント — アンバー点灯 */
+.vert-progress-collab-mark {
+    position: absolute;
+    left: 0; right: 0;
+    background: #f59e0b;
+    border-radius: 2px;
+    transform-origin: center;
+    animation: collab-mark-in 0.35s cubic-bezier(.22,.68,0,1.4) forwards;
+    transition: opacity 0.5s ease;
+}
+.vert-progress-collab-mark.fading { opacity: 0; }
+@keyframes collab-mark-in {
+    0%   { opacity: 0; transform: scaleY(0); }
+    60%  { opacity: 1; transform: scaleY(1.2); }
+    100% { opacity: 0.85; transform: scaleY(1); }
+}
 .vert-progress-badge {
     position: absolute;
     bottom: 16px;

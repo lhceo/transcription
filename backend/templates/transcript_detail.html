@@ -2697,8 +2697,31 @@ function segmentsApp(transcriptId, historyNames) {
                     // 更新があったことを薄くフラッシュ
                     card.classList.add('seg-synced');
                     setTimeout(() => card.classList.remove('seg-synced'), 1200);
+                    // 進捗バーにアンバーマークを点灯
+                    this._flashCollabMark(segId);
                 }
             } catch (e) {}
+        },
+
+        _flashCollabMark(segId) {
+            const container = document.getElementById('vert-progress-segments');
+            if (!container) return;
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            const total = cards.length;
+            if (!total) return;
+            const idx = cards.findIndex(c => parseInt(c.dataset.segmentId, 10) === segId);
+            if (idx === -1) return;
+            const segH = 100 / total;
+            const mark = document.createElement('div');
+            mark.className = 'vert-progress-collab-mark';
+            mark.style.top = (idx / total * 100) + '%';
+            mark.style.height = Math.max(segH, 1.5) + '%';
+            container.appendChild(mark);
+            // 4秒点灯後にフェードアウトして削除
+            setTimeout(() => {
+                mark.classList.add('fading');
+                setTimeout(() => mark.remove(), 500);
+            }, 4000);
         },
 
         _releaseEditLock() {
