@@ -2388,6 +2388,8 @@ function segmentsApp(transcriptId, historyNames) {
         presenceData: {},      // {segment_id: [{user_id, name, picture_url}]}
         onlineUsers: [],       // [{user_id, name, picture_url, segment_id}] — 自分以外のオンラインユーザー
         _presenceInterval: null,
+        _syncInterval: null,   // 共同編集テキスト同期インターバル
+        _segTs: {},            // {segId: updated_at timestamp} — 最後に確認した更新日時
         _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
         reviewedCount: 0,
@@ -2666,6 +2668,39 @@ function segmentsApp(transcriptId, historyNames) {
             } catch (e) {}
         },
 
+        // ── 共同編集テキスト同期（8秒ごと） ─────────────────────────
+        async syncSegmentTexts() {
+            // 他ユーザーがいなければスキップ（コスト節約）
+            if (this.onlineUsers.length === 0) return;
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/texts`);
+                if (!res.ok) return;
+                const rows = await res.json();
+                for (const row of rows) {
+                    const segId = row.id;
+                    const newTs = row.ts;
+                    const known = this._segTs[segId];
+                    // 自分が編集中 or 未保存の変更がある場合は上書きしない
+                    if (segId === this.focusedEditingSegmentId) continue;
+                    if (this.pendingSegments.has(segId)) continue;
+                    // サーバーの方が新しい場合だけ更新
+                    if (known !== undefined && newTs <= known) continue;
+                    this._segTs[segId] = newTs;
+                    if (known === undefined) continue; // 初回記録はスキップ（ページ読み込み時のデータ）
+                    // DOMを更新
+                    const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+                    if (!card) continue;
+                    const display = card.querySelector('.segment-text-remaining');
+                    const ta = card.querySelector('.segment-text-edit');
+                    if (display) display.textContent = row.text;
+                    if (ta) ta.value = row.text;
+                    // 更新があったことを薄くフラッシュ
+                    card.classList.add('seg-synced');
+                    setTimeout(() => card.classList.remove('seg-synced'), 1200);
+                }
+            } catch (e) {}
+        },
+
         _releaseEditLock() {
             if (this.focusedEditingSegmentId === null) return;
             const card = document.querySelector(`.segment-card[data-segment-id="${this.focusedEditingSegmentId}"]`);
@@ -2802,6 +2837,13 @@ function segmentsApp(transcriptId, historyNames) {
             this._presenceInterval = setInterval(() => this.refreshPresence(), 5000);
             // 初回取得
             this.refreshPresence();
+            // 共同編集テキスト同期: 初期タイムスタンプをサーバーから取得してから8秒ごとに差分チェック
+            fetch(`/api/transcripts/${this.transcriptId}/segments/texts`)
+                .then(r => r.json())
+                .then(rows => {
+                    for (const row of rows) this._segTs[row.id] = row.ts;
+                    this._syncInterval = setInterval(() => this.syncSegmentTexts(), 8000);
+                }).catch(() => {});
             // ページ離脱時にプレゼンスを即時クリア（sendBeacon はアンロード中も確実に送信される）
             window.addEventListener('beforeunload', () => {
                 navigator.sendBeacon(

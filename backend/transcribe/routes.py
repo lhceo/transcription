@@ -1639,6 +1639,28 @@ async def get_segments_count(
     return JSONResponse({"count": count, "transcript_id": transcript_id})
 
 
+@router.get("/api/transcripts/{transcript_id}/segments/texts")
+async def get_segment_texts(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """共同編集の同期用: 全セグメントの id・テキスト・更新日時を返す。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    rows = db.execute(
+        select(Segment.id, Segment.text_content, Segment.updated_at)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ).all()
+    return JSONResponse([
+        {"id": r.id, "text": r.text_content, "ts": r.updated_at.timestamp()}
+        for r in rows
+    ])
+
+
 # ── セグメント分割（Shift+Return で1つを2つに分ける） ──────────────
 
 
