@@ -1050,7 +1050,6 @@
                     data-original-asr-text="{{ seg.original_asr_text or '' }}"
                     data-bookmarked="{{ '1' if seg.is_bookmarked else '0' }}"
                     data-comment="{{ seg.comment or '' }}"
-                    data-tag="{{ seg.tag or '' }}"
                     style="margin-top: {{ mt }}"
                     :class="{
                         'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
@@ -1081,18 +1080,6 @@
                             aria-label="ブックマーク済み">
                             <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                         </button>
-                        {# タグバッジ（決定事項 / アクションアイテム） #}
-                        {% if seg.tag == 'decision' %}
-                        <span class="seg-tag-badge seg-tag-decision"
-                              data-segment-id="{{ seg.id }}"
-                              @click.stop="setSegmentTag({{ seg.id }}, null, $el.closest('.segment-card'))"
-                              title="決定事項（クリックで解除）">決定</span>
-                        {% elif seg.tag == 'todo' %}
-                        <span class="seg-tag-badge seg-tag-todo"
-                              data-segment-id="{{ seg.id }}"
-                              @click.stop="setSegmentTag({{ seg.id }}, null, $el.closest('.segment-card'))"
-                              title="アクションアイテム（クリックで解除）">ToDo</span>
-                        {% endif %}
                         <span class="segment-time" data-start="{{ seg.start_seconds }}">
                             {% set ts = seg.start_seconds|int %}
                             {% set th = ts // 3600 %}
@@ -1195,16 +1182,6 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                             </button>
                             {# タグボタン（決定/ToDo サイクル） #}
-                            <div class="segment-tag-menu" style="position:relative;display:inline-flex">
-                                <button type="button"
-                                    class="segment-action-btn segment-tag-btn {{ 'has-tag' if seg.tag else '' }}"
-                                    data-tag="{{ seg.tag or '' }}"
-                                    @click.stop="cycleSegmentTag({{ seg.id }}, $el.closest('.segment-card'))"
-                                    :title="getTagTitle($el.closest('.segment-card'))"
-                                    aria-label="タグ（決定事項/アクション）">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                                </button>
-                            </div>
                             {% if seg.original_asr_text and seg.original_asr_text != seg.text_content %}
                             <button
                                 type="button"
@@ -2394,9 +2371,6 @@ function segmentsApp(transcriptId, historyNames) {
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
 
-        // タグ状態 { [segId]: "decision" | "todo" | null }
-        segmentTags: {},
-
         // ── 品質チェック ──────────────────────────────────────────
         qualityIssues: {},     // { [segId]: { type, note } }
         _qualityNavIds: [],    // DOM順のセグメントID一覧
@@ -2494,59 +2468,6 @@ function segmentsApp(transcriptId, historyNames) {
         async toggleBookmarkById(segId) {
             const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
             if (card) await this.toggleBookmark(segId, card);
-        },
-
-        // ── タグ（決定事項 / アクションアイテム） ───────────────────
-        async setSegmentTag(segId, tag, card) {
-            const res = await fetch(`/api/segments/${segId}/tag`, {
-                method: 'PATCH', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ tag }),
-            });
-            if (!res.ok) { window.showToast('タグの更新に失敗しました', 'error'); return; }
-            const data = await res.json();
-            const newTag = data.tag || null;
-            if (newTag) this.segmentTags[segId] = newTag;
-            else delete this.segmentTags[segId];
-            if (card) {
-                card.dataset.tag = newTag || '';
-                const btn = card.querySelector('.segment-tag-btn');
-                if (btn) {
-                    btn.dataset.tag = newTag || '';
-                    btn.classList.toggle('has-tag', !!newTag);
-                }
-                this._refreshTagBadge(segId, newTag, card);
-            }
-        },
-
-        async cycleSegmentTag(segId, card) {
-            const current = this.segmentTags[segId] || null;
-            const next = current === null ? 'decision' : current === 'decision' ? 'todo' : null;
-            await this.setSegmentTag(segId, next, card);
-        },
-
-        getTagTitle(card) {
-            if (!card) return 'タグ（決定事項/アクション）';
-            const tag = card.dataset.tag;
-            if (tag === 'decision') return '決定事項（クリックでアクションに変更）';
-            if (tag === 'todo') return 'アクションアイテム（クリックで解除）';
-            return 'クリック：決定事項 → アクション → 解除';
-        },
-
-        _refreshTagBadge(segId, tag, card) {
-            const old = card.querySelector('.seg-tag-badge');
-            if (old) old.remove();
-            if (!tag) return;
-            const badge = document.createElement('span');
-            badge.className = `seg-tag-badge seg-tag-${tag}`;
-            badge.dataset.segmentId = segId;
-            badge.title = tag === 'decision' ? '決定事項（クリックで解除）' : 'アクションアイテム（クリックで解除）';
-            badge.textContent = tag === 'decision' ? '決定' : 'ToDo';
-            badge.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.setSegmentTag(segId, null, card);
-            });
-            const timeSpan = card.querySelector('.segment-time');
-            if (timeSpan) timeSpan.insertAdjacentElement('beforebegin', badge);
         },
 
         async saveBookmarkMemo(bm, memo) {
@@ -3071,12 +2992,6 @@ function segmentsApp(transcriptId, historyNames) {
                 .map(c => parseInt(c.dataset.segmentId, 10))
                 .filter(id => this.qualityIssues[id]);
 
-            // タグ初期状態をDOMから読み込む
-            this.segmentTags = {};
-            document.querySelectorAll('#segment-list .segment-card[data-tag]').forEach(card => {
-                const tag = card.dataset.tag;
-                if (tag) this.segmentTags[parseInt(card.dataset.segmentId, 10)] = tag;
-            });
         },
 
         // ── コメント機能 ─────────────────────────────────────────────

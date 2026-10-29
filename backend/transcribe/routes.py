@@ -1689,29 +1689,6 @@ async def update_bookmark_memo(
     return JSONResponse({"memo": segment.bookmark_memo or ""})
 
 
-@router.patch("/api/segments/{segment_id}/tag")
-async def set_segment_tag(
-    segment_id: int,
-    payload: dict,
-    user: CurrentUser,
-    db: Annotated[Session, Depends(get_db)],
-) -> JSONResponse:
-    """セグメントに決定事項/アクションアイテムタグを付ける。tag=null で解除。"""
-    segment = db.get(Segment, segment_id)
-    if segment is None:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-    transcript = db.get(Transcript, segment.transcript_id)
-    if transcript is None or not _can_access(transcript, user["id"], db):
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-
-    tag = payload.get("tag")
-    if tag not in (None, "decision", "todo"):
-        raise HTTPException(status_code=422, detail={"code": "INVALID_TAG"})
-    segment.tag = tag
-    db.commit()
-    return JSONResponse({"tag": segment.tag})
-
-
 @router.post("/api/segments/{segment_id}/split")
 async def split_segment(
     segment_id: int,
@@ -2620,25 +2597,6 @@ def _build_export_txt(
             lines.append(f"# {seg.comment}")
         lines.append("")
 
-    decisions = [s for s in segments if getattr(s, "tag", None) == "decision"]
-    todos = [s for s in segments if getattr(s, "tag", None) == "todo"]
-    if decisions or todos:
-        lines.append("──────────────────────────────")
-        if decisions:
-            lines.append("【決定事項】")
-            for s in decisions:
-                name = _resolve_speaker_name(s, name_map)
-                ts = _format_time_hms(s.start_seconds)
-                lines.append(f"- [{ts} {name}] {s.text_content}")
-            lines.append("")
-        if todos:
-            lines.append("【ネクストアクション】")
-            for s in todos:
-                name = _resolve_speaker_name(s, name_map)
-                ts = _format_time_hms(s.start_seconds)
-                lines.append(f"- [{ts} {name}] {s.text_content}")
-            lines.append("")
-
     if ref_urls:
         lines.append("")
         lines.append("══════════════════════════════════════════")
@@ -2750,26 +2708,10 @@ def _build_export_json(
                 "text": s.text_content,
                 "speaker": _resolve_speaker_name(s, name_map),
                 "comment": s.comment,
-                **({"tag": s.tag} if getattr(s, "tag", None) else {}),
             }
             for s in segments
         ],
     }
-
-    decisions = [s for s in segments if getattr(s, "tag", None) == "decision"]
-    todos = [s for s in segments if getattr(s, "tag", None) == "todo"]
-    if decisions or todos:
-        data["summary"] = {}
-        if decisions:
-            data["summary"]["decisions"] = [
-                {"start_seconds": s.start_seconds, "speaker": _resolve_speaker_name(s, name_map), "text": s.text_content}
-                for s in decisions
-            ]
-        if todos:
-            data["summary"]["actions"] = [
-                {"start_seconds": s.start_seconds, "speaker": _resolve_speaker_name(s, name_map), "text": s.text_content}
-                for s in todos
-            ]
 
     if ref_urls:
         data["references"] = {
