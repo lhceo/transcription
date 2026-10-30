@@ -4469,6 +4469,8 @@ function segmentsApp(transcriptId, historyNames) {
                         polishedText: d.polishedText,
                         original: d.original,
                         flags: d.flags || [],
+                        fills: d.fills || null,
+                        editedText: d.editedText || null,
                     }])
                 );
                 localStorage.setItem(`noto-review-${tId}`, JSON.stringify({
@@ -4598,12 +4600,10 @@ function segmentsApp(transcriptId, historyNames) {
         // ── コンテキスト分類ヘルパー ──────────────────────────────────────────
         _classifyFillContext(textBefore) {
             const t = (textBefore || '').trimEnd();
-            const demonstratives = ['これ','それ','あれ','どれ','ここ','そこ','あそこ','どこ',
-                                   'この','その','あの','どの','こう','そう','ああ'];
-            for (const d of demonstratives) {
-                if (t.endsWith(d) || t.endsWith(d + 'の') || t.endsWith(d + 'で') || t.endsWith(d + 'に')) {
-                    return 'demonstrative';
-                }
+            // 直近15文字に指示語が含まれているか（「あの件」「その内容で」等の複合形も検出）
+            const lastChunk = t.slice(-15);
+            if (/これ|それ|あれ|どれ|ここ|そこ|あそこ|どこ|この|その|あの|どの|こう|そう|ああ/.test(lastChunk)) {
+                return 'demonstrative';
             }
             if (t.endsWith('の')) return 'proper_noun';
             return 'generic';
@@ -4621,7 +4621,7 @@ function segmentsApp(transcriptId, historyNames) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ text: d.original }),
                     });
-                } catch (e) { /* サイレント失敗。exit時に保存される */ }
+                } catch (e) { /* サイレント失敗。applyReview時に再試行される */ }
             }
         },
 
