@@ -2575,8 +2575,8 @@ function segmentsApp(transcriptId, historyNames) {
                 const data = await res.json();
                 // UIからクラスターを除去
                 this.nounClusters.splice(idx, 1);
-                // セグメント表示を更新（修正された箇所を再描画）
-                await this.syncSegmentTexts();
+                // セグメント表示を更新（1人使用時も強制リフレッシュ）
+                await this.syncSegmentTexts(true);
                 window.showToast(`「${confirmedWord}」に一括修正しました（${data.replaced_count}箇所）`, 'success');
             } catch(e) {
                 window.showToast('一括修正に失敗しました', 'error');
@@ -2816,9 +2816,9 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         // ── 共同編集テキスト同期（8秒ごと） ─────────────────────────
-        async syncSegmentTexts() {
-            // 他ユーザーがいなければスキップ（コスト節約）
-            if (this.onlineUsers.length === 0) return;
+        async syncSegmentTexts(force = false) {
+            // 他ユーザーがいなければスキップ（コスト節約）。force=true は一括修正後など自分起因の更新で使う
+            if (!force && this.onlineUsers.length === 0) return;
             try {
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/segments/texts`);
                 if (!res.ok) return;
