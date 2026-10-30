@@ -1314,20 +1314,26 @@
                                             <span>
                                                 <template x-if="segFills[{{ seg.id }}].activeFillIdx !== idx">
                                                     <button class="fill-chip"
-                                                            :class="segFills[{{ seg.id }}].fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                            :class="{
+                                                                'fill-chip-filled': segFills[{{ seg.id }}].fills[idx],
+                                                                'fill-chip-ai': !segFills[{{ seg.id }}].fills[idx] && !!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]),
+                                                                'fill-chip-proper-noun': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun',
+                                                                'fill-chip-demonstrative': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative',
+                                                                'fill-chip-empty': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'generic',
+                                                            }"
                                                             @click.stop="startSegFillEdit({{ seg.id }}, idx)">
-                                                        <template x-if="!segFills[{{ seg.id }}].fills[idx]">
-                                                            <span style="display:flex;align-items:center;gap:3px">
-                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                                補完してください
-                                                            </span>
-                                                        </template>
-                                                        <template x-if="segFills[{{ seg.id }}].fills[idx]">
-                                                            <span style="display:flex;align-items:center;gap:4px">
-                                                                <span x-text="segFills[{{ seg.id }}].fills[idx]"></span>
-                                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                            </span>
-                                                        </template>
+                                                        <span x-show="!segFills[{{ seg.id }}].fills[idx]" style="display:flex;align-items:center;gap:3px">
+                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                            <span x-show="!!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx])"
+                                                                  x-text="(segFills[{{ seg.id }}]?.fillSuggestions?.[idx] || '') + '？'"></span>
+                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun'">📛 固有名詞を確認</span>
+                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative'">🔵 指示語の対象を補完</span>
+                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'generic'">補完してください</span>
+                                                        </span>
+                                                        <span x-show="!!segFills[{{ seg.id }}].fills[idx]" style="display:flex;align-items:center;gap:4px">
+                                                            <span x-text="segFills[{{ seg.id }}].fills[idx]"></span>
+                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                        </span>
                                                     </button>
                                                 </template>
                                                 <template x-if="segFills[{{ seg.id }}].activeFillIdx === idx">
@@ -1577,7 +1583,7 @@
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b"
                                     x-text="diffReviewMode ? '元に戻す' : '元のままにする'"
-                                    @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
+                                    @click.stop="skipAndSaveOriginal({{ seg.id }})"></button>
                             <button class="btn btn-sm btn-primary"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
                         </div>
@@ -1613,20 +1619,26 @@
                                         <span>
                                             <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx !== idx">
                                                 <button class="fill-chip"
-                                                        :class="reviewData[{{ seg.id }}]?.fills[idx] ? 'fill-chip-filled' : 'fill-chip-empty'"
+                                                        :class="{
+                                                            'fill-chip-filled': reviewData[{{ seg.id }}]?.fills[idx],
+                                                            'fill-chip-ai': !reviewData[{{ seg.id }}]?.fills[idx] && !!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]),
+                                                            'fill-chip-proper-noun': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun',
+                                                            'fill-chip-demonstrative': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative',
+                                                            'fill-chip-empty': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'generic',
+                                                        }"
                                                         @click.stop="startFillEdit({{ seg.id }}, idx)">
-                                                    <template x-if="!reviewData[{{ seg.id }}]?.fills[idx]">
-                                                        <span style="display:flex;align-items:center;gap:3px">
-                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                            補完してください
-                                                        </span>
-                                                    </template>
-                                                    <template x-if="reviewData[{{ seg.id }}]?.fills[idx]">
-                                                        <span style="display:flex;align-items:center;gap:4px">
-                                                            <span x-text="reviewData[{{ seg.id }}]?.fills[idx]"></span>
-                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                        </span>
-                                                    </template>
+                                                    <span x-show="!reviewData[{{ seg.id }}]?.fills[idx]" style="display:flex;align-items:center;gap:3px">
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                        <span x-show="!!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx])"
+                                                              x-text="(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx] || '') + '？'"></span>
+                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun'">📛 固有名詞を確認</span>
+                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative'">🔵 指示語の対象を補完</span>
+                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'generic'">補完してください</span>
+                                                    </span>
+                                                    <span x-show="!!reviewData[{{ seg.id }}]?.fills[idx]" style="display:flex;align-items:center;gap:4px">
+                                                        <span x-text="reviewData[{{ seg.id }}]?.fills[idx]"></span>
+                                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                                    </span>
                                                 </button>
                                             </template>
                                             <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx === idx">
@@ -1662,7 +1674,7 @@
                                       rows="3" @click.stop></textarea>
                         </div>
                         <div class="review-inline-actions">
-                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">元のままにする</button>
+                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="skipAndSaveOriginal({{ seg.id }})">元のままにする</button>
                             <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
                         </div>
                     </div>
@@ -3275,8 +3287,11 @@ function segmentsApp(transcriptId, historyNames) {
                 } else {
                     const ta = card.querySelector('.segment-text-edit');
                     const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
-                    const parts = text.split('（？）');
-                    newFills[segId] = { parts, fills: new Array(parts.length - 1).fill(''), activeFillIdx: null };
+                    const FILL_PATTERN_SF = /（([^？）]*)？）/g;
+                    const sfMatches = [...text.matchAll(FILL_PATTERN_SF)];
+                    const sfParts = text.split(FILL_PATTERN_SF).filter((_, i) => i % 2 === 0);
+                    const sfSuggestions = sfMatches.map(m => m[1] || '');
+                    newFills[segId] = { parts: sfParts, fills: sfSuggestions.slice(), fillSuggestions: sfSuggestions, activeFillIdx: null };
                 }
             });
             this.segFills = newFills;
@@ -4381,12 +4396,15 @@ function segmentsApp(transcriptId, historyNames) {
                 const suggestion = suggestions[id];
                 if (suggestion === undefined || suggestion === original) return;
 
-                const hasUnknown = suggestion.includes('（？）');
+                const FILL_PATTERN = /（([^？）]*)？）/g;
+                const fillMatches = [...suggestion.matchAll(FILL_PATTERN)];
+                const hasUnknown = fillMatches.length > 0;
                 const state = hasUnknown ? 'unknown' : 'diff';
-                let parts = null, fills = null;
+                let parts = null, fills = null, fillSuggestions = null;
                 if (hasUnknown) {
-                    parts = suggestion.split('（？）');
-                    fills = new Array(parts.length - 1).fill('');
+                    parts = suggestion.split(FILL_PATTERN).filter((_, i) => i % 2 === 0);
+                    fillSuggestions = fillMatches.map(m => m[1] || '');
+                    fills = fillSuggestions.slice(); // AI推測を初期値として使用
                 }
                 this.reviewData[id] = {
                     state,
@@ -4395,6 +4413,7 @@ function segmentsApp(transcriptId, historyNames) {
                     original,
                     parts,
                     fills,
+                    fillSuggestions,
                     activeFillIdx: null,
                     preview: null,
                     flags: flags[id] || [],
@@ -4483,12 +4502,15 @@ function segmentsApp(transcriptId, historyNames) {
                 this.reviewData = {};
                 for (const [id, d] of Object.entries(data)) {
                     const intId = parseInt(id, 10);
-                    let parts = null, fills = null;
+                    let parts = null, fills = null, fillSuggestions = null;
                     if (d.state === 'unknown' && d.polishedText) {
-                        parts = d.polishedText.split('（？）');
-                        fills = new Array(parts.length - 1).fill('');
+                        const FILL_PATTERN_R = /（([^？）]*)？）/g;
+                        const rMatches = [...d.polishedText.matchAll(FILL_PATTERN_R)];
+                        parts = d.polishedText.split(FILL_PATTERN_R).filter((_, i) => i % 2 === 0);
+                        fillSuggestions = rMatches.map(m => m[1] || '');
+                        fills = d.fills || fillSuggestions.slice();
                     }
-                    this.reviewData[intId] = { ...d, parts, fills, activeFillIdx: null, preview: null, showOriginal: d.showOriginal || false, editedText: d.editedText || null };
+                    this.reviewData[intId] = { ...d, parts, fills, fillSuggestions, activeFillIdx: null, preview: null, showOriginal: d.showOriginal || false, editedText: d.editedText || null };
                 }
                 this.diffReviewMode = diff || false;
                 this.reviewMode = true;
@@ -4571,6 +4593,36 @@ function segmentsApp(transcriptId, historyNames) {
             });
             d.polishedText = result.trim();
             d.done = 'accepted';
+        },
+
+        // ── コンテキスト分類ヘルパー ──────────────────────────────────────────
+        _classifyFillContext(textBefore) {
+            const t = (textBefore || '').trimEnd();
+            const demonstratives = ['これ','それ','あれ','どれ','ここ','そこ','あそこ','どこ',
+                                   'この','その','あの','どの','こう','そう','ああ'];
+            for (const d of demonstratives) {
+                if (t.endsWith(d) || t.endsWith(d + 'の') || t.endsWith(d + 'で') || t.endsWith(d + 'に')) {
+                    return 'demonstrative';
+                }
+            }
+            if (t.endsWith('の')) return 'proper_noun';
+            return 'generic';
+        },
+
+        // ── 「元のままにする」クリック → クライアント状態更新 + DBに即時保存 ──
+        async skipAndSaveOriginal(segId) {
+            const d = this.reviewData[segId];
+            if (!d) return;
+            d.done = 'skipped';
+            if (d.original) {
+                try {
+                    await fetch(`/api/segments/${segId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: d.original }),
+                    });
+                } catch (e) { /* サイレント失敗。exit時に保存される */ }
+            }
         },
 
         startFillEdit(segId, idx) {
@@ -4903,6 +4955,18 @@ function segmentsApp(transcriptId, historyNames) {
 
         async applyReview() {
             Object.values(this.reviewData).forEach(d => { if (!d.done) d.done = 'skipped'; });
+
+            // 一括スキップされたセグメントの元テキストをDBに即時保存（他ユーザーへも反映）
+            const skipPromises = Object.entries(this.reviewData)
+                .filter(([, d]) => d.done === 'skipped' && d.original)
+                .map(([segId, d]) =>
+                    fetch(`/api/segments/${segId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: d.original }),
+                    }).catch(() => {})
+                );
+            await Promise.all(skipPromises);
 
             const accepted_texts = {};
             Object.entries(this.reviewData).forEach(([id, d]) => {

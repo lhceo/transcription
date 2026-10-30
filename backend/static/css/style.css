@@ -3357,6 +3357,15 @@ mark.find-highlight-active {
 .fill-chip-empty:hover  { background: #fde68a; border-color: #d97706; }
 .fill-chip-filled { background: #dbeafe; border: 1.5px solid #93c5fd; color: #1e40af; }
 .fill-chip-filled:hover { background: #bfdbfe; }
+/* AI推測あり: 黄色系（確認を促す） */
+.fill-chip-ai { background: #fef3c7; border: 1.5px solid #fbbf24; color: #92400e; }
+.fill-chip-ai:hover { background: #fde68a; border-color: #d97706; }
+/* 固有名詞コンテキスト: オレンジ系 */
+.fill-chip-proper-noun { background: #fff7ed; border: 1.5px dashed #fb923c; color: #9a3412; }
+.fill-chip-proper-noun:hover { background: #ffedd5; border-color: #ea580c; }
+/* 指示語コンテキスト: 青系 */
+.fill-chip-demonstrative { background: #eff6ff; border: 1.5px dashed #60a5fa; color: #1e40af; }
+.fill-chip-demonstrative:hover { background: #dbeafe; border-color: #3b82f6; }
 .fill-chip-input-wrap { display: inline-block; vertical-align: middle; position: relative; top: -1px; }
 .fill-chip-input {
     border: 1.5px solid #f59e0b; border-radius: 20px;
