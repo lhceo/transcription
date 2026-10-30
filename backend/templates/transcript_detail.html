@@ -881,7 +881,7 @@
                        @change="cluster._confirmed = $event.target.value"
                        @input="cluster._confirmed = $event.target.value">
                 <label class="noun-cluster-vocab-label">
-                    <input type="checkbox" x-model="cluster._registerVocab" :checked="cluster._registerVocab !== false">
+                    <input type="checkbox" x-model="cluster._registerVocab">
                     辞書登録
                 </label>
                 <button class="btn btn-sm btn-primary"
@@ -1035,7 +1035,7 @@
                 エクスポート
             </button>
             <span class="review-complete-hint">または</span>
-            <button class="btn btn-sm btn-outline" @click="enterEditModeFromFirstReview()">
+            <button class="btn btn-sm btn-outline" @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()">
                 編集モードで続ける
             </button>
         </div>
@@ -2539,7 +2539,9 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/noun-clusters`);
                 if (!res.ok) return;
                 const data = await res.json();
-                this.nounClusters = (data.clusters || []).filter(c => !c.applied);
+                this.nounClusters = (data.clusters || [])
+                    .map((c, i) => ({ ...c, _origIdx: i, _registerVocab: true }))
+                    .filter(c => !c.applied);
                 this.nounClustersLoaded = true;
             } catch(e) {}
         },
@@ -2552,7 +2554,7 @@ function segmentsApp(transcriptId, historyNames) {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        cluster_index: idx,
+                        cluster_index: cluster._origIdx,
                         confirmed_word: confirmedWord,
                         register_vocabulary: registerVocab,
                     }),
