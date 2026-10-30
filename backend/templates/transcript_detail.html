@@ -1416,10 +1416,13 @@
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
 
                     {# スキップ済み #}
-                    <div class="review-skipped-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        スキップ（元の文字起こしを使用）
-                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                    <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
+                        <div class="review-skipped-bar">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            スキップ（元の文字起こしを使用）
+                            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                        </div>
+                        <div class="review-skipped-original" x-text="reviewData[{{ seg.id }}]?.original || ''"></div>
                     </div>
 
                     {# diff: 整文テキストを主役に、元文は折りたたみ #}

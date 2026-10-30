@@ -3376,6 +3376,14 @@ mark.find-highlight-active {
     cursor: pointer; text-decoration: underline; padding: 0;
 }
 .review-undo-btn:hover { color: #1e293b; }
+.review-skipped-original {
+    font-size: 14px; color: #475569; line-height: 1.6;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-left: 3px solid #e2e8f0;
+    border-radius: 0 4px 4px 0;
+    white-space: pre-wrap;
+}
 
 /* 編集モードで確認する → 整文前テキスト参照 */
 .polish-ref-detail {
