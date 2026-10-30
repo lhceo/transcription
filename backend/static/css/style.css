@@ -3199,6 +3199,11 @@ mark.find-highlight-active {
 .review-progress-bar.review-done .review-progress-label { color: #15803d; }
 .review-progress-bar.review-done .review-progress-track { background: #bbf7d0; }
 .review-progress-bar.review-done .review-progress-fill { background: #22c55e; }
+.review-complete-cta {
+    display: flex; align-items: center; gap: 8px; margin-top: 4px;
+    width: 100%; font-size: 12px;
+}
+.review-complete-hint { color: #94a3b8; }
 
 /* ── 整文レビュー：カード内 ── */
 .review-pending-header {
@@ -3361,6 +3366,13 @@ mark.find-highlight-active {
     transition: border-color .15s, box-shadow .15s;
 }
 .fill-chip-input:focus { border-color: #d97706; background: #fefce8; box-shadow: 0 0 0 3px rgba(245,158,11,.15); }
+.fill-skip-row { margin-top: 6px; margin-bottom: 2px; }
+.fill-skip-btn {
+    font-size: 11px; color: #94a3b8; padding: 2px 8px; height: auto;
+    border: 1px dashed #cbd5e1; border-radius: 4px;
+    background: transparent;
+}
+.fill-skip-btn:hover { color: #64748b; border-color: #94a3b8; background: #f8fafc; }
 
 /* ── 採用済み・スキップ済みバー ── */
 .review-accepted-bar {
@@ -8258,7 +8270,7 @@ body:has(.multi-float-bar:not([style*="none"])) {
 .segment-card.seg-presence-active {
     border-left: 3px solid var(--color-primary, #3b82f6);
     background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface));
-    animation: seg-presence-pulse 2.4s ease-in-out infinite;
+    animation: seg-presence-pulse 1.8s ease-in-out infinite;
 }
 @keyframes seg-presence-pulse {
     0%, 100% { box-shadow: inset 3px 0 8px -4px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent); }
@@ -8795,6 +8807,14 @@ body:has(.multi-float-bar:not([style*="none"])) {
     font-weight: 600;
     color: #92400e;
     margin-bottom: 10px;
+}
+.noun-clusters-header-clickable {
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0;
+}
+.noun-clusters-header-clickable:hover {
+    opacity: 0.8;
 }
 .noun-clusters-count {
     background: #fcd34d;

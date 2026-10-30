@@ -709,6 +709,7 @@
                 open: false,
                 includeVocab: true,
                 includeMeta: true,
+                init() { window.addEventListener('open-export-menu', () => { this.open = true; }); },
                 async doExport(fmt) {
                     const params = new URLSearchParams({
                         format: fmt,
@@ -849,12 +850,16 @@
 
     {# ──── 固有名詞の揺れ検出パネル ──── #}
     <template x-if="nounClustersLoaded && nounClusters.length > 0">
-    <div class="noun-clusters-panel" x-show="!reviewMode" x-cloak>
-        <div class="noun-clusters-header">
+    <div class="noun-clusters-panel" x-cloak>
+        <div class="noun-clusters-header"
+             :class="reviewMode ? 'noun-clusters-header-clickable' : ''"
+             @click="if (reviewMode) nounClustersExpanded = !nounClustersExpanded">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             固有名詞の揺れを検出
             <span class="noun-clusters-count" x-text="nounClusters.length + '件'"></span>
+            <span x-show="reviewMode" class="noun-clusters-collapse-icon" x-text="nounClustersExpanded ? '▲' : '▼'" style="margin-left:auto;font-size:10px;opacity:0.6"></span>
         </div>
+        <div x-show="!reviewMode || nounClustersExpanded">
         <template x-for="(cluster, idx) in nounClusters" :key="idx">
         <div class="noun-cluster-card">
             <div class="noun-cluster-variants">
@@ -881,10 +886,11 @@
                         @click="applyNounCluster(idx, cluster._confirmed !== undefined ? cluster._confirmed : (cluster.suggested || cluster.variants[0]), cluster._registerVocab !== false)">
                     一括修正
                 </button>
-                <button class="btn btn-sm btn-ghost" @click="dismissNounCluster(idx)">スキップ</button>
+                <button class="btn btn-sm btn-ghost" @click="dismissNounCluster(idx)">今回はスキップ</button>
             </div>
         </div>
         </template>
+        </div>{# /x-show !reviewMode || nounClustersExpanded #}
     </div>
     </template>
 
@@ -1001,7 +1007,7 @@
         <button class="btn btn-outline btn-sm" x-show="pendingReviewCount() > 0 && !diffReviewMode" @click="acceptAllReview()" style="white-space:nowrap">全採用</button>
         <button class="btn btn-primary btn-sm"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
-                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りをスキップして保存')"></button>
+                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りを元のままにして保存')"></button>
         <button class="btn btn-outline btn-sm"
                 @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()"
                 style="color:#64748b"
@@ -1017,6 +1023,18 @@
             <span class="review-flag-nav-count" x-text="flagNavDisplay()"></span>
             <button class="review-flag-nav-btn" @click="navToFlag(1)" title="次の要確認箇所">→</button>
         </div>
+        <template x-if="pendingReviewCount() === 0">
+        <div class="review-complete-cta">
+            <span class="review-complete-hint">完了したら</span>
+            <button class="btn btn-sm btn-outline" @click="window.dispatchEvent(new CustomEvent('open-export-menu'))">
+                エクスポート
+            </button>
+            <span class="review-complete-hint">または</span>
+            <button class="btn btn-sm btn-outline" @click="enterEditModeFromFirstReview()">
+                編集モードで続ける
+            </button>
+        </div>
+        </template>
     </div>
 
     {# ──── 話者分析バー ──── #}
@@ -1460,7 +1478,7 @@
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
                         <div class="review-skipped-bar">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            スキップ（元の文字起こしを使用）
+                            元のまま採用
                             <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
                         </div>
                         <div class="review-skipped-original" x-text="reviewData[{{ seg.id }}]?.original || ''"></div>
@@ -1545,7 +1563,7 @@
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b"
-                                    x-text="diffReviewMode ? '元に戻す' : 'スキップ'"
+                                    x-text="diffReviewMode ? '元に戻す' : '元のままにする'"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'skipped'"></button>
                             <button class="btn btn-sm btn-primary"
                                     @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
@@ -1572,7 +1590,7 @@
                         {# fill-in チップ（AIが補完を求める箇所） #}
                         <div class="review-pending-header">
                             <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
-                            <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない箇所は空欄のまま採用できます</span>
+                            <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない場合は「わかりません」で空欄のまま採用できます</span>
                         </div>
                         <div class="fill-in-area">
                             <template x-for="(part, idx) in reviewData[{{ seg.id }}]?.parts || []" :key="'p-{{ seg.id }}-' + idx">
@@ -1614,6 +1632,13 @@
                                 </span>
                             </template>
                         </div>
+                        <div class="fill-skip-row">
+                            <button class="btn btn-xs btn-ghost fill-skip-btn"
+                                    @click.stop="skipFillUnknown({{ seg.id }})"
+                                    title="（？）をすべて空欄にして採用">
+                                わかりません（空欄で採用）
+                            </button>
+                        </div>
                         {# 直接編集エリア（チップ以外の箇所も修正できる） #}
                         <div class="review-edit-section review-edit-direct">
                             <span class="review-edit-label">テキストを直接編集することもできます</span>
@@ -1624,7 +1649,7 @@
                                       rows="3" @click.stop></textarea>
                         </div>
                         <div class="review-inline-actions">
-                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">スキップ</button>
+                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="reviewData[{{ seg.id }}].done = 'skipped'">元のままにする</button>
                             <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
                         </div>
                     </div>
@@ -2055,7 +2080,7 @@
                 </p>
                 <p x-show="totalChanged === 0" class="section-hint" style="margin-top:8px">変更はありませんでした。</p>
                 <p style="font-size:12px;color:#64748b;margin-top:6px" x-show="totalChanged > 0">
-                    セグメントごとに確認して採用・スキップを選べます。
+                    セグメントごとに確認して採用・元のままにするを選べます。
                 </p>
             </div>
             <div class="polish-modal-actions">
@@ -2419,6 +2444,7 @@ function segmentsApp(transcriptId, historyNames) {
         // ── 固有名詞バリアント（揺れ）検出 ──────────────────────────
         nounClusters: [],          // [{variants, suggested, confidence, type, count, note, applied}]
         nounClustersLoaded: false,
+        nounClustersExpanded: false,  // レビューモード中はデフォルト折りたたみ
 
         // ── 品質チェック ──────────────────────────────────────────
         qualityIssues: {},     // { [segId]: { type, note } }
@@ -4451,6 +4477,22 @@ function segmentsApp(transcriptId, historyNames) {
                 this._buildUnknownPreview(d);
                 d.polishedText = d.preview;
             }
+            d.done = 'accepted';
+        },
+
+        skipFillUnknown(segId) {
+            // （？）を空文字に置換し、fill-in チップなしで採用として確定する
+            const d = this.reviewData[segId];
+            if (!d) return;
+            // すべての fills を空文字にクリア
+            if (d.fills) d.fills = d.fills.map(() => '');
+            // parts を結合して（？）なしのプレビューを構築
+            let result = '';
+            (d.parts || []).forEach((part, idx) => {
+                result += part;
+                // fills は空文字なのでスキップ（（？）は残さない）
+            });
+            d.polishedText = result.trim();
             d.done = 'accepted';
         },
 
