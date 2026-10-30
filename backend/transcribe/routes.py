@@ -1317,6 +1317,23 @@ async def transcript_detail(
     if _best:
         active_polish_init = {"job_id": _best[0], "status": _best[1]["status"]}
 
+    # 整文レビューがアクティブかどうか（招待ユーザーの自動レビューモード起動に使用）
+    from backend.db.models import PolishLog
+    from datetime import datetime as _dt_ar, timezone as _tz_ar, timedelta as _td_ar
+    _ar_cutoff = _dt_ar.now(_tz_ar.utc) - _td_ar(hours=24)
+    _active_polish_log = db.scalars(
+        select(PolishLog)
+        .where(PolishLog.transcript_id == transcript_id)
+        .where(PolishLog.pending_result.isnot(None))
+        .where(PolishLog.created_at >= _ar_cutoff)
+        .order_by(PolishLog.created_at.desc())
+        .limit(1)
+    ).first()
+    # メモリ上のrunning/doneジョブも考慮
+    has_active_review = _active_polish_log is not None or (
+        active_polish_init is not None and active_polish_init.get("status") in ("running", "pending", "done")
+    )
+
     return templates.TemplateResponse(
         request,
         "transcript_detail.html",
@@ -1349,6 +1366,7 @@ async def transcript_detail(
             "reviewed_segments": reviewed_segments,
             "speaker_stats": speaker_stats,
             "active_polish_init": active_polish_init,
+            "has_active_review": has_active_review,
         },
     )
 

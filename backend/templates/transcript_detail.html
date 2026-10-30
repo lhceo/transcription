@@ -24,7 +24,9 @@
     window.__REVIEWED_SEGMENTS = {{ reviewed_segments | tojson }};
     window.__CURRENT_USER_PERMISSIONS = {{ current_user_permissions | tojson }};
     window.__CURRENT_USER_ID = {{ user['id'] }};
+    window.__CURRENT_USER_NAME = {{ user['name'] | tojson }};
     window.__IS_OWNER = {{ 'true' if is_owner else 'false' }};
+    window.__HAS_ACTIVE_REVIEW = {{ 'true' if has_active_review else 'false' }};
     window.__SEGMENT_TIMES = [{% for seg in segments %}{"id":{{ seg.id }},"s":{{ seg.start_seconds }},"e":{{ seg.end_seconds }}}{% if not loop.last %},{% endif %}{% endfor %}];
     window.__TOTAL_SEGMENTS = {{ segments|length }};
     window.__SPEAKERS = [{% for s in speakers %}{"label":{{ s.speaker_label|tojson }},"name":{{ s.display_name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
@@ -1000,6 +1002,9 @@
               x-text="pendingReviewCount() === 0 ? '✓ レビュー完了' : (diffReviewMode ? '差分確認中' : '整文レビュー中')"></span>
         <span class="review-progress-count" :class="pendingReviewCount() > 0 ? 'is-pending' : ''"
               x-text="pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件 / ' + reviewTotalCount() + ' 件' : ''"></span>
+        <span class="review-my-count"
+              x-show="Object.keys(reviewedBy).length > 0"
+              x-text="'あなたが確認: ' + Object.keys(reviewedBy).length + '件'"></span>
         <div class="review-progress-track">
             <div class="review-progress-fill"
                  :style="'width:' + (reviewTotalCount() ? Math.round((reviewTotalCount()-pendingReviewCount())/reviewTotalCount()*100) : 100) + '%'"></div>
@@ -1470,7 +1475,11 @@
                     <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" x-cloak style="display:none">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         採用済み
-                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                        <span x-show="reviewedBy[{{ seg.id }}]"
+                              class="review-by-badge review-by-badge--accepted"
+                              :title="(reviewedBy[{{ seg.id }}]?.name || '') + ' が採用'"
+                              x-text="reviewedBy[{{ seg.id }}]?.initials || ''"></span>
+                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
                     </div>
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
 
@@ -1479,7 +1488,11 @@
                         <div class="review-skipped-bar">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             元のまま採用
-                            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null">取り消し</button>
+                            <span x-show="reviewedBy[{{ seg.id }}]"
+                                  class="review-by-badge review-by-badge--skipped"
+                                  :title="(reviewedBy[{{ seg.id }}]?.name || '') + ' が元のまま採用'"
+                                  x-text="reviewedBy[{{ seg.id }}]?.initials || ''"></span>
+                            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
                         </div>
                         <div class="review-skipped-original" x-text="reviewData[{{ seg.id }}]?.original || ''"></div>
                     </div>
@@ -2472,6 +2485,11 @@ function segmentsApp(transcriptId, historyNames) {
         canEditMeetingInfo: true,
         canPolish: false,
 
+        // ── 個人別レビュー進捗（改善⑥）──────────────────────────────
+        reviewedBy: {},        // { [segId]: { name, initials, action: 'accepted'|'skipped' } }
+        currentUserName: '',
+        currentUserInitials: '',
+
         // ── 品質チェック ──────────────────────────────────────────
         qualityIssueCount() {
             return Object.keys(this.qualityIssues).length;
@@ -2934,7 +2952,27 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!this.editMode) {
                     clearTimeout(this._editInactivityTimer);
                 }
+                // 整文レビュー中に編集モードに切り替えようとした場合に警告（改善⑤）
+                if (this.editMode && this.reviewMode) {
+                    window.showToast('整文レビュー中です。「編集モードで続ける」ボタンを使うとレビュー結果を保持できます。', 'warning');
+                }
             });
+            // 個人別レビュー進捗: reviewData の変化を監視して自分の確認状況を記録（改善⑥）
+            this.$watch('reviewData', (newVal) => {
+                for (const [segIdStr, d] of Object.entries(newVal)) {
+                    const segId = parseInt(segIdStr, 10);
+                    if (d.done && !this.reviewedBy[segId]) {
+                        this.reviewedBy = {
+                            ...this.reviewedBy,
+                            [segId]: {
+                                name: this.currentUserName,
+                                initials: this.currentUserInitials,
+                                action: d.done,
+                            },
+                        };
+                    }
+                }
+            }, { deep: true });
             this.$watch('focusedEditingSegmentId', () => {
                 this.syncSegmentDisplay();
                 // 編集中カードにフォーカスクラスを付与（フォーカスモードで dimming されないように）
@@ -2971,6 +3009,19 @@ function segmentsApp(transcriptId, historyNames) {
             this.canEditSegments = perms.can_edit_segments !== false;
             this.canEditMeetingInfo = perms.can_edit_meeting_info !== false;
             this.canPolish = perms.can_polish === true;
+
+            // 個人別レビュー進捗: 現在のユーザー情報を初期化（改善⑥）
+            this.currentUserName = window.__CURRENT_USER_NAME || '';
+            this.currentUserInitials = this.currentUserName.charAt(0) || '';
+
+            // 整文アクティブ状態で招待ユーザーが開いた場合、自動でレビューモードに入る（改善⑤）
+            // オーナーは自分でレビューモードに入るため対象外。権限があるユーザーのみ。
+            if (window.__HAS_ACTIVE_REVIEW && !window.__IS_OWNER && !this.reviewMode) {
+                if (perms.can_polish === true || perms.can_edit_segments !== false) {
+                    this.$nextTick(() => this._tryAutoEnterReviewMode());
+                }
+            }
+
             // プレゼンスポーリング開始（5秒ごと）
             this._presenceInterval = setInterval(() => this.refreshPresence(), 5000);
             // 初回取得
@@ -4282,6 +4333,30 @@ function segmentsApp(transcriptId, historyNames) {
             // interrupted log の job_status を 'dismissed' にしてバッジを消す
             try {
                 await fetch(`/api/transcripts/${this.transcriptId}/polish/dismiss`, { method: 'POST' });
+            } catch (_) {}
+        },
+
+        // 整文アクティブ状態で招待ユーザーが開いた場合に自動でレビューモードに入る（改善⑤）
+        async _tryAutoEnterReviewMode() {
+            // 既に復元済みの場合はスキップ
+            if (this.reviewMode) return;
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/polish/active`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.job_id) return;
+                if (data.status === 'done' && data.result) {
+                    // 整文完了・レビュー待ち状態 → 自動でレビューモードに入る
+                    const suggestions = data.result.suggestions || {};
+                    const flags = data.result.flags || {};
+                    if (Object.keys(suggestions).length > 0) {
+                        this.enterReviewMode(suggestions, flags);
+                        window.showToast('整文レビューモードで開きました', 'info');
+                    }
+                } else if (data.status === 'running' || data.status === 'pending') {
+                    // 整文処理中の場合はバナーを表示（既存の _checkPolishResume に任せる）
+                    // 二重起動を防ぐため、ここでは何もしない
+                }
             } catch (_) {}
         },
 
