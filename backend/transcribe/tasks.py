@@ -275,7 +275,7 @@ async def _run_auto_pickup(transcript_id: int) -> None:
         return
     try:
         import anthropic
-        from backend.transcribe.polish import pickup_proper_nouns
+        from backend.transcribe.polish import detect_noun_variants, pickup_proper_nouns
 
         with SessionLocal() as db:
             transcript = db.get(Transcript, transcript_id)
@@ -314,30 +314,41 @@ async def _run_auto_pickup(transcript_id: int) -> None:
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         words, inp_tokens, out_tokens = await pickup_proper_nouns(client, full_text, registered)
+        clusters, cl_inp, cl_out = await detect_noun_variants(client, full_text, registered)
         await client.aclose()
 
         with SessionLocal() as db:
             t = db.get(Transcript, transcript_id)
             if t is None:
                 return
-            if words:
-                t.pickup_suggestions = json.dumps(words, ensure_ascii=False)
-            # 自動ピックアップのコストを記録
-            if inp_tokens or out_tokens:
+            # 新フォーマットで保存（words + clusters）
+            if words or clusters:
+                pickup_data = {
+                    "words": words,
+                    "clusters": clusters,
+                }
+                t.pickup_suggestions = json.dumps(pickup_data, ensure_ascii=False)
+            # 自動ピックアップのコストを記録（words + clusters の合計）
+            total_inp = inp_tokens + cl_inp
+            total_out = out_tokens + cl_out
+            if total_inp or total_out:
                 from backend.transcribe.polish import actual_cost_yen
                 from backend.db.models import PolishLog
-                cost = actual_cost_yen(inp_tokens, out_tokens, "haiku")
+                cost = actual_cost_yen(total_inp, total_out, "haiku")
                 db.add(PolishLog(
                     transcript_id=transcript_id,
                     model="haiku(auto-pickup)",
-                    input_tokens=inp_tokens,
-                    output_tokens=out_tokens,
+                    input_tokens=total_inp,
+                    output_tokens=total_out,
                     cost_yen=cost,
                     created_by_user_id=t.user_id,
                 ))
             db.commit()
-        if words:
-            logger.info("固有名詞候補ピックアップ完了: transcript_id=%s words=%s", transcript_id, len(words))
+        if words or clusters:
+            logger.info(
+                "固有名詞候補ピックアップ完了: transcript_id=%s words=%s clusters=%s",
+                transcript_id, len(words), len(clusters),
+            )
     except Exception:
         logger.exception("固有名詞候補ピックアップ失敗: transcript_id=%s", transcript_id)
 

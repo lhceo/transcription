@@ -847,6 +847,47 @@
     </div>
     {% endif %}
 
+    {# ──── 固有名詞の揺れ検出パネル ──── #}
+    <template x-if="nounClustersLoaded && nounClusters.length > 0">
+    <div class="noun-clusters-panel" x-show="!reviewMode" x-cloak>
+        <div class="noun-clusters-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            固有名詞の揺れを検出
+            <span class="noun-clusters-count" x-text="nounClusters.length + '件'"></span>
+        </div>
+        <template x-for="(cluster, idx) in nounClusters" :key="idx">
+        <div class="noun-cluster-card">
+            <div class="noun-cluster-variants">
+                <template x-for="v in cluster.variants" :key="v">
+                    <span class="noun-cluster-variant-chip" x-text="v"></span>
+                </template>
+            </div>
+            <div class="noun-cluster-meta">
+                <span class="noun-cluster-count" x-text="cluster.count + '回'"></span>
+                <span class="noun-cluster-type" x-text="({'company':'会社名','person':'人名','product':'製品名','other':'その他'})[cluster.type] || cluster.type"></span>
+                <span class="noun-cluster-note" x-show="cluster.note" x-text="cluster.note"></span>
+            </div>
+            <div class="noun-cluster-actions">
+                <span class="noun-cluster-label">修正後:</span>
+                <input type="text" class="noun-cluster-input"
+                       :value="cluster._confirmed !== undefined ? cluster._confirmed : (cluster.suggested || cluster.variants[0])"
+                       @change="cluster._confirmed = $event.target.value"
+                       @input="cluster._confirmed = $event.target.value">
+                <label class="noun-cluster-vocab-label">
+                    <input type="checkbox" x-model="cluster._registerVocab" :checked="cluster._registerVocab !== false">
+                    辞書登録
+                </label>
+                <button class="btn btn-sm btn-primary"
+                        @click="applyNounCluster(idx, cluster._confirmed !== undefined ? cluster._confirmed : (cluster.suggested || cluster.variants[0]), cluster._registerVocab !== false)">
+                    一括修正
+                </button>
+                <button class="btn btn-sm btn-ghost" @click="dismissNounCluster(idx)">スキップ</button>
+            </div>
+        </div>
+        </template>
+    </div>
+    </template>
+
     {# ──── 整文ステータスバナー（処理中 or 完了・要確認） ──── #}
     <div class="polish-status-banner"
          x-show="!reviewMode && polishResumeState.show"
@@ -2375,6 +2416,10 @@ function segmentsApp(transcriptId, historyNames) {
         // ブックマーク一覧（ページロード時に __BOOKMARKS_INIT から初期化）
         bookmarks: [],
 
+        // ── 固有名詞バリアント（揺れ）検出 ──────────────────────────
+        nounClusters: [],          // [{variants, suggested, confidence, type, count, note, applied}]
+        nounClustersLoaded: false,
+
         // ── 品質チェック ──────────────────────────────────────────
         qualityIssues: {},     // { [segId]: { type, note } }
         _qualityNavIds: [],    // DOM順のセグメントID一覧
@@ -2442,6 +2487,46 @@ function segmentsApp(transcriptId, historyNames) {
         qualityTypeLabel(type) {
             const labels = { proper_noun: '固有名詞', fragment: '断片', unclear: '要確認' };
             return labels[type] || '要確認';
+        },
+
+        // ── 固有名詞バリアント（揺れ）検出 ──────────────────────────
+        async _loadNounClusters() {
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/noun-clusters`);
+                if (!res.ok) return;
+                const data = await res.json();
+                this.nounClusters = (data.clusters || []).filter(c => !c.applied);
+                this.nounClustersLoaded = true;
+            } catch(e) {}
+        },
+
+        async applyNounCluster(idx, confirmedWord, registerVocab = true) {
+            const cluster = this.nounClusters[idx];
+            if (!cluster) return;
+            try {
+                const res = await fetch(`/api/transcripts/${this.transcriptId}/noun-clusters/apply`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        cluster_index: idx,
+                        confirmed_word: confirmedWord,
+                        register_vocabulary: registerVocab,
+                    }),
+                });
+                if (!res.ok) { window.showToast('一括修正に失敗しました', 'error'); return; }
+                const data = await res.json();
+                // UIからクラスターを除去
+                this.nounClusters.splice(idx, 1);
+                // セグメント表示を更新（修正された箇所を再描画）
+                await this.syncSegmentTexts();
+                window.showToast(`「${confirmedWord}」に一括修正しました（${data.replaced_count}箇所）`, 'success');
+            } catch(e) {
+                window.showToast('一括修正に失敗しました', 'error');
+            }
+        },
+
+        dismissNounCluster(idx) {
+            this.nounClusters.splice(idx, 1);
         },
 
         // ── ブックマーク ─────────────────────────────────────────
@@ -3060,6 +3145,9 @@ function segmentsApp(transcriptId, historyNames) {
             this._qualityNavIds = Array.from(document.querySelectorAll('#segment-list .segment-card'))
                 .map(c => parseInt(c.dataset.segmentId, 10))
                 .filter(id => this.qualityIssues[id]);
+
+            // 固有名詞バリアント（揺れ）読み込み
+            this._loadNounClusters();
 
         },
 

@@ -335,6 +335,75 @@ async def pickup_proper_nouns(
         return [], 0, 0
 
 
+# 固有名詞バリアント（揺れ）検出 ──────────────────────────────────────────────
+
+CLUSTER_SYSTEM = """あなたは日本語ビジネス会議の文字起こしにおける音声認識エラーを検出するアシスタントです。
+
+同一セッション内で複数回登場する固有名詞（人名・会社名・製品名など）が、
+音声認識エラーにより異なる表記になっているパターンを検出してください。
+
+検出条件:
+- 発音が似ている（例: ライフマーク/ライクバンク → ライフバンク）
+- 漢字の一部が似ている（例: 古市/古瀬 → 同一人物の可能性）
+- 同一セッション内で2回以上出現する
+- 組み合わせとして共起するもの（社名+担当者名など）はセットで報告
+
+語彙辞書に登録済みの語句がある場合はそれを正解候補として優先してください。
+バリアントが1種類しかない（揺れがない）場合はclustersを空リストで返してください。
+
+出力形式（JSONのみ、他のテキスト不要）:
+{"clusters": [{"variants": ["表記1", "表記2"], "suggested": "正しい表記の推測", "confidence": "high|medium|low", "type": "company|person|product|other", "count": 出現回数合計, "note": "判断理由（30字以内）", "related_clusters": [関連クラスターのインデックス番号]}]}"""
+
+
+async def detect_noun_variants(
+    client,
+    transcript_text: str,
+    registered_words: list[str],
+) -> tuple[list[dict], int, int]:
+    """同一セッション内の固有名詞バリアント（音声認識揺れ）を検出する。
+
+    Returns:
+        (clusters, input_tokens, output_tokens)
+    """
+    registered_str = "、".join(registered_words) if registered_words else "（なし）"
+    # 全文を使う（揺れ検出は網羅性が重要）
+    # 長すぎる場合はセグメント単位でサンプリング
+    if len(transcript_text) > 8000:
+        # 均等に8000文字分をサンプリング
+        step = len(transcript_text) // 5
+        parts = [transcript_text[i:i+1600] for i in range(0, len(transcript_text), step)][:5]
+        sample = "\n…\n".join(parts)
+    else:
+        sample = transcript_text
+
+    prompt = f"""登録済み語句（これらは正しいので除外）: {registered_str}
+
+【文字起こし全文】
+{sample}"""
+
+    try:
+        message = await client.messages.create(
+            model=MODELS["haiku"]["id"],
+            max_tokens=1024,
+            system=CLUSTER_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = message.content[0].text.strip()
+        inp = message.usage.input_tokens if message.usage else 0
+        out = message.usage.output_tokens if message.usage else 0
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return [], inp, out
+        clusters = data.get("clusters", [])
+        # バリデーション: variants が2個以上のものだけ採用
+        valid = [c for c in clusters if isinstance(c, dict) and len(c.get("variants", [])) >= 2]
+        return valid, inp, out
+    except Exception as e:
+        logger.warning("固有名詞バリアント検出失敗: %s", e)
+        return [], 0, 0
+
+
 def extract_word_contexts(words: list, transcript_text: str) -> list[dict]:
     """各単語の初出文脈（前後の文）を抽出する。
 

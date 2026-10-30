@@ -65,6 +65,22 @@ templates.env.globals["anthropic_balance"] = get_anthropic_balance_summary
 router = APIRouter()
 
 
+# ── pickup_suggestions パース ──────────────────────────────────────────────────
+
+def _parse_pickup_suggestions(raw: str | None) -> tuple[list, list]:
+    """pickup_suggestions JSONをパースして (words, clusters) を返す。後方互換あり。"""
+    if not raw:
+        return [], []
+    try:
+        import json as _json
+        data = _json.loads(raw)
+        if isinstance(data, list):
+            return data, []  # 旧フォーマット（リストは words として扱う）
+        return data.get("words", []), data.get("clusters", [])
+    except Exception:
+        return [], []
+
+
 # ── バックグラウンドタスク エラーロギング ─────────────────────────────────────
 
 def _reading_to_from_list(reading: str) -> list[str]:
@@ -2254,6 +2270,104 @@ async def update_transcript_vocabulary(
     db.commit()
     db.refresh(vocab)
     return JSONResponse({"id": vocab.id, "word": vocab.word, "meaning": vocab.meaning or "", "reading": vocab.reading or ""})
+
+
+# ── 固有名詞バリアント（揺れ）検出 ────────────────────────────────────────────
+
+
+@router.get("/api/transcripts/{transcript_id}/noun-clusters")
+async def get_noun_clusters(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """固有名詞の揺れクラスター一覧を返す。"""
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    _, clusters = _parse_pickup_suggestions(transcript.pickup_suggestions)
+    return JSONResponse({"clusters": clusters})
+
+
+class NounClusterApplyBody(BaseModel):
+    cluster_index: int
+    confirmed_word: str         # 確定する正しい表記
+    register_vocabulary: bool = True  # 語彙辞書に登録するか
+
+
+@router.post("/api/transcripts/{transcript_id}/noun-clusters/apply")
+async def apply_noun_cluster(
+    transcript_id: int,
+    body: NounClusterApplyBody,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """指定クラスターのバリアントを一括修正し、語彙辞書に登録する。"""
+    import json as _json
+
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # セグメント編集権限チェック
+    if not _is_owner(transcript, user["id"]):
+        share = _get_share(transcript.id, user["id"], db)
+        if share is None or not share.can_edit_segments:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "セグメントの編集権限がありません"})
+
+    words, clusters = _parse_pickup_suggestions(transcript.pickup_suggestions)
+
+    if body.cluster_index >= len(clusters):
+        raise HTTPException(status_code=400, detail="Invalid cluster index")
+
+    cluster = clusters[body.cluster_index]
+    variants = cluster.get("variants", [])
+    confirmed = body.confirmed_word.strip()
+
+    if not confirmed or not variants:
+        raise HTTPException(status_code=400, detail="Invalid data")
+
+    # 全セグメントで variants → confirmed_word に置換
+    segments = db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ).all()
+
+    replaced_count = 0
+    for seg in segments:
+        text = seg.text_content or ""
+        new_text = text
+        for variant in variants:
+            if variant != confirmed:
+                new_text = new_text.replace(variant, confirmed)
+        if new_text != text:
+            seg.text_content = new_text
+            seg.updated_at = datetime.utcnow()
+            replaced_count += 1
+
+    # 語彙辞書に登録
+    if body.register_vocabulary:
+        existing = db.scalar(
+            select(TranscriptVocabulary)
+            .where(TranscriptVocabulary.transcript_id == transcript_id)
+            .where(TranscriptVocabulary.word == confirmed)
+        )
+        if not existing:
+            db.add(TranscriptVocabulary(
+                transcript_id=transcript_id,
+                word=confirmed,
+                meaning=cluster.get("note", "") or None,
+                created_by_user_id=user["id"],
+            ))
+
+    # クラスターを "applied" としてマーク（再表示しない）
+    clusters[body.cluster_index]["applied"] = True
+    pickup_data = {"words": words, "clusters": clusters}
+    transcript.pickup_suggestions = _json.dumps(pickup_data, ensure_ascii=False)
+
+    db.commit()
+    return JSONResponse({"replaced_count": replaced_count, "confirmed_word": confirmed})
 
 
 # ── 常用語辞書（ユーザー全体） ─────────────────────────────────────────
