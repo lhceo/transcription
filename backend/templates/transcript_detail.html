@@ -6281,12 +6281,13 @@ function segmentsApp(transcriptId, historyNames) {
             commentBtn.type = 'button';
             commentBtn.className = 'segment-action-btn segment-comment-btn';
             commentBtn.dataset.segmentId = String(newSeg.id);
-            commentBtn.setAttribute(':class', `{'has-comment': segComments[${newSeg.id}]}`);
-            commentBtn.setAttribute(':title', `segComments[${newSeg.id}] ? 'コメントを編集' : 'コメントを追加'`);
-            commentBtn.setAttribute(':aria-label', `segComments[${newSeg.id}] ? 'コメントを編集' : 'コメントを追加'`);
-            commentBtn.setAttribute('@click.stop', `toggleCommentEdit(${newSeg.id})`);
             commentBtn.title = 'コメントを追加';
+            commentBtn.setAttribute('aria-label', 'コメントを追加');
             commentBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+            commentBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleCommentEdit(newSeg.id);
+            });
             actions.appendChild(commentBtn);
 
             // ブックマークボタン
@@ -6387,7 +6388,7 @@ function segmentsApp(transcriptId, historyNames) {
             commentWrap.style.display = 'none';
             commentWrap.style.cursor = 'pointer';
             commentWrap.title = 'クリックしてコメントを編集';
-            commentWrap.setAttribute('@click.stop', `toggleCommentEdit(${newSeg.id})`);
+            commentWrap.addEventListener('click', (e) => { e.stopPropagation(); this.toggleCommentEdit(newSeg.id); });
             const commentTextEl = document.createElement('div');
             commentTextEl.className = 'segment-comment-text';
             commentTextEl.setAttribute('x-text', `segComments[${newSeg.id}] || ''`);
@@ -6402,17 +6403,22 @@ function segmentsApp(transcriptId, historyNames) {
             commentEditWrap.className = 'segment-comment-edit-wrap';
             commentEditWrap.setAttribute('x-show', `commentEditId === ${newSeg.id}`);
             commentEditWrap.style.display = 'none';
-            commentEditWrap.setAttribute('@click.stop', '');
+            commentEditWrap.addEventListener('click', (e) => e.stopPropagation());
 
             const commentTa = document.createElement('textarea');
             commentTa.className = 'segment-comment-textarea';
             commentTa.id = `comment-ta-${newSeg.id}`;
             commentTa.rows = 2;
             commentTa.placeholder = '補足メモ（整文・エクスポートに反映されます）';
-            commentTa.setAttribute('@keydown.escape.stop', 'cancelCommentEdit()');
-            commentTa.setAttribute('@compositionstart', '$event.target._composing = true');
-            commentTa.setAttribute('@compositionend', '$event.target._composing = false');
-            commentTa.setAttribute('@keydown.enter', `if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment(${newSeg.id}, $el); }`);
+            commentTa.addEventListener('compositionstart', () => { commentTa._composing = true; });
+            commentTa.addEventListener('compositionend', () => { commentTa._composing = false; });
+            commentTa.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') { e.stopPropagation(); this.cancelCommentEdit(); return; }
+                if (e.key === 'Enter' && !e.isComposing && !commentTa._composing && !e.shiftKey) {
+                    e.preventDefault();
+                    this.saveComment(newSeg.id, commentTa);
+                }
+            });
 
             const commentActionsEl = document.createElement('div');
             commentActionsEl.className = 'segment-comment-actions';
@@ -6420,20 +6426,19 @@ function segmentsApp(transcriptId, historyNames) {
             const cSaveBtn = document.createElement('button');
             cSaveBtn.className = 'btn btn-primary btn-sm';
             cSaveBtn.textContent = '保存';
-            cSaveBtn.setAttribute('@click.stop', `saveComment(${newSeg.id}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))`);
+            cSaveBtn.addEventListener('click', (e) => { e.stopPropagation(); this.saveComment(newSeg.id, commentTa); });
 
             const cCancelBtn = document.createElement('button');
             cCancelBtn.className = 'btn btn-ghost btn-sm';
             cCancelBtn.textContent = 'キャンセル';
-            cCancelBtn.setAttribute('@click.stop', 'cancelCommentEdit()');
+            cCancelBtn.addEventListener('click', (e) => { e.stopPropagation(); this.cancelCommentEdit(); });
 
             const cDeleteBtn = document.createElement('button');
             cDeleteBtn.className = 'btn btn-ghost btn-sm';
             cDeleteBtn.style.cssText = 'color:#ef4444;margin-left:auto';
-            cDeleteBtn.setAttribute('x-show', `segComments[${newSeg.id}]`);
             cDeleteBtn.style.display = 'none';
             cDeleteBtn.textContent = '削除';
-            cDeleteBtn.setAttribute('@click.stop', `deleteComment(${newSeg.id}, $el.closest('.segment-card'))`);
+            cDeleteBtn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteComment(newSeg.id, cDeleteBtn.closest('.segment-card')); });
 
             const cHint = document.createElement('p');
             cHint.className = 'segment-comment-hint';
@@ -6466,7 +6471,7 @@ function segmentsApp(transcriptId, historyNames) {
             revertBar.className = 'revert-confirm-bar';
             revertBar.setAttribute('x-show', `revertConfirmSegId === ${newSeg.id}`);
             revertBar.style.display = 'none';
-            revertBar.setAttribute('@click.stop', '');
+            revertBar.addEventListener('click', (e) => e.stopPropagation());
             revertBar.innerHTML = `
                 <div style="width:100%">
                     <div style="font-weight:600;margin-bottom:6px"
