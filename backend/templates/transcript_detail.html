@@ -1221,17 +1221,18 @@
                               title="保存に失敗しました。ツールバーの「再試行」ボタンで再保存できます。">
                             ⚠ 保存未確認
                         </span>
-                        {# セグメントレビューボタン（整文レビュー中も含め常時表示） #}
+                        {# セグメントレビューボタン（整文レビュー中は非表示） #}
                         <button type="button"
                             class="seg-review-btn"
+                            x-show="!reviewMode"
                             :class="{ 'is-reviewed': reviewedSegments[{{ seg.id }}] }"
                             @click.stop="toggleReview({{ seg.id }})"
                             :title="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'"
                             :aria-label="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         </button>
-                        {# レビュアーアバター（整文レビュー中も表示） #}
-                        <template x-if="reviewedSegments[{{ seg.id }}] && reviewedSegments[{{ seg.id }}].reviewer_picture">
+                        {# レビュアーアバター（整文レビュー中は非表示） #}
+                        <template x-if="!reviewMode && reviewedSegments[{{ seg.id }}] && reviewedSegments[{{ seg.id }}].reviewer_picture">
                             <img class="seg-reviewer-avatar"
                                  :src="reviewedSegments[{{ seg.id }}].reviewer_picture"
                                  :alt="reviewedSegments[{{ seg.id }}].reviewer_name"
@@ -1304,7 +1305,7 @@
                             <button
                                 type="button"
                                 class="segment-action-btn segment-delete-btn"
-                                x-show="canEditSegments && !reviewMode"
+                                x-show="canEditSegments"
                                 @click.stop="deleteSegment({{ seg.id }}, $el.closest('.segment-card'))"
                                 title="このブロックを削除"
                                 aria-label="このブロックを削除"
