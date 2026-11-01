@@ -2307,12 +2307,31 @@ async def get_presence(
                 "author_user_id": seg.comment_author_user_id,
             }
 
+    # 整文レビューがアクティブかどうか（ゲストの自動レビューモード同期用）
+    from backend.projects.routes import _polish_jobs as _pj
+    _is_review_active = any(
+        j.get("transcript_id") == transcript_id and j.get("status") in ("done", "reviewing", "running", "pending")
+        for j in _pj.values()
+    )
+    if not _is_review_active:
+        from backend.db.models import PolishLog as _PL
+        from datetime import datetime as _dt_r, timezone as _tz_r, timedelta as _td_r
+        _ar_cutoff = _dt_r.now(_tz_r.utc) - _td_r(hours=24)
+        _is_review_active = db.scalar(
+            select(_PL)
+            .where(_PL.transcript_id == transcript_id)
+            .where(_PL.pending_result.isnot(None))
+            .where(_PL.created_at >= _ar_cutoff)
+            .limit(1)
+        ) is not None
+
     return JSONResponse({
         "active": active,
         "total_segment_count": total_segment_count,
         "reviewed_segments": reviewed_segments,
         "bookmarked_segments": bookmarked_segments,
         "commented_segments": commented_segments,
+        "is_review_active": _is_review_active,
     })
 
 

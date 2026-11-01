@@ -1034,16 +1034,18 @@
             <div class="review-progress-fill"
                  :style="'width:' + (reviewTotalCount() ? Math.round((reviewTotalCount()-pendingReviewCount())/reviewTotalCount()*100) : 100) + '%'"></div>
         </div>
-        <button class="btn btn-outline btn-sm" x-show="pendingReviewCount() > 0 && !diffReviewMode" @click="acceptAllReview()" style="white-space:nowrap">全採用</button>
+        <button class="btn btn-outline btn-sm" x-show="pendingReviewCount() > 0 && !diffReviewMode && canPolish" @click="acceptAllReview()" style="white-space:nowrap">全採用</button>
         <button class="btn btn-primary btn-sm"
+                x-show="canPolish"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
                 x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りを元のままにして保存')"></button>
         <button class="btn btn-outline btn-sm"
                 @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()"
                 style="color:#64748b"
                 x-text="diffReviewMode ? '編集モードで確認する' : '編集モードで続ける'"></button>
-        <button class="btn btn-link btn-sm" x-show="!diffReviewMode" @click="cancelReview()"
+        <button class="btn btn-link btn-sm" x-show="!diffReviewMode && canPolish" @click="cancelReview()"
                 style="color:#94a3b8;font-size:11px;padding:2px 6px;text-decoration:underline">全破棄</button>
+        <span x-show="!canPolish" style="font-size:11px;color:var(--color-text-muted);padding:0 4px">ホストが採用・保存を確定します</span>
         <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
             グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
         </span>
@@ -2884,6 +2886,13 @@ function segmentsApp(transcriptId, historyNames) {
                 // コメント同期
                 if (presResp.commented_segments) {
                     this._syncSharedComments(presResp.commented_segments);
+                }
+                // 整文レビューがアクティブになったらゲストも自動でレビューモードに入る
+                if (presResp.is_review_active && !this.reviewMode && !window.__IS_OWNER) {
+                    const perms = window.__CURRENT_USER_PERMISSIONS || {};
+                    if (perms.can_polish === true || perms.can_edit_segments !== false) {
+                        this._tryAutoEnterReviewMode();
+                    }
                 }
             } catch (e) {}
         },

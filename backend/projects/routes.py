@@ -946,6 +946,26 @@ def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Tra
     raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
 
 
+def _view_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
+    """閲覧・共同レビュー用アクセスチェック（整文実行権限不要）。
+    can_polish に関係なく、トランスクリプト閲覧権限があれば通過する。
+    """
+    t = db.get(Transcript, transcript_id)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+    if t.user_id == user_id:
+        return t
+    share = db.scalar(
+        select(TranscriptShare).where(
+            TranscriptShare.transcript_id == transcript_id,
+            TranscriptShare.shared_with_user_id == user_id,
+        )
+    )
+    if share:
+        return t
+    raise HTTPException(status_code=404, detail="文字起こしが見つかりません")
+
+
 def _build_transcript_context(transcript: Transcript, db: Session) -> str:
     """トランスクリプトに紐づくPJT/MTGのコンテキストテキストを構築する。"""
     from sqlalchemy.orm import selectinload as _sil
@@ -1473,7 +1493,7 @@ async def polish_status(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """整文ジョブのステータスを返す。"""
-    _get_transcript_or_404(transcript_id, user["id"], db)
+    _view_transcript_or_404(transcript_id, user["id"], db)
     job = _polish_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません（期限切れの可能性）")
@@ -1488,7 +1508,7 @@ async def polish_active(
 ) -> JSONResponse:
     """このトランスクリプトに対して実行中 or 完了済み（未採用）の最新ジョブを返す。
     メモリ上のジョブを優先し、なければDBの pending_result を参照する。"""
-    _get_transcript_or_404(transcript_id, user["id"], db)
+    _view_transcript_or_404(transcript_id, user["id"], db)
     import json as _json
     # ① メモリ上の最新ジョブを確認
     best = None
@@ -1597,7 +1617,7 @@ async def polish_start_review(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """ユーザーがファイルを開いてレビューを開始したとき done → reviewing に遷移する。"""
-    _get_transcript_or_404(transcript_id, user["id"], db)
+    _view_transcript_or_404(transcript_id, user["id"], db)
     for job in _polish_jobs.values():
         if job.get("transcript_id") == transcript_id and job.get("status") == "done":
             job["status"] = "reviewing"
@@ -1645,7 +1665,7 @@ async def polish_diff(
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
     """採用済み整文の差分を返す。{seg_id: pre_polish_text} 形式。"""
-    _get_transcript_or_404(transcript_id, user["id"], db)
+    _view_transcript_or_404(transcript_id, user["id"], db)
     segs = list(db.scalars(
         select(Segment)
         .where(Segment.transcript_id == transcript_id, Segment.is_polished == True)
