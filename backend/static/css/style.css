@@ -7845,8 +7845,10 @@ textarea.form-input-sm {
     border: none;
     cursor: pointer;
     color: var(--color-text-muted);
-    font-size: 1rem;
-    padding: 0 4px;
+    font-size: 11px;
+    padding: 2px 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 .share-member-remove:hover { color: #c0392b; }
 
