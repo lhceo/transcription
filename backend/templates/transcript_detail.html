@@ -6915,10 +6915,28 @@ function polishModal() {
         preflightIssues: [],
 
         _checkPreflight() {
-            const speakers = window.__SPEAKERS || [];
-            return speakers
-                .filter(s => /^未設定話者/.test(s.name))
-                .map(s => s.name);
+            // DOM上の実効話者名で判定（Segment.display_name 個別上書き済みも正しく扱う）
+            const labelToNames = {};
+            document.querySelectorAll('.segment-card .speaker-badge[data-speaker-label]').forEach(badge => {
+                const label = badge.dataset.speakerLabel;
+                const name = badge.dataset.effectiveName || badge.querySelector('.speaker-badge-text')?.textContent?.trim() || '';
+                if (!labelToNames[label]) labelToNames[label] = new Set();
+                if (name) labelToNames[label].add(name);
+            });
+            const unnamed = new Set();
+            for (const [, names] of Object.entries(labelToNames)) {
+                if ([...names].every(n => /^未設定話者/.test(n))) {
+                    [...names].forEach(n => unnamed.add(n));
+                }
+            }
+            // 未ロード（遅延ロード前）の話者は __SPEAKERS で補完
+            const loadedLabels = new Set(Object.keys(labelToNames));
+            for (const s of (window.__SPEAKERS || [])) {
+                if (!loadedLabels.has(s.label) && /^未設定話者/.test(s.name || '')) {
+                    unnamed.add(s.name);
+                }
+            }
+            return [...unnamed].sort();
         },
 
         async open() {
