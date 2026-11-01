@@ -927,6 +927,12 @@ class PolishRevertRequest(BaseModel):
     segment_ids: list[int] | None = None
 
 
+class PolishAcceptOneRequest(BaseModel):
+    """レビュー中の1セグメント即時採用リクエスト。"""
+    segment_id: int
+    text: str
+
+
 def _get_transcript_or_404(transcript_id: int, user_id: int, db: Session) -> Transcript:
     t = db.get(Transcript, transcript_id)
     if not t or t.deleted_at is not None:
@@ -1608,6 +1614,28 @@ async def polish_accept(
         lg.job_status = 'dismissed'
     db.commit()
     return JSONResponse({"ok": True, "updated": updated})
+
+
+@router.post("/api/transcripts/{transcript_id}/polish/accept-one")
+async def polish_accept_one(
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: PolishAcceptOneRequest,
+) -> JSONResponse:
+    """レビュー中に1セグメントをDBに即時採用する。pending_resultはクリアしない。"""
+    _view_transcript_or_404(transcript_id, user["id"], db)
+    seg = db.get(Segment, body.segment_id)
+    if not seg or seg.transcript_id != transcript_id:
+        raise HTTPException(status_code=404, detail="セグメントが見つかりません")
+    if seg.text_content != body.text:
+        seg.pre_polish_text = seg.text_content
+        seg.text_content = body.text
+        seg.is_edited = True
+        seg.is_polished = True
+        seg.last_editor_user_id = user["id"]
+        db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.post("/api/transcripts/{transcript_id}/polish/start-review")

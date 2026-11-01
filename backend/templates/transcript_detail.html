@@ -1467,55 +1467,6 @@
                         </div>
                     </div>
 
-                    {# ── コメント表示 / 編集エリア ── #}
-                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})"
-                         x-cloak style="display:none;cursor:pointer"
-                         @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集">
-                        <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
-                        <span class="segment-comment-edit-hint">✏ 編集</span>
-                    </div>
-                    <div class="segment-comment-edit-wrap"
-                         x-show="commentEditId === {{ seg.id }}" style="display:none"
-                         @click.stop>
-                        <textarea class="segment-comment-textarea"
-                                  id="comment-ta-{{ seg.id }}"
-                                  rows="2"
-                                  placeholder="補足メモ（整文・エクスポートに反映されます）"
-                                  @keydown.escape.stop="cancelCommentEdit()"
-                                  @compositionstart="$event.target._composing = true"
-                                  @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"
-                                  @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
-                        >{{ seg.comment or '' }}</textarea>
-                        <div class="segment-comment-actions" x-data="{ helpOpen: false }">
-                            <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
-                            <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
-                            <span class="info-help-wrap" style="margin-left:4px">
-                                <button type="button" class="info-help-btn" @click.stop="helpOpen = !helpOpen" aria-label="コメントの使われ方を見る">?</button>
-                                <div class="info-help-popover" x-show="helpOpen" x-cloak @click.outside="helpOpen = false" style="display:none;left:auto;right:0">
-                                    <p class="info-help-popover-title">コメントは2つの場面で使われます</p>
-                                    <div class="info-help-step">
-                                        <span class="info-help-step-num">1</span>
-                                        <div class="info-help-step-body">
-                                            <strong>整文（AI清書）時</strong>
-                                            <span>この発言の状況・補足としてAIに渡されます。例：「薩摩会議DAY2の分科会中の発言」と書くと、文脈を理解して清書されます。</span>
-                                        </div>
-                                    </div>
-                                    <div class="info-help-step">
-                                        <span class="info-help-step-num">2</span>
-                                        <div class="info-help-step-body">
-                                            <strong>エクスポート時</strong>
-                                            <span>発言直下に「# コメント内容」として記載されます。NotebookLM等の後続AIが文脈を読み取れるようになります。</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </span>
-                            {% if is_owner or seg.comment_author_user_id is none or seg.comment_author_user_id == user['id'] %}
-                            <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" x-show="segComments[{{ seg.id }}]" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
-                            {% endif %}
-                            <p class="segment-comment-hint">Shift+Enterで改行 / Enterで保存</p>
-                        </div>
-                    </div>
-
                     {# ── 整文インラインレビュー UI ── #}
                     {# 採用済み #}
                     <div class="review-accepted-bar" x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" x-cloak style="display:none">
@@ -1612,7 +1563,9 @@
                             </div>
                             <textarea class="review-edit-textarea review-edit-textarea-primary"
                                       x-model="reviewData[{{ seg.id }}].polishedText"
-                                      rows="4" @click.stop></textarea>
+                                      rows="4" @click.stop
+                                      @focus.stop="updatePresence({{ seg.id }})"
+                                      @blur.stop="updatePresence(null)"></textarea>
                         </div>
                         {# 元の文字起こし（折りたたみ、比較用） #}
                         <div class="review-original-box review-original-collapsible"
@@ -1625,7 +1578,7 @@
                                     x-text="diffReviewMode ? '元に戻す' : '元のままにする'"
                                     @click.stop="skipAndSaveOriginal({{ seg.id }})"></button>
                             <button class="btn btn-sm btn-primary"
-                                    @click.stop="reviewData[{{ seg.id }}].done = 'accepted'">採用</button>
+                                    @click.stop="_acceptAndSaveReviewSegment({{ seg.id }})">採用</button>
                         </div>
                     </div>
                     </template>
@@ -1711,14 +1664,65 @@
                                       :value="reviewData[{{ seg.id }}].editedText ?? ''"
                                       @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value"
                                       :placeholder="_getUnknownPreviewText({{ seg.id }})"
-                                      rows="3" @click.stop></textarea>
+                                      rows="3" @click.stop
+                                      @focus.stop="updatePresence({{ seg.id }})"
+                                      @blur.stop="updatePresence(null)"></textarea>
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="skipAndSaveOriginal({{ seg.id }})">元のままにする</button>
-                            <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
+                            <button class="btn btn-sm btn-primary" @click.stop="_acceptAndSaveReviewSegment({{ seg.id }})">採用</button>
                         </div>
                     </div>
                     </template>
+
+                    {# ── コメント表示 / 編集エリア（整文レビュー UI の下に配置） ── #}
+                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})"
+                         x-cloak style="display:none;cursor:pointer"
+                         @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集">
+                        <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
+                        <span class="segment-comment-edit-hint">✏ 編集</span>
+                    </div>
+                    <div class="segment-comment-edit-wrap"
+                         x-show="commentEditId === {{ seg.id }}" style="display:none"
+                         @click.stop>
+                        <textarea class="segment-comment-textarea"
+                                  id="comment-ta-{{ seg.id }}"
+                                  rows="2"
+                                  placeholder="補足メモ（整文・エクスポートに反映されます）"
+                                  @keydown.escape.stop="cancelCommentEdit()"
+                                  @compositionstart="$event.target._composing = true"
+                                  @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"
+                                  @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
+                        >{{ seg.comment or '' }}</textarea>
+                        <div class="segment-comment-actions" x-data="{ helpOpen: false }">
+                            <button class="btn btn-primary btn-sm" @click.stop="saveComment({{ seg.id }}, $el.closest('.segment-comment-edit-wrap').querySelector('textarea'))">保存</button>
+                            <button class="btn btn-ghost btn-sm" @click.stop="cancelCommentEdit()">キャンセル</button>
+                            <span class="info-help-wrap" style="margin-left:4px">
+                                <button type="button" class="info-help-btn" @click.stop="helpOpen = !helpOpen" aria-label="コメントの使われ方を見る">?</button>
+                                <div class="info-help-popover" x-show="helpOpen" x-cloak @click.outside="helpOpen = false" style="display:none;left:auto;right:0">
+                                    <p class="info-help-popover-title">コメントは2つの場面で使われます</p>
+                                    <div class="info-help-step">
+                                        <span class="info-help-step-num">1</span>
+                                        <div class="info-help-step-body">
+                                            <strong>整文（AI清書）時</strong>
+                                            <span>この発言の状況・補足としてAIに渡されます。例：「薩摩会議DAY2の分科会中の発言」と書くと、文脈を理解して清書されます。</span>
+                                        </div>
+                                    </div>
+                                    <div class="info-help-step">
+                                        <span class="info-help-step-num">2</span>
+                                        <div class="info-help-step-body">
+                                            <strong>エクスポート時</strong>
+                                            <span>発言直下に「# コメント内容」として記載されます。NotebookLM等の後続AIが文脈を読み取れるようになります。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </span>
+                            {% if is_owner or seg.comment_author_user_id is none or seg.comment_author_user_id == user['id'] %}
+                            <button class="btn btn-ghost btn-sm" style="color:#ef4444;margin-left:auto" x-show="segComments[{{ seg.id }}]" @click.stop="deleteComment({{ seg.id }}, $el.closest('.segment-card'))">削除</button>
+                            {% endif %}
+                            <p class="segment-comment-hint">Shift+Enterで改行 / Enterで保存</p>
+                        </div>
+                    </div>
                 </li>
             {% endfor %}
         </ol>
@@ -3003,6 +3007,17 @@ function segmentsApp(transcriptId, historyNames) {
                     const ta = card.querySelector('.segment-text-edit');
                     if (display) display.textContent = row.text;
                     if (ta) ta.value = row.text;
+                    // 整文レビュー中: 採用済みテキストをreviewDataにも反映して他ユーザーに共有
+                    if (this.reviewMode && this.reviewData[segId] && this.reviewData[segId].done !== 'accepted') {
+                        const initials = row.last_editor_name ? row.last_editor_name.slice(0, 1) : '?';
+                        this.reviewedBy = {
+                            ...this.reviewedBy,
+                            [segId]: { name: row.last_editor_name || '', initials, action: 'accepted' },
+                        };
+                        this.reviewData[segId].polishedText = row.text;
+                        this.reviewData[segId].done = 'accepted';
+                        this.reviewData = { ...this.reviewData };
+                    }
                     // 更新があったことを薄くフラッシュ
                     card.classList.add('seg-synced');
                     setTimeout(() => card.classList.remove('seg-synced'), 1200);
@@ -4873,14 +4888,26 @@ function segmentsApp(transcriptId, historyNames) {
             const d = this.reviewData[segId];
             if (!d) return;
             if (d.editedText !== null && d.editedText !== undefined && d.editedText.trim()) {
-                // テキストエリアで直接編集された場合はそちらを優先
                 d.polishedText = d.editedText.trim();
             } else {
-                // fill-in チップの結果を使用
                 this._buildUnknownPreview(d);
                 d.polishedText = d.preview;
             }
+            this._acceptAndSaveReviewSegment(segId);
+        },
+
+        async _acceptAndSaveReviewSegment(segId) {
+            const d = this.reviewData[segId];
+            if (!d) return;
             d.done = 'accepted';
+            const text = d.polishedText || '';
+            try {
+                await fetch(`/api/transcripts/${this.transcriptId}/polish/accept-one`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ segment_id: segId, text }),
+                });
+            } catch (e) { /* サイレント失敗。applyReview時に全件再保存される */ }
         },
 
         skipFillUnknown(segId) {
@@ -4930,6 +4957,7 @@ function segmentsApp(transcriptId, historyNames) {
         startFillEdit(segId, idx) {
             const d = this.reviewData[segId];
             if (d) d.activeFillIdx = idx;
+            this.updatePresence(segId);
             this.$nextTick(() => {
                 const el = document.getElementById('fill-' + segId + '-' + idx);
                 if (el) { el.focus(); el.select(); }
@@ -4939,6 +4967,7 @@ function segmentsApp(transcriptId, historyNames) {
         stopFillEdit(segId) {
             const d = this.reviewData[segId];
             if (d) d.activeFillIdx = null;
+            this.updatePresence(null);
         },
 
         startSegFillEdit(segId, idx) {
