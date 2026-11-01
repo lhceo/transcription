@@ -26,7 +26,7 @@ from backend.auth import router as auth_router
 from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import PolishLog, SpeakerHistory, Transcript, User
+from backend.db.models import PolishLog, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import delete, select
