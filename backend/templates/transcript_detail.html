@@ -712,6 +712,7 @@
             </button>
 
             <button type="button" class="btn btn-polish"
+                    x-show="canPolish" x-cloak style="display:none"
                     @click="openPolish()"
                     :disabled="polishResumeState.status === 'running'"
                     :class="{ 'btn-polish--running': polishResumeState.status === 'running' }"
@@ -4303,6 +4304,10 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── 編集モード切替 ─────────────────────────────────────────
         toggleEditMode() {
+            if (!this.canEditSegments) {
+                window.showToast('このファイルは閲覧専用です', 'warning');
+                return;
+            }
             this.editMode = !this.editMode;
             if (this.editMode) {
                 this.$nextTick(() => this.resizeAllTextareas());
