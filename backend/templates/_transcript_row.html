@@ -71,6 +71,27 @@
                 </svg>
                 {{ transcript.user.name }}
             </span>
+            {% else %}
+            {%- set _row_shares = (shares_map.get(transcript.id, []) if shares_map is defined else []) -%}
+            {% if _row_shares %}
+            <span class="history-item-share-info" title="{% for s in _row_shares %}{{ s.name }}{% if not loop.last %}、{% endif %}{% endfor %} と共有中">
+                <span class="share-chip-avatars">
+                    {% for s in _row_shares[:3] %}
+                    <span class="share-btn-avatar">
+                        {%- if s.picture_url -%}
+                        <img src="{{ s.picture_url }}" alt="{{ s.name }}" referrerpolicy="no-referrer">
+                        {%- else -%}
+                        {{ s.name[0] }}
+                        {%- endif -%}
+                    </span>
+                    {% endfor %}
+                    {% if _row_shares|length > 3 %}
+                    <span class="share-btn-avatar share-chip-more">+{{ _row_shares|length - 3 }}</span>
+                    {% endif %}
+                </span>
+                <span class="history-item-share-label">と共有中</span>
+            </span>
+            {% endif %}
             {% endif %}
             {# 完了以外のステータスだけバッジ表示。完了はリンクが青いので自明。 #}
             {% if transcript.status != 'completed' %}

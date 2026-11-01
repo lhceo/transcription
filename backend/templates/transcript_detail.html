@@ -1226,23 +1226,23 @@
                                  :title="reviewedSegments[{{ seg.id }}].reviewer_name + ' がチェック済み'"
                                  x-show="!reviewMode">
                         </template>
-                        {# 編集中オーバーレイ（他ユーザーが編集中） #}
-                        <template x-if="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0">
-                            <span class="seg-editing-overlay" x-show="!reviewMode"
-                                  :title="presenceData[{{ seg.id }}].map(p => p.name).join(', ') + ' が編集中'">
-                                <template x-if="presenceData[{{ seg.id }}][0].picture_url">
-                                    <img :src="presenceData[{{ seg.id }}][0].picture_url"
-                                         class="presence-mini-avatar"
-                                         :alt="presenceData[{{ seg.id }}][0].name"
-                                         referrerpolicy="no-referrer">
-                                </template>
-                                <template x-if="!presenceData[{{ seg.id }}][0].picture_url">
-                                    <span class="presence-mini-initials"
-                                          x-text="presenceData[{{ seg.id }}][0].name.charAt(0)"></span>
-                                </template>
-                                <span x-text="presenceData[{{ seg.id }}][0].name + ' さんが編集中'"></span>
-                            </span>
-                        </template>
+                        {# 編集中バッジ（他ユーザーが編集中 — カード右上にポップイン） #}
+                        <span class="seg-editing-overlay"
+                              x-show="!reviewMode && presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0"
+                              x-cloak
+                              :title="(presenceData[{{ seg.id }}] || []).map(p => p.name).join(', ') + ' が編集中'">
+                            <template x-if="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}][0].picture_url">
+                                <img :src="presenceData[{{ seg.id }}][0].picture_url"
+                                     class="presence-mini-avatar"
+                                     :alt="presenceData[{{ seg.id }}][0].name"
+                                     referrerpolicy="no-referrer">
+                            </template>
+                            <template x-if="presenceData[{{ seg.id }}] && !presenceData[{{ seg.id }}][0].picture_url">
+                                <span class="presence-mini-initials"
+                                      x-text="presenceData[{{ seg.id }}][0].name.charAt(0)"></span>
+                            </template>
+                            <span x-text="(presenceData[{{ seg.id }}] || [{}])[0].name + ' さんが編集中'"></span>
+                        </span>
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
                             <button type="button"

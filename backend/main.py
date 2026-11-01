@@ -1115,6 +1115,19 @@ async def home(
     transcript_ids = [t.id for t in transcripts] + [t.id for t in shared_transcripts]
     polish_status_map = get_polish_status_map(transcript_ids, db)
 
+    # 自分のtranscriptを共有しているユーザー一覧（ダッシュボード表示用）
+    own_ids = [t.id for t in transcripts]
+    shares_map: dict[int, list[dict]] = {}
+    if own_ids:
+        all_shares = list(db.scalars(
+            select(TranscriptShare).where(TranscriptShare.transcript_id.in_(own_ids))
+        ))
+        for s in all_shares:
+            shares_map.setdefault(s.transcript_id, []).append({
+                "name": s.shared_with.name if s.shared_with else "ユーザー",
+                "picture_url": (s.shared_with.picture_url or "") if s.shared_with else "",
+            })
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -1127,6 +1140,7 @@ async def home(
             "shared_transcripts": shared_transcripts,
             "max_upload_bytes": get_effective_max_upload_bytes(),
             "polish_status_map": polish_status_map,
+            "shares_map": shares_map,
         },
     )
 
