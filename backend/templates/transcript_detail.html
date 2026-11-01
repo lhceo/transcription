@@ -1242,6 +1242,7 @@
                                       x-text="presenceData[{{ seg.id }}][0].name.charAt(0)"></span>
                             </template>
                             <span x-text="(presenceData[{{ seg.id }}] || [{}])[0].name + ' さんが編集中'"></span>
+                            <span style="opacity:0.65;font-size:9px;margin-left:1px">— 選択不可</span>
                         </span>
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
@@ -3074,6 +3075,19 @@ function segmentsApp(transcriptId, historyNames) {
                 this._playerPointerdown = true;
                 setTimeout(() => { this._playerPointerdown = false; }, 300);
             });
+
+            // 編集中セグメントのクリックをキャプチャフェーズで確実にブロック
+            // (child の pointer-events 経由の抜け道も防ぐためキャプチャを使用)
+            document.getElementById('segment-list')?.addEventListener('click', (e) => {
+                if (!this.editMode) return;
+                const card = e.target.closest?.('.seg-presence-active');
+                if (!card) return;
+                e.stopPropagation(); // 下位ハンドラーに届かせない
+                const cardId = parseInt(card.dataset.segmentId, 10);
+                const lockers = this.presenceData[cardId] || [];
+                const name = lockers[0]?.name || '他のユーザー';
+                window.showToast(`${name} さんが編集中のため選択できません。編集が完了するまでお待ちください`, 'warning');
+            }, true /* capture */);
 
             // タイプするたびに不活動タイマーをリセット
             document.getElementById('segment-list')?.addEventListener('input', (e) => {

@@ -8391,10 +8391,21 @@ body:has(.multi-float-bar:not([style*="none"])) {
 /* 編集モード中に他ユーザーが占有しているセグメント: 選択不可を視覚化 */
 .segment-list-editing .segment-card.seg-presence-active {
     cursor: not-allowed;
-    opacity: 0.7;
+    opacity: 0.75;
 }
-.segment-list-editing .segment-card.seg-presence-active * {
-    pointer-events: none;
+/* ::before オーバーレイで確実に not-allowed カーソルを表示 */
+.segment-list-editing .segment-card.seg-presence-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    cursor: not-allowed;
+    z-index: 1;
+}
+/* バッジはオーバーレイの上に重ねる */
+.segment-list-editing .segment-card.seg-presence-active .seg-editing-overlay {
+    z-index: 2;
+    pointer-events: auto;
 }
 
 /* 「○○さんが編集中」— セグメントカード右上にポップイン */
