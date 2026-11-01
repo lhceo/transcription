@@ -5328,6 +5328,9 @@ function segmentsApp(transcriptId, historyNames) {
 
         async onSegmentBlur(event) {
             const t = event.currentTarget;
+            // マージ・削除で DOM から切り離された textarea の blur は無視する
+            // （切り離し後に PATCH が走ってサーバー側の削除済みセグメントに 404 が出るのを防ぐ）
+            if (!document.contains(t)) return;
             const segmentId = parseInt(t.dataset.segmentId, 10);
 
             // blur 時はデバウンスをキャンセルして即時保存
