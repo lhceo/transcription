@@ -1790,10 +1790,6 @@ async def toggle_bookmark(
     transcript = db.get(Transcript, segment.transcript_id)
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-    if not _is_owner(transcript, user["id"]):
-        share = _get_share(transcript.id, user["id"], db)
-        if share is None or not share.can_edit_segments:
-            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "編集権限がありません"})
 
     segment.is_bookmarked = not bool(segment.is_bookmarked)
     if "memo" in payload:
@@ -1821,10 +1817,6 @@ async def update_bookmark_memo(
     transcript = db.get(Transcript, segment.transcript_id)
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
-    if not _is_owner(transcript, user["id"]):
-        share = _get_share(transcript.id, user["id"], db)
-        if share is None or not share.can_edit_segments:
-            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "編集権限がありません"})
 
     segment.bookmark_memo = payload.get("memo") or None
     db.commit()
@@ -2139,10 +2131,6 @@ async def update_segment_comment(
     transcript = db.get(Transcript, segment.transcript_id)
     if transcript is None or not _can_access(transcript, user["id"], db):
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
-    if not _is_owner(transcript, user["id"]):
-        share = _get_share(transcript.id, user["id"], db)
-        if share is None or not share.can_edit_segments:
-            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "編集権限がありません"})
 
     comment_text = (body.get("comment") or "").strip()
 
