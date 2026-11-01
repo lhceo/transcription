@@ -2781,7 +2781,7 @@ function segmentsApp(transcriptId, historyNames) {
         // ── コラボレーション メソッド ──────────────────────────────
 
         totalSegmentCount() {
-            void this._segCountBump;  // Alpine リアクティビティ登録用
+            const _ = this._segCountBump;  // Alpine リアクティビティ登録用（void は不可）
             return document.querySelectorAll('#segment-list .segment-card').length;
         },
 
@@ -5720,7 +5720,7 @@ function segmentsApp(transcriptId, historyNames) {
                     if (!patchRes.ok) throw new Error('patch failed');
                     // DOM: 新カード削除
                     const newCard = document.querySelector(`.segment-card[data-segment-id="${entry.newSegId}"]`);
-                    if (newCard) newCard.remove();
+                    if (newCard) { newCard.remove(); this._segCountBump++; }
                     // DOM: 元カードを分割前の状態に戻す
                     const origCard = document.querySelector(`.segment-card[data-segment-id="${entry.originalId}"]`);
                     if (origCard) {
@@ -5780,6 +5780,7 @@ function segmentsApp(transcriptId, historyNames) {
                             restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
                             prevCard.after(restoredCard);
                             if (window.Alpine) Alpine.initTree(restoredCard);
+                            this._segCountBump++;
                         }
                         // 元の話者（B）に戻す
                         if (entry.currentSpeakerLabel || entry.currentDisplayName) {
