@@ -988,14 +988,31 @@ function historyList() {
                 const since = this._lastInviteCheck;
                 this._lastInviteCheck = Date.now();
                 const res = await fetch(`/api/invitations/new?since=${since}`);
+                if (res.status === 401) {
+                    // 認証切れ時はポーリングを止める（無駄なリクエストを防ぐ）
+                    clearInterval(this._inviteInterval);
+                    this._inviteInterval = null;
+                    return;
+                }
                 if (!res.ok) return;
                 const items = await res.json();
                 if (!items.length) return;
-                const name = items[0].sharer_name;
-                const title = items[0].title;
-                window.showToast(`${name}さんから「${title}」が共有されました`, 'info');
-                // 2秒後にページリロードして共有セクションを更新
-                setTimeout(() => window.location.reload(), 2000);
+
+                // 複数招待の場合はまとめて表示
+                let msg;
+                if (items.length === 1) {
+                    msg = `${items[0].sharer_name}さんから「${items[0].title}」が共有されました`;
+                } else {
+                    msg = `${items[0].sharer_name}さんなど ${items.length}件の共有がありました`;
+                }
+                window.showToast(msg, 'info');
+
+                // アップロード中はリロードしない（ファイル転送が中断されるため）
+                const progressEl = document.querySelector('.upload-progress');
+                const uploadInProgress = progressEl && progressEl.offsetParent !== null;
+                if (!uploadInProgress) {
+                    setTimeout(() => window.location.reload(), 2000);
+                }
             } catch (e) {}
         },
 

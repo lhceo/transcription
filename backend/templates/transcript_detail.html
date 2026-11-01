@@ -165,6 +165,20 @@
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
             </svg>
             <span x-text="shares.length > 0 ? '共有中 (' + shares.length + '人)' : '共有'"></span>
+            <template x-if="shares.length > 0">
+                <span class="share-btn-avatars">
+                    <template x-for="(s, i) in shares.slice(0, 3)" :key="s.user_id">
+                        <span class="share-btn-avatar" :title="s.name">
+                            <template x-if="s.picture_url">
+                                <img :src="s.picture_url" :alt="s.name">
+                            </template>
+                            <template x-if="!s.picture_url">
+                                <span x-text="s.name.charAt(0)"></span>
+                            </template>
+                        </span>
+                    </template>
+                </span>
+            </template>
         </button>
         <div class="share-dropdown" x-show="open" x-cloak>
             <p class="share-dropdown-label">編集を共有するメンバーを選択</p>

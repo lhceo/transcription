@@ -1112,7 +1112,7 @@ async def home(
 
     from backend.transcribe.storage_usage import get_effective_max_upload_bytes
     from backend.projects.routes import get_polish_status_map
-    transcript_ids = [t.id for t in transcripts]
+    transcript_ids = [t.id for t in transcripts] + [t.id for t in shared_transcripts]
     polish_status_map = get_polish_status_map(transcript_ids, db)
 
     return templates.TemplateResponse(

@@ -312,8 +312,12 @@ async def new_invitations(
     since: float = Query(0),
 ) -> JSONResponse:
     """since（Unix ミリ秒）以降に自分宛に届いた招待を返す。ダッシュボードのポーリング用。"""
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
+    # since=0（未指定）の場合は直近24時間のみ返す（全件返しを防ぐ）
     since_dt = datetime.fromtimestamp(since / 1000.0, tz=timezone.utc)
+    min_dt = datetime.now(timezone.utc) - timedelta(hours=24)
+    if since_dt < min_dt:
+        since_dt = min_dt
 
     shares = db.scalars(
         select(TranscriptShare)
