@@ -1221,27 +1221,25 @@
                               title="保存に失敗しました。ツールバーの「再試行」ボタンで再保存できます。">
                             ⚠ 保存未確認
                         </span>
-                        {# セグメントレビューボタン（常時表示） #}
+                        {# セグメントレビューボタン（整文レビュー中も含め常時表示） #}
                         <button type="button"
                             class="seg-review-btn"
                             :class="{ 'is-reviewed': reviewedSegments[{{ seg.id }}] }"
-                            x-show="!reviewMode"
                             @click.stop="toggleReview({{ seg.id }})"
                             :title="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'"
                             :aria-label="reviewedSegments[{{ seg.id }}] ? 'チェック済み（クリックで解除）' : 'チェック済みにする'">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         </button>
-                        {# レビュアーアバター #}
+                        {# レビュアーアバター（整文レビュー中も表示） #}
                         <template x-if="reviewedSegments[{{ seg.id }}] && reviewedSegments[{{ seg.id }}].reviewer_picture">
                             <img class="seg-reviewer-avatar"
                                  :src="reviewedSegments[{{ seg.id }}].reviewer_picture"
                                  :alt="reviewedSegments[{{ seg.id }}].reviewer_name"
-                                 :title="reviewedSegments[{{ seg.id }}].reviewer_name + ' がチェック済み'"
-                                 x-show="!reviewMode">
+                                 :title="reviewedSegments[{{ seg.id }}].reviewer_name + ' がチェック済み'">
                         </template>
-                        {# 編集中バッジ（他ユーザーが編集中 — カード右上にポップイン） #}
+                        {# 編集中バッジ（他ユーザーが編集中 — 整文レビュー中も表示） #}
                         <span class="seg-editing-overlay"
-                              x-show="!reviewMode && presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0"
+                              x-show="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0"
                               x-cloak
                               :title="(presenceData[{{ seg.id }}] || []).map(p => p.name).join(', ') + ' が編集中'">
                             <template x-if="presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}][0].picture_url">
@@ -1270,8 +1268,8 @@
                             <span>{{ seg.last_editor.name }}</span>
                         </span>
                         {% endif %}
-                        {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
-                        <div class="segment-actions" x-show="!reviewMode">
+                        {# ホバーアクション（コメント・ブックマーク → 整文レビュー中も表示。原文に戻す・ゴミ箱 → 整文レビュー中は非表示） #}
+                        <div class="segment-actions">
                             <button type="button"
                                 class="segment-action-btn segment-comment-btn" :class="{'has-comment': segComments[{{ seg.id }}]}"
                                 data-segment-id="{{ seg.id }}"
@@ -1287,11 +1285,12 @@
                                 aria-label="{{ 'ブックマーク解除' if seg.is_bookmarked else 'ブックマーク' }}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                             </button>
-                            {# タグボタン（決定/ToDo サイクル） #}
+                            {# 元の文字起こしに戻す — 整文レビュー中は非表示 #}
                             {% if seg.original_asr_text and seg.original_asr_text != seg.text_content %}
                             <button
                                 type="button"
                                 class="segment-action-btn segment-revert-btn"
+                                x-show="!reviewMode"
                                 @click.stop="revertSegment({{ seg.id }}, $el.closest('.segment-card'))"
                                 title="元の文字起こしに戻す"
                                 aria-label="元の文字起こしに戻す"
@@ -1301,10 +1300,11 @@
                                 </svg>
                             </button>
                             {% endif %}
+                            {# 削除ボタン — 整文レビュー中は非表示 #}
                             <button
                                 type="button"
                                 class="segment-action-btn segment-delete-btn"
-                                x-show="canEditSegments"
+                                x-show="canEditSegments && !reviewMode"
                                 @click.stop="deleteSegment({{ seg.id }}, $el.closest('.segment-card'))"
                                 title="このブロックを削除"
                                 aria-label="このブロックを削除"
@@ -1468,7 +1468,7 @@
                     </div>
 
                     {# ── コメント表示 / 編集エリア ── #}
-                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }}) && !reviewMode"
+                    <div class="segment-comment-wrap" x-show="segComments[{{ seg.id }}] && (!commentEditId || commentEditId !== {{ seg.id }})"
                          x-cloak style="display:none;cursor:pointer"
                          @click.stop="toggleCommentEdit({{ seg.id }})" title="クリックしてコメントを編集">
                         <div class="segment-comment-text" x-text="segComments[{{ seg.id }}] || ''"></div>
@@ -6524,7 +6524,7 @@ function segmentsApp(transcriptId, historyNames) {
             // コメント表示エリア（Alpine x-show で管理）
             const commentWrap = document.createElement('div');
             commentWrap.className = 'segment-comment-wrap';
-            commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id}) && !reviewMode`);
+            commentWrap.setAttribute('x-show', `segComments[${newSeg.id}] && (!commentEditId || commentEditId !== ${newSeg.id})`);
             commentWrap.style.display = 'none';
             commentWrap.style.cursor = 'pointer';
             commentWrap.title = 'クリックしてコメントを編集';
