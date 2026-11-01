@@ -1096,6 +1096,20 @@ async def home(
     )
     transcripts = list(db.scalars(stmt))
 
+    # 共有されたファイル（自分がオーナーでないもの）
+    shared_ids = db.scalars(
+        select(TranscriptShare.transcript_id)
+        .where(TranscriptShare.shared_with_user_id == user["id"])
+    ).all()
+    shared_transcripts: list[Transcript] = []
+    if shared_ids:
+        shared_transcripts = list(db.scalars(
+            select(Transcript)
+            .where(Transcript.id.in_(shared_ids))
+            .where(Transcript.deleted_at.is_(None))
+            .order_by(Transcript.created_at.desc())
+        ))
+
     from backend.transcribe.storage_usage import get_effective_max_upload_bytes
     from backend.projects.routes import get_polish_status_map
     transcript_ids = [t.id for t in transcripts]
@@ -1110,6 +1124,7 @@ async def home(
             "user": user,
             "is_admin": user["email"].lower() == settings.admin_email,
             "transcripts": transcripts,
+            "shared_transcripts": shared_transcripts,
             "max_upload_bytes": get_effective_max_upload_bytes(),
             "polish_status_map": polish_status_map,
         },

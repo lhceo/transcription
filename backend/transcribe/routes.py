@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -303,6 +303,38 @@ async def list_users(
     """共有先選択用のユーザー一覧（自分以外）。"""
     users = db.scalars(select(User).where(User.id != user["id"]).order_by(User.name)).all()
     return JSONResponse([{"id": u.id, "name": u.name, "email": u.email} for u in users])
+
+
+@router.get("/api/invitations/new")
+async def new_invitations(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    since: float = Query(0),
+) -> JSONResponse:
+    """since（Unix ミリ秒）以降に自分宛に届いた招待を返す。ダッシュボードのポーリング用。"""
+    from datetime import datetime, timezone
+    since_dt = datetime.fromtimestamp(since / 1000.0, tz=timezone.utc)
+
+    shares = db.scalars(
+        select(TranscriptShare)
+        .where(
+            TranscriptShare.shared_with_user_id == user["id"],
+            TranscriptShare.created_at > since_dt,
+        )
+        .order_by(TranscriptShare.created_at.desc())
+    ).all()
+
+    result = []
+    for s in shares:
+        if not s.transcript or s.transcript.deleted_at is not None:
+            continue
+        result.append({
+            "transcript_id": s.transcript_id,
+            "title": s.transcript.title or s.transcript.original_filename,
+            "sharer_name": s.transcript.user.name if s.transcript.user else "ユーザー",
+            "created_at_ms": int(s.created_at.timestamp() * 1000),
+        })
+    return JSONResponse(result)
 
 
 
