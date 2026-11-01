@@ -3068,6 +3068,13 @@ function segmentsApp(transcriptId, historyNames) {
                     new Blob([JSON.stringify({ leaving: true })], { type: 'application/json' })
                 );
             });
+            // プレイヤー操作による blur でセグメント選択が外れないよう、
+            // pointerdown 中フラグを立てる（onSegmentBlur でチェック）
+            document.querySelector('.audio-player-fixed')?.addEventListener('pointerdown', () => {
+                this._playerPointerdown = true;
+                setTimeout(() => { this._playerPointerdown = false; }, 300);
+            });
+
             // タイプするたびに不活動タイマーをリセット
             document.getElementById('segment-list')?.addEventListener('input', (e) => {
                 if (e.target.closest('.segment-text-edit') && this.focusedEditingSegmentId !== null) {
@@ -5190,6 +5197,13 @@ function segmentsApp(transcriptId, historyNames) {
                 const card = t.closest('.segment-card');
                 const viewDiv = card?.querySelector('.segment-text');
                 if (viewDiv) this.setSegmentTextContent(viewDiv, currentText);
+            }
+
+            // プレイヤー操作（再生・停止・シーク）によるフォーカス移動は
+            // セグメント選択状態を保持する（他ユーザーのプレゼンス表示維持のため）
+            if (this._playerPointerdown) {
+                await this._saveSegment(segmentId, t);
+                return;
             }
 
             setTimeout(() => {
