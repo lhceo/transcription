@@ -1087,15 +1087,20 @@ body:has(.audio-player-fixed) {
 /* 再生速度ドロップダウン */
 .audio-speed-select {
     height: 32px;
-    padding: 0 6px;
+    padding: 0 22px 0 8px;
     font-size: 13px;
     color: var(--color-text);
-    background: var(--color-surface);
+    background-color: var(--color-surface);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' viewBox='0 0 10 14'%3E%3Cpath d='M5 1 1.5 6h7Z' fill='%23888'/%3E%3Cpath d='M5 13 1.5 8h7Z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 5px center;
     border: 1px solid var(--color-border);
     border-radius: 6px;
     font-family: inherit;
     cursor: pointer;
     min-width: 56px;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .audio-speed-select:hover {
@@ -1106,6 +1111,9 @@ body:has(.audio-player-fixed) {
     outline: 2px solid rgba(59, 130, 246, 0.3);
     outline-offset: 1px;
     border-color: var(--color-primary);
+}
+[data-theme="dark"] .audio-speed-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' viewBox='0 0 10 14'%3E%3Cpath d='M5 1 1.5 6h7Z' fill='%23aaa'/%3E%3Cpath d='M5 13 1.5 8h7Z' fill='%23aaa'/%3E%3C/svg%3E");
 }
 
 /* 音声削除ボタンラッパー（ボタン + 「音声のみ削除」ラベル） */
