@@ -3483,8 +3483,15 @@ function segmentsApp(transcriptId, historyNames) {
             const target = event.currentTarget || event.target;
             const card = target.closest ? target.closest('.segment-card') : null;
             if (!card) return;
+            const cardId = parseInt(card.dataset.segmentId, 10);
+            // 他ユーザーが編集中の場合はブロック（seekToSegmentFromEvent と同じチェック）
+            const lockers = this.presenceData[cardId] || [];
+            if (lockers.length > 0) {
+                window.showToast(`${lockers[0].name} さんが編集中です。編集が完了するまでお待ちください`, 'warning');
+                return;
+            }
             this.editMode = true;
-            this.focusedEditingSegmentId = parseInt(card.dataset.segmentId, 10);
+            this.focusedEditingSegmentId = cardId;
             this.$nextTick(() => {
                 const ta = card.querySelector('.segment-text-edit');
                 if (ta) { ta.focus(); this.fitToContent(ta); }
@@ -3628,7 +3635,7 @@ function segmentsApp(transcriptId, historyNames) {
                 // 他ユーザーが編集中の場合はブロック
                 const lockers = this.presenceData[cardId] || [];
                 if (lockers.length > 0) {
-                    window.showToast(`${lockers[0].name} さんが編集中のため編集できません`, 'warning');
+                    window.showToast(`${lockers[0].name} さんが編集中です。編集が完了するまでお待ちください`, 'warning');
                     return;
                 }
                 // 別の segment の textarea が編集中なら先に blur して save
@@ -5920,6 +5927,13 @@ function segmentsApp(transcriptId, historyNames) {
         async splitSegmentAtCursor(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
 
+            // 他ユーザーが編集中の場合は分割をブロック
+            const splitLockers = this.presenceData[segmentId] || [];
+            if (splitLockers.length > 0) {
+                window.showToast(`${splitLockers[0].name} さんが編集中です。編集が完了するまでお待ちください`, 'warning');
+                return;
+            }
+
             // 二重呼び出し防止（Shift+Enter 連打・ボタンとキーの競合対策）
             if (!this._splittingIds) this._splittingIds = new Set();
             if (this._splittingIds.has(segmentId)) return;
@@ -6021,6 +6035,7 @@ function segmentsApp(transcriptId, historyNames) {
                     }
                 });
             } catch (e) {
+                console.error('[split] error:', e);
                 window.showToast('分割に失敗しました: ' + e.message, 'error');
             } finally {
                 this._splittingIds.delete(segmentId);
