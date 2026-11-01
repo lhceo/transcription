@@ -3338,7 +3338,7 @@ function segmentsApp(transcriptId, historyNames) {
             // 編集中セグメントのクリックをキャプチャフェーズで確実にブロック
             // (child の pointer-events 経由の抜け道も防ぐためキャプチャを使用)
             document.getElementById('segment-list')?.addEventListener('click', (e) => {
-                if (!this.editMode) return;
+                if (!this.editMode && !this.reviewMode) return;
                 const card = e.target.closest?.('.seg-presence-active');
                 if (!card) return;
                 e.stopPropagation(); // 下位ハンドラーに届かせない
