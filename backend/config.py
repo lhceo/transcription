@@ -82,6 +82,10 @@ class Settings:
     # 管理者メールアドレス。このメールアドレスのユーザーのみ /admin にアクセスできる。
     admin_email: str
 
+    # テストゲストログイン用パスワード。設定するとログイン画面に簡易ログインフォームが表示される。
+    # 空文字の場合は機能が無効化される。本番で有効化する場合は十分に複雑なパスワードを設定すること。
+    test_guest_password: str  # TEST_GUEST_PASSWORD
+
     # Gmail SMTP 設定（共有通知メール用）。未設定の場合はメール送信をスキップ。
     smtp_user: str
     smtp_password: str
@@ -201,6 +205,7 @@ def load_settings() -> Settings:
         assemblyai_api_key=_env("ASSEMBLYAI_API_KEY", ""),
         anthropic_api_key=_env("ANTHROPIC_API_KEY", ""),
         admin_email=_env("ADMIN_EMAIL", "a.ichikawa@lionheart.co.jp").lower(),
+        test_guest_password=_env("TEST_GUEST_PASSWORD", ""),
         smtp_user=_env("SMTP_USER", ""),
         smtp_password=_env("SMTP_PASSWORD", ""),
         chatwork_api_token=_env("CHATWORK_API_TOKEN", ""),

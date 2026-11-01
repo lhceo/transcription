@@ -12,7 +12,9 @@ import logging
 from pathlib import Path
 
 from authlib.integrations.base_client import OAuthError
-from fastapi import APIRouter, Request
+import hmac
+
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -64,6 +66,7 @@ async def login(request: Request, error: str | None = None) -> HTMLResponse:
             "env": settings.env,
             "error_message": error_messages.get(error),
             "oauth_ready": settings.has_google_oauth,
+            "test_login_enabled": bool(settings.test_guest_password),
         },
     )
 
@@ -150,6 +153,54 @@ async def auth_google_callback(request: Request) -> RedirectResponse:
     }
 
     logger.info("ログイン成功: %s", email)
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.post("/auth/test-login", name="auth_test_login")
+async def auth_test_login(
+    request: Request,
+    password: str = Form(...),
+) -> RedirectResponse:
+    """テストゲストログイン（TEST_GUEST_PASSWORD 設定時のみ有効）。"""
+    if not settings.test_guest_password:
+        return RedirectResponse(url="/login?error=missing_setup", status_code=302)
+
+    # タイミング攻撃を防ぐため hmac.compare_digest を使う
+    if not hmac.compare_digest(password, settings.test_guest_password):
+        return RedirectResponse(url="/login?error=oauth_failed", status_code=302)
+
+    from datetime import datetime, timezone
+
+    guest_email = "guest@test.noto"
+    guest_name = "テストゲスト"
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == guest_email))
+        now = datetime.now(timezone.utc)
+        if user is None:
+            user = User(
+                email=guest_email,
+                name=guest_name,
+                picture_url=None,
+                created_at=now,
+                last_login_at=now,
+            )
+            db.add(user)
+        else:
+            user.last_login_at = now
+        db.commit()
+        db.refresh(user)
+        user_id = user.id
+
+    request.session["user"] = {
+        "id": user_id,
+        "email": guest_email,
+        "name": guest_name,
+        "picture": "",
+        "sub": "test-guest",
+    }
+
+    logger.info("テストゲストログイン成功")
     return RedirectResponse(url="/", status_code=302)
 
 

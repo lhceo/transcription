@@ -41,6 +41,17 @@
     </div>
     {% endif %}
 
+    {% if test_login_enabled %}
+    <div class="test-login-section">
+        <p class="test-login-label">テストユーザーでログイン</p>
+        <form method="post" action="/auth/test-login" class="test-login-form">
+            <input type="password" name="password" placeholder="テスト用パスワード"
+                   class="test-login-input" autocomplete="current-password" required>
+            <button type="submit" class="test-login-btn">ログイン</button>
+        </form>
+    </div>
+    {% endif %}
+
     <p class="login-help">
         ログインできない場合は管理者にお問い合わせください。
     </p>
