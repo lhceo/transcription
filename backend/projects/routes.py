@@ -376,7 +376,9 @@ async def project_detail_page(
     )
 
     # 社内ユーザー一覧（メンバー追加用）
-    all_users = list(db.scalars(select(User).order_by(User.name)))
+    all_users = list(db.scalars(
+        select(User).where(~User.email.like('%@test.noto')).order_by(User.name)
+    ))
 
     # プロジェクト内の音声データ由来の固有名詞（表示用・重複除去済み）
     project_vocab_words = {v.word.lower() for v in proj.vocabulary}
@@ -1624,7 +1626,17 @@ async def polish_accept_one(
     body: PolishAcceptOneRequest,
 ) -> JSONResponse:
     """レビュー中に1セグメントをDBに即時採用する。pending_resultはクリアしない。"""
-    _view_transcript_or_404(transcript_id, user["id"], db)
+    t = _view_transcript_or_404(transcript_id, user["id"], db)
+    # 閲覧専用ゲスト（can_edit_segments=False かつ can_polish=False）は書き込み不可
+    if t.user_id != user["id"]:
+        share = db.scalar(
+            select(TranscriptShare).where(
+                TranscriptShare.transcript_id == transcript_id,
+                TranscriptShare.shared_with_user_id == user["id"],
+            )
+        )
+        if not share or (not share.can_edit_segments and not share.can_polish):
+            raise HTTPException(status_code=403, detail="編集権限が必要です")
     seg = db.get(Segment, body.segment_id)
     if not seg or seg.transcript_id != transcript_id:
         raise HTTPException(status_code=404, detail="セグメントが見つかりません")
@@ -1683,6 +1695,10 @@ async def polish_dismiss(
     for lg in interrupted_logs:
         lg.job_status = 'dismissed'
     db.commit()
+    # インメモリジョブも即時 dismissed にしてゲストへの is_review_active を止める
+    for job in _polish_jobs.values():
+        if job.get("transcript_id") == transcript_id:
+            job["status"] = "dismissed"
     return JSONResponse({"ok": True})
 
 

@@ -300,8 +300,13 @@ async def list_users(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> JSONResponse:
-    """共有先選択用のユーザー一覧（自分以外）。"""
-    users = db.scalars(select(User).where(User.id != user["id"]).order_by(User.name)).all()
+    """共有先選択用のユーザー一覧（自分以外・テストゲスト除外）。"""
+    users = db.scalars(
+        select(User)
+        .where(User.id != user["id"])
+        .where(~User.email.like('%@test.noto'))
+        .order_by(User.name)
+    ).all()
     return JSONResponse([{"id": u.id, "name": u.name, "email": u.email} for u in users])
 
 
@@ -1750,6 +1755,7 @@ async def get_segment_texts(
     rows = db.execute(
         select(
             Segment.id, Segment.text_content, Segment.updated_at,
+            Segment.is_polished,
             Segment.last_editor_user_id,
             _User.name.label("last_editor_name"),
             _User.picture_url.label("last_editor_picture"),
@@ -1764,6 +1770,7 @@ async def get_segment_texts(
             "id": r.id,
             "text": r.text_content,
             "ts": r.updated_at.timestamp(),
+            "is_polished": bool(r.is_polished),
             "last_editor_id": r.last_editor_user_id,
             "last_editor_name": r.last_editor_name or "",
             "last_editor_picture": r.last_editor_picture or "",

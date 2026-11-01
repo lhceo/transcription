@@ -1301,7 +1301,7 @@
                                 </svg>
                             </button>
                             {% endif %}
-                            {# 削除ボタン — 整文レビュー中は非表示 #}
+                            {# 削除ボタン — 整文レビュー中も表示（編集権限がある場合のみ） #}
                             <button
                                 type="button"
                                 class="segment-action-btn segment-delete-btn"
@@ -2895,7 +2895,7 @@ function segmentsApp(transcriptId, historyNames) {
                 // 整文レビューがアクティブになったらゲストも自動でレビューモードに入る
                 if (presResp.is_review_active && !this.reviewMode && !window.__IS_OWNER) {
                     const perms = window.__CURRENT_USER_PERMISSIONS || {};
-                    if (perms.can_polish === true || perms.can_edit_segments !== false) {
+                    if (perms.can_polish === true || perms.can_edit_segments === true) {
                         this._tryAutoEnterReviewMode();
                     }
                 }
@@ -3009,7 +3009,8 @@ function segmentsApp(transcriptId, historyNames) {
                     if (display) display.textContent = row.text;
                     if (ta) ta.value = row.text;
                     // 整文レビュー中: 採用済みテキストをreviewDataにも反映して他ユーザーに共有
-                    if (this.reviewMode && this.reviewData[segId] && this.reviewData[segId].done !== 'accepted') {
+                    // is_polished=true の変更のみ採用と判定（通常の文字起こし編集と区別）
+                    if (this.reviewMode && this.reviewData[segId] && this.reviewData[segId].done !== 'accepted' && row.is_polished) {
                         const initials = row.last_editor_name ? row.last_editor_name.slice(0, 1) : '?';
                         this.reviewedBy = {
                             ...this.reviewedBy,
@@ -3306,7 +3307,7 @@ function segmentsApp(transcriptId, historyNames) {
             // 整文アクティブ状態で招待ユーザーが開いた場合、自動でレビューモードに入る（改善⑤）
             // オーナーは自分でレビューモードに入るため対象外。権限があるユーザーのみ。
             if (window.__HAS_ACTIVE_REVIEW && !window.__IS_OWNER && !this.reviewMode) {
-                if (perms.can_polish === true || perms.can_edit_segments !== false) {
+                if (perms.can_polish === true || perms.can_edit_segments === true) {
                     this.$nextTick(() => this._tryAutoEnterReviewMode());
                 }
             }
@@ -4680,8 +4681,8 @@ function segmentsApp(transcriptId, historyNames) {
                 if (!res.ok) return;
                 const data = await res.json();
                 if (!data.job_id) return;
-                if (data.status === 'done' && data.result) {
-                    // 整文完了・レビュー待ち状態 → 自動でレビューモードに入る
+                if ((data.status === 'done' || data.status === 'reviewing') && data.result) {
+                    // 整文完了 or ホストがレビュー中 → 提案データでレビューモードに入る
                     const suggestions = data.result.suggestions || {};
                     const flags = data.result.flags || {};
                     if (Object.keys(suggestions).length > 0) {
@@ -4908,7 +4909,9 @@ function segmentsApp(transcriptId, historyNames) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ segment_id: segId, text }),
                 });
-            } catch (e) { /* サイレント失敗。applyReview時に全件再保存される */ }
+            } catch (e) {
+                window.showToast('採用の保存に失敗しました。「整文を保存」で再試行されます', 'warning');
+            }
         },
 
         skipFillUnknown(segId) {
@@ -4956,6 +4959,7 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         startFillEdit(segId, idx) {
+            clearTimeout(this._fillPresenceTimer);  // stopFillEdit の遅延クリアをキャンセル
             const d = this.reviewData[segId];
             if (d) d.activeFillIdx = idx;
             this.updatePresence(segId);
@@ -4968,7 +4972,9 @@ function segmentsApp(transcriptId, historyNames) {
         stopFillEdit(segId) {
             const d = this.reviewData[segId];
             if (d) d.activeFillIdx = null;
-            this.updatePresence(null);
+            // 80ms 遅延: チップ間タブ移動時に次の startFillEdit がキャンセルできるようにする
+            clearTimeout(this._fillPresenceTimer);
+            this._fillPresenceTimer = setTimeout(() => this.updatePresence(null), 80);
         },
 
         startSegFillEdit(segId, idx) {
