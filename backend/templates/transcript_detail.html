@@ -1473,7 +1473,7 @@
                                   placeholder="補足メモ（整文・エクスポートに反映されます）"
                                   @keydown.escape.stop="cancelCommentEdit()"
                                   @compositionstart="$event.target._composing = true"
-                                  @compositionend="$event.target._composing = false"
+                                  @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"
                                   @keydown.enter="if (!$event.isComposing && !$event.target._composing && !$event.shiftKey) { $event.preventDefault(); saveComment({{ seg.id }}, $el); }"
                         >{{ seg.comment or '' }}</textarea>
                         <div class="segment-comment-actions" x-data="{ helpOpen: false }">
@@ -1750,7 +1750,7 @@
                                     @change="saveBookmarkMemo(bm, $event.target.value)"
                                     @keydown.enter="if (!$event.isComposing && !$event.target._composing) { $event.preventDefault(); $event.target.blur(); }"
                                     @compositionstart="$event.target._composing = true"
-                                    @compositionend="$event.target._composing = false">
+                                    @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)">
                                 <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 </button>
@@ -6509,7 +6509,7 @@ function segmentsApp(transcriptId, historyNames) {
             commentTa.rows = 2;
             commentTa.placeholder = '補足メモ（整文・エクスポートに反映されます）';
             commentTa.addEventListener('compositionstart', () => { commentTa._composing = true; });
-            commentTa.addEventListener('compositionend', () => { commentTa._composing = false; });
+            commentTa.addEventListener('compositionend', () => { setTimeout(() => { commentTa._composing = false; }, 0); });
             commentTa.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') { e.stopPropagation(); this.cancelCommentEdit(); return; }
                 if (e.key === 'Enter' && !e.isComposing && !commentTa._composing && !e.shiftKey) {
