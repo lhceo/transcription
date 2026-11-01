@@ -3814,7 +3814,7 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
     cursor: pointer;
     animation: vert-bubble-in 0.28s cubic-bezier(0.34,1.56,0.64,1) forwards;
     transform-origin: right center;
-    transition: top 0.35s ease;
+    transition: top 0.35s ease, padding 0.35s ease, gap 0.35s ease;
 }
 .vert-presence-bubble::after {
     content: '';
@@ -3825,6 +3825,7 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
     border-left-color: #f59e0b;
     border-right: none;
     transform: translateY(-50%);
+    transition: opacity 0.25s ease;
 }
 .vert-presence-bubble img,
 .vert-bubble-initials {
@@ -3844,16 +3845,40 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
     background: rgba(0,0,0,.2);
     color: #fff;
 }
-.vert-bubble-name { line-height: 1; }
-.vert-presence-bubble.vert-bubble-out {
+.vert-bubble-name {
+    line-height: 1;
+    max-width: 120px;
+    overflow: hidden;
+    transition: max-width 0.35s ease, opacity 0.25s ease, margin 0.35s ease;
+}
+/* 2秒後にアイコンのみのコンパクト表示に縮む */
+.vert-presence-bubble.vert-bubble-compact {
+    padding: 3px;
+    gap: 0;
+}
+.vert-presence-bubble.vert-bubble-compact .vert-bubble-name {
+    max-width: 0;
     opacity: 0;
-    transform: scale(0.6) translateX(6px);
-    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.vert-presence-bubble.vert-bubble-compact::after {
+    opacity: 0;
+    pointer-events: none;
+}
+/* セグメントを離れたときのバーストアニメーション */
+.vert-presence-bubble.vert-bubble-burst {
+    animation: vert-bubble-burst 0.38s ease-out forwards !important;
+    pointer-events: none;
 }
 @keyframes vert-bubble-in {
     0%   { opacity: 0; transform: translateY(-50%) scale(0.4); }
     60%  { opacity: 1; transform: translateY(-50%) scale(1.07); }
     100% { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+@keyframes vert-bubble-burst {
+    0%   { transform: translateY(-50%) scale(1);   opacity: 1; }
+    35%  { transform: translateY(-50%) scale(1.55); opacity: 0.85; }
+    70%  { transform: translateY(-50%) scale(0.7);  opacity: 0.4; }
+    100% { transform: translateY(-50%) scale(0.1);  opacity: 0; }
 }
 /* 「誰が編集したか」バッジ — 同期後セグメントカード内に薄表示 */
 .seg-last-editor {

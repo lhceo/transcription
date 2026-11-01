@@ -2857,12 +2857,12 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             }
 
-            // 不要なバブルを削除
+            // 不要なバブルを削除（バーストアニメーション付き）
             for (const el of Array.from(container.querySelectorAll('.vert-presence-bubble'))) {
                 const uid = parseInt(el.dataset.userId, 10);
                 if (!desired.has(uid)) {
-                    el.classList.add('vert-bubble-out');
-                    setTimeout(() => el.remove(), 250);
+                    el.classList.add('vert-bubble-burst');
+                    setTimeout(() => el.remove(), 420);
                 }
             }
 
@@ -2897,6 +2897,10 @@ function segmentsApp(transcriptId, historyNames) {
                         card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
                     container.appendChild(el);
+                    // 2秒後にアイコンのみのコンパクト表示へ縮む
+                    setTimeout(() => {
+                        if (el.isConnected) el.classList.add('vert-bubble-compact');
+                    }, 2000);
                 }
             }
         },
