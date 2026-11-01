@@ -3694,8 +3694,8 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 /* ── フォーカスモード（編集中の非アクティブセグメントをディム） ── */
 /* segment-list-focus クラスが付いているとき、非アクティブカードをフェード */
 .segment-list-focus .segment-card:not(.segment-card-active):not(.segment-card-focus-edit) {
-    opacity: var(--inactive-opacity, 0.35);
-    filter: blur(0.4px);
+    opacity: var(--inactive-opacity, 0.55);
+    filter: blur(0.3px);
     transition: opacity 0.2s, filter 0.2s;
 }
 .segment-list-focus .segment-card:not(.segment-card-active):not(.segment-card-focus-edit):hover {

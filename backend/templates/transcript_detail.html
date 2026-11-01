@@ -111,7 +111,7 @@
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
         </svg>
-        <span>{{ transcript.user.name }} さんから共有されています（編集可）</span>
+        <span>{{ transcript.user.name }} さんから共有されています（{% if current_user_permissions.can_edit_segments %}編集可{% else %}閲覧のみ{% endif %}）</span>
     </div>
     {% endif %}
 
@@ -3290,7 +3290,11 @@ function segmentsApp(transcriptId, historyNames) {
                         if (hasUnsaved) return;
                         // 保存済み状態ならアプリundoを実行
                         const top = this.undoStack[this.undoStack.length - 1];
-                        if (!top) return;
+                        if (!top) {
+                            e.preventDefault();
+                            window.showToast('取り消せる操作がありません', 'warning');
+                            return;
+                        }
                         e.preventDefault();
                         await this._undoLastSave();
                         return;
@@ -3298,7 +3302,11 @@ function segmentsApp(transcriptId, historyNames) {
                     // コメント入力欄など非セグメントtextareaはブラウザに任せる
                     return;
                 }
-                if (this.undoStack.length === 0) return;
+                if (this.undoStack.length === 0) {
+                    e.preventDefault();
+                    window.showToast('取り消せる操作がありません', 'warning');
+                    return;
+                }
                 e.preventDefault();
                 await this._undoLastSave();
             });
@@ -4311,6 +4319,10 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         async deleteSegment(segmentId, cardEl) {
+            if (!this.canEditSegments) {
+                window.showToast('セグメントの編集権限がありません', 'error');
+                return;
+            }
             const ok = await window.showConfirm('このブロックを削除しますか？', { title: '削除の確認', okLabel: '削除する' });
             if (!ok) return;
             // autosave タイマーをキャンセル（削除後に PATCH が走って 404 になるのを防ぐ）
@@ -5982,6 +5994,12 @@ function segmentsApp(transcriptId, historyNames) {
         async mergeWithPrevSegment(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
 
+            // 編集権限チェック
+            if (!this.canEditSegments) {
+                window.showToast('セグメントの編集権限がありません', 'error');
+                return;
+            }
+
             // 二重呼び出し防止（Backspace連打対策）
             if (!this._mergingIds) this._mergingIds = new Set();
             if (this._mergingIds.has(segmentId)) return;
@@ -6057,8 +6075,10 @@ function segmentsApp(transcriptId, historyNames) {
                         }
                     });
                 }
+                window.showToast('前のセグメントと結合しました');
             } catch (e) {
-                window.showToast('結合に失敗しました', 'error');
+                const msg = e.message ? ': ' + e.message : '';
+                window.showToast('結合に失敗しました' + msg, 'error');
             } finally {
                 this._mergingIds?.delete(segmentId);
             }
@@ -6067,6 +6087,12 @@ function segmentsApp(transcriptId, historyNames) {
         // ── セグメント分割 ─────────────────────────────────────────
         async splitSegmentAtCursor(textarea) {
             const segmentId = parseInt(textarea.dataset.segmentId, 10);
+
+            // 編集権限チェック
+            if (!this.canEditSegments) {
+                window.showToast('セグメントの編集権限がありません', 'error');
+                return;
+            }
 
             // 他ユーザーが編集中の場合は分割をブロック
             const splitLockers = this.presenceData[segmentId] || [];
@@ -6170,6 +6196,7 @@ function segmentsApp(transcriptId, historyNames) {
                     addedEditedBadge: !hadBadge,
                 });
                 if (this.undoStack.length > 20) this.undoStack.shift();
+                window.showToast('分割しました');
                 // $nextTick で表示が反映されてから focus
                 this.$nextTick(() => {
                     const newTextarea = newCard?.querySelector('.segment-text-edit');
