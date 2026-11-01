@@ -172,7 +172,7 @@ async def auth_test_login(
     from datetime import datetime, timezone
 
     guest_email = "guest@test.noto"
-    guest_name = "テストゲスト"
+    guest_name = "Noto Guest"
 
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == guest_email))
@@ -187,6 +187,7 @@ async def auth_test_login(
             )
             db.add(user)
         else:
+            user.name = guest_name
             user.last_login_at = now
         db.commit()
         db.refresh(user)
@@ -197,7 +198,7 @@ async def auth_test_login(
         "email": guest_email,
         "name": guest_name,
         "picture": "",
-        "sub": "test-guest",
+        "sub": "noto-guest",
     }
 
     logger.info("テストゲストログイン成功")
