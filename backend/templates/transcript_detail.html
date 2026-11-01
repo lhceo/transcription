@@ -961,6 +961,14 @@
         <span class="review-check-label">
             <strong x-text="reviewedCount"></strong> / <span x-text="totalSegmentCount()"></span> チェック済み
         </span>
+        <div class="review-check-nav">
+            <button type="button" class="quality-nav-btn" @click="navReview(-1)" title="前のチェック済みへ">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="quality-nav-btn" @click="navReview(1)" title="次のチェック済みへ">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
         <div class="review-check-track">
             <div class="review-check-fill"
                  :style="'width:' + (totalSegmentCount() ? Math.round(reviewedCount / totalSegmentCount() * 100) : 0) + '%'"></div>
@@ -2506,6 +2514,7 @@ function segmentsApp(transcriptId, historyNames) {
         qualityIssues: {},     // { [segId]: { type, note } }
         _qualityNavIds: [],    // DOM順のセグメントID一覧
         _qualityNavIdx: 0,
+        _reviewNavIdx: -1,    // チェック済みナビ位置（-1=未訪問）
 
         // コメント関連
         commentEditId: null,
@@ -2524,7 +2533,7 @@ function segmentsApp(transcriptId, historyNames) {
         _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
         reviewedCount: 0,
-        _segCountBump: 0,  // インクリメントすると totalSegmentCount() が再評価される
+        segmentCount: 0,   // 総セグメント数（サーバー同期 + ローカル即時反映）
         canEditSegments: true,
         canEditMeetingInfo: true,
         canPolish: false,
@@ -2556,6 +2565,24 @@ function segmentsApp(transcriptId, historyNames) {
                 // 一瞬ハイライトして位置を分かりやすくする
                 card.classList.add('quality-jump-flash');
                 setTimeout(() => card.classList.remove('quality-jump-flash'), 800);
+            }
+        },
+        navReview(dir) {
+            const reviewedIds = Array.from(document.querySelectorAll('#segment-list .segment-card'))
+                .map(c => parseInt(c.dataset.segmentId, 10))
+                .filter(id => this.reviewedSegments[id]);
+            if (reviewedIds.length === 0) return;
+            if (this._reviewNavIdx < 0) {
+                this._reviewNavIdx = dir > 0 ? 0 : reviewedIds.length - 1;
+            } else {
+                this._reviewNavIdx = ((this._reviewNavIdx + dir) + reviewedIds.length) % reviewedIds.length;
+            }
+            const id = reviewedIds[this._reviewNavIdx];
+            const card = document.querySelector(`.segment-card[data-segment-id="${id}"]`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.classList.add('review-jump-flash');
+                setTimeout(() => card.classList.remove('review-jump-flash'), 800);
             }
         },
         dismissQuality(segId) {
@@ -2781,8 +2808,7 @@ function segmentsApp(transcriptId, historyNames) {
         // ── コラボレーション メソッド ──────────────────────────────
 
         totalSegmentCount() {
-            const _ = this._segCountBump;  // Alpine リアクティビティ登録用（void は不可）
-            return document.querySelectorAll('#segment-list .segment-card').length;
+            return this.segmentCount;
         },
 
         async toggleReview(segmentId) {
@@ -2838,6 +2864,10 @@ function segmentsApp(transcriptId, historyNames) {
                 this.presenceData = grouped;
                 this._renderPresenceMarkers();
 
+                // 総セグメント数同期（ユーザー間の分母を揃える）
+                if (presResp.total_segment_count) {
+                    this.segmentCount = presResp.total_segment_count;
+                }
                 // チェック済み同期
                 if (presResp.reviewed_segments) {
                     const incoming = {};
@@ -3236,6 +3266,8 @@ function segmentsApp(transcriptId, historyNames) {
                 this.reviewedSegments[parseInt(k, 10)] = v;
             }
             this.reviewedCount = Object.keys(this.reviewedSegments).length;
+            // セグメント総数の初期化（presence poll でサーバー同期）
+            this.segmentCount = window.__TOTAL_SEGMENTS || 0;
             // 権限の初期化
             const perms = window.__CURRENT_USER_PERMISSIONS || {};
             this.canEditSegments = perms.can_edit_segments !== false;
@@ -4426,7 +4458,7 @@ function segmentsApp(transcriptId, historyNames) {
             try {
                 const res = await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete failed');
-                if (cardEl) { cardEl.remove(); this._segCountBump++; }
+                if (cardEl) { cardEl.remove(); this.segmentCount = Math.max(0, this.segmentCount - 1); }
                 // 削除済みセグメントへのundoエントリを除去（undoが404にならないように）
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
@@ -5720,7 +5752,7 @@ function segmentsApp(transcriptId, historyNames) {
                     if (!patchRes.ok) throw new Error('patch failed');
                     // DOM: 新カード削除
                     const newCard = document.querySelector(`.segment-card[data-segment-id="${entry.newSegId}"]`);
-                    if (newCard) { newCard.remove(); this._segCountBump++; }
+                    if (newCard) { newCard.remove(); this.segmentCount = Math.max(0, this.segmentCount - 1); }
                     // DOM: 元カードを分割前の状態に戻す
                     const origCard = document.querySelector(`.segment-card[data-segment-id="${entry.originalId}"]`);
                     if (origCard) {
@@ -5780,7 +5812,7 @@ function segmentsApp(transcriptId, historyNames) {
                             restoredCard = this.buildSegmentCardElement(splitData.new, prevCard);
                             prevCard.after(restoredCard);
                             if (window.Alpine) Alpine.initTree(restoredCard);
-                            this._segCountBump++;
+                            this.segmentCount++;
                         }
                         // 元の話者（B）に戻す
                         if (entry.currentSpeakerLabel || entry.currentDisplayName) {
@@ -6143,7 +6175,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const currentCard = textarea.closest('.segment-card');
                 const currentSpeakerLabel = currentCard?.dataset?.speakerLabel || '';
                 const currentDisplayName = currentCard?.querySelector('.speaker-badge-text')?.textContent?.trim() || '';
-                if (currentCard) { currentCard.remove(); this._segCountBump++; }
+                if (currentCard) { currentCard.remove(); this.segmentCount = Math.max(0, this.segmentCount - 1); }
                 // 結合で消えたセグメントへのundoエントリを除去
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
@@ -6294,7 +6326,7 @@ function segmentsApp(transcriptId, historyNames) {
                     addedEditedBadge: !hadBadge,
                 });
                 if (this.undoStack.length > 20) this.undoStack.shift();
-                this._segCountBump++;
+                this.segmentCount++;
                 window.showToast('分割しました');
                 // $nextTick で表示が反映されてから focus
                 this.$nextTick(() => {

@@ -2265,6 +2265,11 @@ async def get_presence(
     # 自分自身は除外
     active = [p for p in active if p["user_id"] != user["id"]]
 
+    # 総セグメント数（分母を全ユーザーで揃えるため）
+    total_segment_count = db.query(Segment).filter(
+        Segment.transcript_id == transcript_id,
+    ).count()
+
     # チェック・ブックマーク・コメントの共有状態をスナップショット（状態があるセグメントのみ）
     segs = db.query(Segment).filter(
         Segment.transcript_id == transcript_id,
@@ -2304,6 +2309,7 @@ async def get_presence(
 
     return JSONResponse({
         "active": active,
+        "total_segment_count": total_segment_count,
         "reviewed_segments": reviewed_segments,
         "bookmarked_segments": bookmarked_segments,
         "commented_segments": commented_segments,
