@@ -1058,6 +1058,22 @@ body:has(.audio-player-fixed) {
     height: 17px;
     flex-shrink: 0;
 }
+.player-equalizer-icon .eq-bar {
+    fill: currentColor;
+    transform-origin: bottom center;
+    animation-duration: 0.9s;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+.player-equalizer-icon .eq-bar-1 { animation-name: eq-bounce; animation-delay: 0s; }
+.player-equalizer-icon .eq-bar-2 { animation-name: eq-bounce; animation-delay: -0.3s; }
+.player-equalizer-icon .eq-bar-3 { animation-name: eq-bounce; animation-delay: -0.6s; }
+.player-equalizer-icon .eq-bar-4 { animation-name: eq-bounce; animation-delay: -0.15s; }
+@keyframes eq-bounce {
+    0%   { transform: scaleY(0.25); }
+    100% { transform: scaleY(1); }
+}
 
 /* 右側コントロール（速度 + 削除） */
 .player-right-controls {
