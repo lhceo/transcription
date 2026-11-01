@@ -1177,6 +1177,7 @@ async def transcript_detail(
     segments = list(
         db.scalars(
             select(Segment)
+            .options(selectinload(Segment.last_editor))
             .where(Segment.transcript_id == transcript_id)
             .order_by(Segment.order_index)
         )
@@ -1397,6 +1398,7 @@ async def transcript_detail(
             "auto_merged_count": auto_merged_count,
             "filler_cleaned_count": filler_cleaned_count,
             "quality_check_ran": quality_check_ran,
+            "current_user_id": user["id"],
             "shares_data": shares_data,
             "current_user_permissions": current_user_permissions,
             "reviewed_segments": reviewed_segments,
@@ -1637,6 +1639,7 @@ async def update_segment(
             )
         segment.text_content = new_text
         segment.is_edited = True
+        segment.last_editor_user_id = user["id"]
         # テキスト変更時はレビューをリセット
         segment.reviewed_by_user_id = None
         segment.reviewed_at = None
@@ -1743,13 +1746,29 @@ async def get_segment_texts(
     if transcript is None or not _can_access(transcript, user["id"], db) or transcript.deleted_at is not None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
 
+    from backend.db.models import User as _User
     rows = db.execute(
-        select(Segment.id, Segment.text_content, Segment.updated_at)
+        select(
+            Segment.id, Segment.text_content, Segment.updated_at,
+            Segment.last_editor_user_id,
+            _User.name.label("last_editor_name"),
+            _User.picture_url.label("last_editor_picture"),
+        )
+        .outerjoin(_User, _User.id == Segment.last_editor_user_id)
         .where(Segment.transcript_id == transcript_id)
         .order_by(Segment.order_index)
     ).all()
+    my_id = user["id"]
     return JSONResponse([
-        {"id": r.id, "text": r.text_content, "ts": r.updated_at.timestamp()}
+        {
+            "id": r.id,
+            "text": r.text_content,
+            "ts": r.updated_at.timestamp(),
+            "last_editor_id": r.last_editor_user_id,
+            "last_editor_name": r.last_editor_name or "",
+            "last_editor_picture": r.last_editor_picture or "",
+            "last_editor_is_me": r.last_editor_user_id == my_id,
+        }
         for r in rows
     ])
 

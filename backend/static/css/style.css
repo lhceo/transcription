@@ -3789,6 +3789,102 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
     60%  { opacity: 1; transform: scaleY(1.2); }
     100% { opacity: 0.85; transform: scaleY(1); }
 }
+/* 他ユーザーのリアルタイム編集位置 — 進捗バー左に吹き出しで表示 */
+#vert-progress-presence {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+.vert-presence-bubble {
+    position: absolute;
+    right: calc(100% + 10px);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px 4px 4px;
+    background: #f59e0b;
+    color: #fff;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(245,158,11,.4);
+    pointer-events: auto;
+    cursor: pointer;
+    animation: vert-bubble-in 0.28s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: right center;
+    transition: top 0.35s ease;
+}
+.vert-presence-bubble::after {
+    content: '';
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    border: 5px solid transparent;
+    border-left-color: #f59e0b;
+    border-right: none;
+    transform: translateY(-50%);
+}
+.vert-presence-bubble img,
+.vert-bubble-initials {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,.6);
+}
+.vert-bubble-initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    background: rgba(0,0,0,.2);
+    color: #fff;
+}
+.vert-bubble-name { line-height: 1; }
+.vert-presence-bubble.vert-bubble-out {
+    opacity: 0;
+    transform: scale(0.6) translateX(6px);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+@keyframes vert-bubble-in {
+    0%   { opacity: 0; transform: translateY(-50%) scale(0.4); }
+    60%  { opacity: 1; transform: translateY(-50%) scale(1.07); }
+    100% { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+/* 「誰が編集したか」バッジ — 同期後セグメントカード内に薄表示 */
+.seg-last-editor {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--color-text-muted, #94a3b8);
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: transparent;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+.seg-last-editor img,
+.seg-last-editor-initials {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.seg-last-editor-initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7px;
+    font-weight: 800;
+    background: #94a3b8;
+    color: #fff;
+}
 .vert-progress-badge {
     position: absolute;
     bottom: 16px;

@@ -1244,6 +1244,19 @@
                             <span x-text="(presenceData[{{ seg.id }}] || [{}])[0].name + ' さんが編集中'"></span>
                             <span style="opacity:0.65;font-size:9px;margin-left:1px">— 選択不可</span>
                         </span>
+                        {# 最終編集者バッジ（他ユーザーが編集した場合のみ — 自分の編集は非表示） #}
+                        {% if seg.last_editor and seg.last_editor_user_id != current_user_id %}
+                        <span class="seg-last-editor"
+                              data-last-editor-id="{{ seg.last_editor_user_id }}"
+                              title="{{ seg.last_editor.name }} が最後に編集">
+                            {%- if seg.last_editor.picture_url -%}
+                            <img src="{{ seg.last_editor.picture_url }}" alt="{{ seg.last_editor.name }}" referrerpolicy="no-referrer">
+                            {%- else -%}
+                            <span class="seg-last-editor-initials">{{ seg.last_editor.name[0] }}</span>
+                            {%- endif -%}
+                            <span>{{ seg.last_editor.name }}</span>
+                        </span>
+                        {% endif %}
                         {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
                         <div class="segment-actions" x-show="!reviewMode">
                             <button type="button"
@@ -1980,6 +1993,7 @@
     {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
     <div class="vert-progress" x-show="editMode" x-cloak style="display:none" title="確認進捗">
         <div class="vert-progress-segments" id="vert-progress-segments"></div>
+        <div id="vert-progress-presence"></div>
         <div class="vert-progress-msg" x-text="progressMsg()"></div>
     </div>
 
@@ -2817,7 +2831,74 @@ function segmentsApp(transcriptId, historyNames) {
                     }
                 }
                 this.presenceData = grouped;
+                this._renderPresenceMarkers();
             } catch (e) {}
+        },
+
+        _renderPresenceMarkers() {
+            const container = document.getElementById('vert-progress-presence');
+            if (!container) return;
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            const total = cards.length;
+            if (!total) return;
+
+            // 表示すべきバブル: userId → { topPct, user }
+            const desired = new Map();
+            for (const [segId, users] of Object.entries(this.presenceData)) {
+                const sid = parseInt(segId, 10);
+                const idx = cards.findIndex(c => parseInt(c.dataset.segmentId, 10) === sid);
+                if (idx === -1) continue;
+                // セグメント中央に吹き出しを置く
+                const topPct = (idx + 0.5) / total * 100;
+                for (const u of users) {
+                    if (!desired.has(u.user_id)) {
+                        desired.set(u.user_id, { topPct, user: u, segId: sid });
+                    }
+                }
+            }
+
+            // 不要なバブルを削除
+            for (const el of Array.from(container.querySelectorAll('.vert-presence-bubble'))) {
+                const uid = parseInt(el.dataset.userId, 10);
+                if (!desired.has(uid)) {
+                    el.classList.add('vert-bubble-out');
+                    setTimeout(() => el.remove(), 250);
+                }
+            }
+
+            // 追加 / 位置更新
+            for (const [uid, { topPct, user, segId }] of desired) {
+                let el = container.querySelector(`.vert-presence-bubble[data-user-id="${uid}"]`);
+                if (el) {
+                    el.style.top = topPct + '%';
+                } else {
+                    el = document.createElement('div');
+                    el.className = 'vert-presence-bubble';
+                    el.dataset.userId = uid;
+                    el.style.top = topPct + '%';
+                    if (user.picture_url) {
+                        const img = document.createElement('img');
+                        img.src = user.picture_url;
+                        img.alt = user.name;
+                        img.referrerPolicy = 'no-referrer';
+                        el.appendChild(img);
+                    } else {
+                        const initials = document.createElement('span');
+                        initials.className = 'vert-bubble-initials';
+                        initials.textContent = user.name.charAt(0);
+                        el.appendChild(initials);
+                    }
+                    const label = document.createElement('span');
+                    label.className = 'vert-bubble-name';
+                    label.textContent = user.name;
+                    el.appendChild(label);
+                    el.addEventListener('click', () => {
+                        const card = document.querySelector(`.segment-card[data-segment-id="${segId}"]`);
+                        card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    });
+                    container.appendChild(el);
+                }
+            }
         },
 
         async updatePresence(segmentId) {
@@ -2859,6 +2940,10 @@ function segmentsApp(transcriptId, historyNames) {
                     // 更新があったことを薄くフラッシュ
                     card.classList.add('seg-synced');
                     setTimeout(() => card.classList.remove('seg-synced'), 1200);
+                    // 最終編集者バッジを更新（他ユーザーの編集の場合のみ）
+                    if (row.last_editor_id && !row.last_editor_is_me) {
+                        this._updateLastEditorBadge(card, row);
+                    }
                     // 進捗バーにアンバーマークを点灯
                     this._flashCollabMark(segId);
                 }
@@ -2884,6 +2969,34 @@ function segmentsApp(transcriptId, historyNames) {
                 mark.classList.add('fading');
                 setTimeout(() => mark.remove(), 500);
             }, 4000);
+        },
+
+        _updateLastEditorBadge(card, row) {
+            // 既存バッジを削除して再生成
+            card.querySelector('.seg-last-editor')?.remove();
+            const badge = document.createElement('span');
+            badge.className = 'seg-last-editor';
+            badge.dataset.lastEditorId = row.last_editor_id;
+            badge.title = `${row.last_editor_name} が最後に編集`;
+            if (row.last_editor_picture) {
+                const img = document.createElement('img');
+                img.src = row.last_editor_picture;
+                img.alt = row.last_editor_name;
+                img.referrerPolicy = 'no-referrer';
+                badge.appendChild(img);
+            } else {
+                const init = document.createElement('span');
+                init.className = 'seg-last-editor-initials';
+                init.textContent = (row.last_editor_name || '?').charAt(0);
+                badge.appendChild(init);
+            }
+            const label = document.createElement('span');
+            label.textContent = row.last_editor_name;
+            badge.appendChild(label);
+            // バッジをセグメントヘッダーのアクションエリア直前に挿入
+            const actions = card.querySelector('.segment-actions');
+            if (actions) actions.before(badge);
+            else card.querySelector('.segment-header')?.appendChild(badge);
         },
 
         _releaseEditLock() {
@@ -5981,9 +6094,13 @@ function segmentsApp(transcriptId, historyNames) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({position: position, text: original}),
                 });
+                console.log('[split] HTTP', res.status);
                 if (!res.ok) {
                     const body = await res.text();
-                    throw new Error(body || `HTTP ${res.status}`);
+                    let detail = '';
+                    try { const j = JSON.parse(body); detail = (typeof j?.detail === 'string') ? j.detail : (j?.detail?.code || JSON.stringify(j?.detail) || ''); }
+                    catch { detail = body.slice(0, 80); }
+                    throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
                 }
                 const data = await res.json();
                 // 現在のカードを更新（本文が縮むので fit で縮みも反映）

@@ -224,6 +224,11 @@ class Segment(Base):
     )
     comment_author: Mapped["User | None"] = relationship(foreign_keys=[comment_author_user_id])
 
+    # 最後にテキストを編集したユーザー（共同編集の帰属表示用）
+    last_editor_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -238,6 +243,7 @@ class Segment(Base):
 
     transcript: Mapped["Transcript"] = relationship(back_populates="segments")
     reviewed_by: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by_user_id])
+    last_editor: Mapped["User | None"] = relationship(foreign_keys=[last_editor_user_id])
 
     __table_args__ = (
         Index("ix_segments_transcript_order", "transcript_id", "order_index"),
