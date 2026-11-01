@@ -1260,11 +1260,11 @@ async def transcript_detail(
             for s in shares_list
         ]
 
-    # 現在のユーザーの権限（非オーナーの場合）
+    # 現在のユーザーの権限（オーナーは全権限 True がデフォルト）
     current_user_permissions = {
         "can_edit_segments": True,
         "can_edit_meeting_info": True,
-        "can_polish": False,
+        "can_polish": True,
     }
     if not is_owner:
         share_rec = _get_share(transcript_id, user["id"], db)
