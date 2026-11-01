@@ -2524,6 +2524,7 @@ function segmentsApp(transcriptId, historyNames) {
         _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
         reviewedCount: 0,
+        _segCountBump: 0,  // インクリメントすると totalSegmentCount() が再評価される
         canEditSegments: true,
         canEditMeetingInfo: true,
         canPolish: false,
@@ -2780,6 +2781,7 @@ function segmentsApp(transcriptId, historyNames) {
         // ── コラボレーション メソッド ──────────────────────────────
 
         totalSegmentCount() {
+            void this._segCountBump;  // Alpine リアクティビティ登録用
             return document.querySelectorAll('#segment-list .segment-card').length;
         },
 
@@ -2817,7 +2819,8 @@ function segmentsApp(transcriptId, historyNames) {
 
                 const res = await fetch(`/api/transcripts/${this.transcriptId}/presence`);
                 if (!res.ok) return;
-                const active = await res.json();
+                const presResp = await res.json();
+                const active = Array.isArray(presResp) ? presResp : (presResp.active || []);
                 const myId = window.__CURRENT_USER_ID;
 
                 // 自分以外のユーザーを onlineUsers に格納
@@ -2834,6 +2837,24 @@ function segmentsApp(transcriptId, historyNames) {
                 }
                 this.presenceData = grouped;
                 this._renderPresenceMarkers();
+
+                // チェック済み同期
+                if (presResp.reviewed_segments) {
+                    const incoming = {};
+                    for (const [k, v] of Object.entries(presResp.reviewed_segments)) {
+                        incoming[parseInt(k, 10)] = v;
+                    }
+                    this.reviewedSegments = incoming;
+                    this.reviewedCount = Object.keys(incoming).length;
+                }
+                // ブックマーク同期
+                if (presResp.bookmarked_segments) {
+                    this._syncSharedBookmarks(presResp.bookmarked_segments);
+                }
+                // コメント同期
+                if (presResp.commented_segments) {
+                    this._syncSharedComments(presResp.commented_segments);
+                }
             } catch (e) {}
         },
 
@@ -2954,6 +2975,69 @@ function segmentsApp(transcriptId, historyNames) {
                     this._flashCollabMark(segId);
                 }
             } catch (e) {}
+        },
+
+        _syncSharedBookmarks(serverBookmarks) {
+            // サーバーのブックマーク状態に合わせてローカル DOM と Alpine state を更新する
+            document.querySelectorAll('.segment-card[data-segment-id]').forEach(card => {
+                const segId = parseInt(card.dataset.segmentId, 10);
+                const serverBm = serverBookmarks[String(segId)];
+                const localBm = card.dataset.bookmarked === '1';
+                const isBm = !!serverBm;
+                if (isBm === localBm) return;
+                const indicator = card.querySelector('.segment-bookmark-indicator');
+                const btn = card.querySelector('.segment-bookmark-btn');
+                card.dataset.bookmarked = isBm ? '1' : '0';
+                if (indicator) indicator.style.display = isBm ? '' : 'none';
+                if (btn) {
+                    btn.classList.toggle('is-bookmarked', isBm);
+                    btn.title = btn.ariaLabel = isBm ? 'ブックマーク解除' : 'ブックマーク';
+                }
+            });
+            // Alpine bookmarks 配列をサーバー状態で再構築
+            const newBookmarks = [];
+            for (const [k, bm] of Object.entries(serverBookmarks)) {
+                newBookmarks.push({
+                    segId: parseInt(k, 10),
+                    startSeconds: bm.start_seconds,
+                    memo: bm.memo,
+                    timeLabel: this._formatSeconds(bm.start_seconds),
+                });
+            }
+            newBookmarks.sort((a, b) => a.startSeconds - b.startSeconds);
+            this.bookmarks = newBookmarks;
+            this._renderBookmarkMarkers();
+            this._renderEditedMarkers();
+        },
+
+        _syncSharedComments(serverComments) {
+            // コメントをサーバー状態と同期する（編集中のセグメントは除外）
+            let changed = false;
+            const serverIds = new Set(Object.keys(serverComments).map(k => parseInt(k, 10)));
+
+            for (const [k, v] of Object.entries(serverComments)) {
+                const sid = parseInt(k, 10);
+                if (sid === this.commentEditId) continue;  // 編集中は上書きしない
+                if (this.segComments[sid] !== v.comment) {
+                    this.segComments[sid] = v.comment;
+                    const card = document.querySelector(`.segment-card[data-segment-id="${sid}"]`);
+                    if (card) card.dataset.comment = v.comment;
+                    changed = true;
+                }
+            }
+            // 削除されたコメントをクリア
+            for (const sid of Object.keys(this.segComments).map(Number)) {
+                if (!serverIds.has(sid) && sid !== this.commentEditId) {
+                    delete this.segComments[sid];
+                    const card = document.querySelector(`.segment-card[data-segment-id="${sid}"]`);
+                    if (card) card.dataset.comment = '';
+                    changed = true;
+                }
+            }
+            if (changed) {
+                this.segComments = { ...this.segComments };
+                this._buildSegmentComments();
+            }
         },
 
         _flashCollabMark(segId) {
@@ -4342,7 +4426,7 @@ function segmentsApp(transcriptId, historyNames) {
             try {
                 const res = await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete failed');
-                if (cardEl) cardEl.remove();
+                if (cardEl) { cardEl.remove(); this._segCountBump++; }
                 // 削除済みセグメントへのundoエントリを除去（undoが404にならないように）
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
@@ -6058,7 +6142,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const currentCard = textarea.closest('.segment-card');
                 const currentSpeakerLabel = currentCard?.dataset?.speakerLabel || '';
                 const currentDisplayName = currentCard?.querySelector('.speaker-badge-text')?.textContent?.trim() || '';
-                if (currentCard) currentCard.remove();
+                if (currentCard) { currentCard.remove(); this._segCountBump++; }
                 // 結合で消えたセグメントへのundoエントリを除去
                 this.undoStack = this.undoStack.filter(e =>
                     e.segmentId !== segmentId && e.newSegId !== segmentId && e.originalId !== segmentId
@@ -6209,6 +6293,7 @@ function segmentsApp(transcriptId, historyNames) {
                     addedEditedBadge: !hadBadge,
                 });
                 if (this.undoStack.length > 20) this.undoStack.shift();
+                this._segCountBump++;
                 window.showToast('分割しました');
                 // $nextTick で表示が反映されてから focus
                 this.$nextTick(() => {

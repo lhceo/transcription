@@ -17,7 +17,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -2276,7 +2276,50 @@ async def get_presence(
     active = get_active(transcript_id)
     # 自分自身は除外
     active = [p for p in active if p["user_id"] != user["id"]]
-    return JSONResponse(active)
+
+    # チェック・ブックマーク・コメントの共有状態をスナップショット（状態があるセグメントのみ）
+    segs = db.query(Segment).filter(
+        Segment.transcript_id == transcript_id,
+        or_(
+            Segment.reviewed_by_user_id.is_not(None),
+            Segment.is_bookmarked == True,
+            Segment.comment.is_not(None),
+        ),
+    ).all()
+
+    reviewer_cache: dict[int, User | None] = {}
+    reviewed_segments: dict[str, dict] = {}
+    bookmarked_segments: dict[str, dict] = {}
+    commented_segments: dict[str, dict] = {}
+
+    for seg in segs:
+        sid = str(seg.id)
+        if seg.reviewed_by_user_id is not None:
+            if seg.reviewed_by_user_id not in reviewer_cache:
+                reviewer_cache[seg.reviewed_by_user_id] = db.get(User, seg.reviewed_by_user_id)
+            reviewer = reviewer_cache[seg.reviewed_by_user_id]
+            reviewed_segments[sid] = {
+                "reviewer_name": reviewer.name if reviewer else None,
+                "reviewer_picture": reviewer.picture_url if reviewer else None,
+                "reviewed_at": seg.reviewed_at.isoformat() if seg.reviewed_at else None,
+            }
+        if seg.is_bookmarked:
+            bookmarked_segments[sid] = {
+                "memo": seg.bookmark_memo or "",
+                "start_seconds": seg.start_seconds,
+            }
+        if seg.comment:
+            commented_segments[sid] = {
+                "comment": seg.comment,
+                "author_user_id": seg.comment_author_user_id,
+            }
+
+    return JSONResponse({
+        "active": active,
+        "reviewed_segments": reviewed_segments,
+        "bookmarked_segments": bookmarked_segments,
+        "commented_segments": commented_segments,
+    })
 
 
 # ── 固有名詞辞書（個別音声） ───────────────────────────────────────────
