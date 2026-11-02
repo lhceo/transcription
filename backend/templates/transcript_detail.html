@@ -3312,6 +3312,13 @@ function segmentsApp(transcriptId, historyNames) {
                 }
             }
 
+            // 定期オートセーブ（5秒ごと）: ブラウザクラッシュ対策。pendingSegments があれば強制フラッシュ
+            this._autosaveInterval = setInterval(async () => {
+                if (this.pendingSegments.size === 0) return;
+                for (const [segId] of [...this.pendingSegments]) {
+                    await this._saveSegment(segId, null);
+                }
+            }, 5000);
             // プレゼンスポーリング開始（5秒ごと）
             this._presenceInterval = setInterval(() => this.refreshPresence(), 5000);
             // 初回取得
