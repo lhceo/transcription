@@ -7097,18 +7097,18 @@ textarea.form-input-sm {
 }
 .pjt-vocab-item {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 5px 0;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px 6px;
+    padding: 6px 0;
     border-bottom: 1px solid var(--color-border);
     font-size: 13px;
 }
 .pjt-vocab-item:last-child { border-bottom: none; padding-bottom: 0; }
 .pjt-vocab-item:first-child { padding-top: 0; }
-.pjt-vocab-word { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
-.pjt-vocab-reading { font-size: 11px; white-space: nowrap; }
-.pjt-vocab-meaning { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.pjt-vocab-word { flex: 1; min-width: 80px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.pjt-vocab-reading { font-size: 11px; color: var(--color-text-muted); }
+.pjt-vocab-meaning { flex: 0 0 100%; order: 10; font-size: 11px; color: var(--color-text-muted); white-space: pre-wrap; word-break: break-word; padding-left: 2px; }
 .btn-icon-xs { width: 24px; height: 24px; flex-shrink: 0; }
 
 /* 登場した人物リスト */
