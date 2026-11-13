@@ -266,6 +266,48 @@
                         </div>
                     </div>
 
+                    {# ── MTG情報 ── #}
+                    <div x-show="uploadMode !== 'idle'" x-cloak style="padding:16px 20px 0;">
+                        <div style="border-top:1px solid var(--color-border);padding-top:14px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                                <span style="font-size:12px;font-weight:600;">MTG情報</span>
+                                <span style="font-size:11px;color:var(--color-text-muted);">任意 — 整文の精度が上がります</span>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                <div style="grid-column:1 / -1;">
+                                    <label style="display:block;font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">日時</label>
+                                    <div style="display:flex;align-items:center;gap:4px;">
+                                        <input type="date" class="form-input form-input-sm" x-model="mtgDate" style="flex:1;min-width:0;">
+                                        <select class="form-select form-input-sm" x-model="mtgHour" :disabled="!mtgDate" style="width:52px;padding-left:4px;">
+                                            <template x-for="h in Array.from({length:24},(_,i)=>String(i).padStart(2,'0'))" :key="h">
+                                                <option :value="h" x-text="h"></option>
+                                            </template>
+                                        </select>
+                                        <span style="font-size:12px;color:var(--color-text-muted);">時</span>
+                                        <select class="form-select form-input-sm" x-model="mtgMinute" :disabled="!mtgDate" style="width:52px;padding-left:4px;">
+                                            <template x-for="m in ['00','05','10','15','20','25','30','35','40','45','50','55']" :key="m">
+                                                <option :value="m" x-text="m"></option>
+                                            </template>
+                                        </select>
+                                        <span style="font-size:12px;color:var(--color-text-muted);">分</span>
+                                    </div>
+                                </div>
+                                <div style="grid-column:1 / -1;">
+                                    <label style="display:block;font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">場所</label>
+                                    <input type="text" class="form-input form-input-sm" x-model="mtgLocation" placeholder="例: 会議室A / オンライン" style="width:100%;box-sizing:border-box;">
+                                </div>
+                                <div style="grid-column:1 / -1;">
+                                    <label style="display:block;font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">目的・テーマ</label>
+                                    <input type="text" class="form-input form-input-sm" x-model="mtgPurpose" placeholder="例: 2026年度下期 営業戦略の確認" style="width:100%;box-sizing:border-box;">
+                                </div>
+                                <div style="grid-column:1 / -1;">
+                                    <label style="display:block;font-size:11px;color:var(--color-text-muted);margin-bottom:3px;">アジェンダ</label>
+                                    <textarea class="form-input form-input-sm" x-model="mtgAgenda" rows="2" placeholder="例: ① 前回振り返り ② 新規案件共有 ③ 次回アクション確認" style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="pjt-modal-foot" style="margin-top:20px;">
                         <button class="btn btn-ghost btn-sm" @click="resetUpload()" type="button" x-show="uploadMode === 'multi'" x-cloak :disabled="uploadingMulti" style="margin-right:auto;">選び直す</button>
                         <button class="btn btn-ghost btn-sm" @click="closeUpload()" type="button" :disabled="uploading || uploadingMulti">キャンセル</button>
@@ -826,6 +868,14 @@ function transcriptAdder(projectId) {
         _uploadSingleFile: null,
         uploadMultiTitle: '',
 
+        // ── MTG情報（OKF）──
+        mtgDate: '',
+        mtgHour: '10',
+        mtgMinute: '00',
+        mtgLocation: '',
+        mtgPurpose: '',
+        mtgAgenda: '',
+
         get filteredItems() {
             const q = this.search.trim().toLowerCase();
             if (!q) return this.items;
@@ -947,6 +997,12 @@ function transcriptAdder(projectId) {
             this.uploadFileList = [];
             this._uploadSingleFile = null;
             this.uploadMultiTitle = '';
+            this.mtgDate = '';
+            this.mtgHour = '10';
+            this.mtgMinute = '00';
+            this.mtgLocation = '';
+            this.mtgPurpose = '';
+            this.mtgAgenda = '';
             const fi = document.getElementById('pjt-upload-file');
             if (fi) fi.value = '';
             const fi2 = document.getElementById('pjt-upload-file-add');
@@ -966,6 +1022,12 @@ function transcriptAdder(projectId) {
             this.uploadFileList = [];
             this._uploadSingleFile = null;
             this.uploadMultiTitle = '';
+            this.mtgDate = '';
+            this.mtgHour = '10';
+            this.mtgMinute = '00';
+            this.mtgLocation = '';
+            this.mtgPurpose = '';
+            this.mtgAgenda = '';
             const fi = document.getElementById('pjt-upload-file');
             if (fi) fi.value = '';
             const fi2 = document.getElementById('pjt-upload-file-add');
@@ -1081,6 +1143,10 @@ function transcriptAdder(projectId) {
             const fd = new FormData();
             fd.append('file', this._uploadSingleFile);
             fd.append('project_id', String(projectId));
+            if (this.mtgDate) fd.append('meeting_date', this.mtgDate + 'T' + this.mtgHour + ':' + this.mtgMinute);
+            if (this.mtgLocation.trim()) fd.append('meeting_location', this.mtgLocation.trim());
+            if (this.mtgPurpose.trim()) fd.append('meeting_purpose', this.mtgPurpose.trim());
+            if (this.mtgAgenda.trim()) fd.append('meeting_agenda', this.mtgAgenda.trim());
             const xhr = new XMLHttpRequest();
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) this.uploadPercent = Math.round(e.loaded / e.total * 100);
@@ -1117,6 +1183,10 @@ function transcriptAdder(projectId) {
             }
             fd.append('project_id', String(projectId));
             if (this.uploadMultiTitle.trim()) fd.append('title', this.uploadMultiTitle.trim());
+            if (this.mtgDate) fd.append('meeting_date', this.mtgDate + 'T' + this.mtgHour + ':' + this.mtgMinute);
+            if (this.mtgLocation.trim()) fd.append('meeting_location', this.mtgLocation.trim());
+            if (this.mtgPurpose.trim()) fd.append('meeting_purpose', this.mtgPurpose.trim());
+            if (this.mtgAgenda.trim()) fd.append('meeting_agenda', this.mtgAgenda.trim());
             try {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/transcripts/multi');
