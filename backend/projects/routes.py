@@ -1158,13 +1158,22 @@ async def polish_estimate(
     participant_count = len(_participants)
 
     # 話者名設定チェック（「未設定話者X」のままだと整文の主語補完精度が大幅低下）
+    # Segment.display_name による個別リネームも考慮する（Speaker テーブルが更新されない場合がある）
     all_speakers = list(db.scalars(
         select(Speaker).where(Speaker.transcript_id == transcript_id)
     ))
     speaker_count = len(all_speakers)
+    import re as _re_est
+    _unnamed_re = _re_est.compile(r"^未設定話者")
+    # 各 speaker_label で使われている Segment.display_name を収集
+    _seg_names_by_label: dict[str, set] = {}
+    for seg in segments:
+        if seg.display_name:
+            _seg_names_by_label.setdefault(seg.speaker_label, set()).add(seg.display_name)
     unnamed_count = sum(
         1 for s in all_speakers
-        if not s.display_name or s.display_name.startswith("未設定話者")
+        if _unnamed_re.match(s.display_name or "")
+        and not any(not _unnamed_re.match(n) for n in _seg_names_by_label.get(s.speaker_label, set()))
     )
     speakers_named = speaker_count > 0 and unnamed_count == 0
     if speaker_count > 0 and unnamed_count > 0:
