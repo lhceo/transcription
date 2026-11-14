@@ -3556,6 +3556,11 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .segment-card.review-skipped .segment-text { opacity: .4; }
 .segment-card.review-pending-diff    { border-left: 3px solid #93c5fd; background: #fafeff; }
 .segment-card.review-pending-unknown { border-left: 3px solid #fcd34d; background: #fffdf5; }
+/* Alpine x-showの反応性問題を回避: レビュー状態時に元テキストをCSS側で強制非表示 */
+.segment-card.review-accepted .segment-text-original,
+.segment-card.review-skipped .segment-text-original,
+.segment-card.review-pending-diff .segment-text-original,
+.segment-card.review-pending-unknown .segment-text-original { display: none !important; }
 
 /* スクロール追跡・3色状態（未読/スクロール済み/編集済み） */
 
