@@ -1605,11 +1605,11 @@
                         </div>
                         </template>
                         {# fill-in チップ（AIが補完を求める箇所） #}
-                        <div class="review-pending-header">
+                        <div class="review-pending-header" x-show="reviewData[{{ seg.id }}].editedText === null">
                             <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
                             <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない場合は「わかりません」で空欄のまま採用できます</span>
                         </div>
-                        <div class="fill-in-area">
+                        <div class="fill-in-area" x-show="reviewData[{{ seg.id }}].editedText === null">
                             <template x-for="(part, idx) in reviewData[{{ seg.id }}]?.parts || []" :key="'p-{{ seg.id }}-' + idx">
                                 <span>
                                     <span x-text="part"></span>
@@ -1655,7 +1655,7 @@
                                 </span>
                             </template>
                         </div>
-                        <div class="fill-skip-row">
+                        <div class="fill-skip-row" x-show="reviewData[{{ seg.id }}].editedText === null">
                             <button class="btn btn-xs btn-ghost fill-skip-btn"
                                     @click.stop="skipFillUnknown({{ seg.id }})"
                                     title="（？）をすべて空欄にして採用">
@@ -1664,7 +1664,8 @@
                         </div>
                         {# 直接編集エリア（チップ以外の箇所も修正できる） #}
                         <div class="review-edit-section review-edit-direct">
-                            <span class="review-edit-label">テキストを直接編集することもできます</span>
+                            <span class="review-edit-label"
+                                  x-text="reviewData[{{ seg.id }}].editedText === null ? 'または、テキストを直接編集することもできます' : '整文後のテキスト（直接編集中）'"></span>
                             <textarea class="review-edit-textarea"
                                       :value="reviewData[{{ seg.id }}].editedText ?? ''"
                                       @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value"
@@ -4879,11 +4880,11 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         reviewTotalCount() {
-            return Object.keys(this.reviewData).length;
+            return Object.values(this.reviewData).filter(d => d.state !== 'unknown').length;
         },
 
         pendingReviewCount() {
-            return Object.values(this.reviewData).filter(d => !d.done).length;
+            return Object.values(this.reviewData).filter(d => !d.done && d.state !== 'unknown').length;
         },
 
         async acceptAllReview() {

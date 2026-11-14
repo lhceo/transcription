@@ -871,7 +871,7 @@ body:has(.audio-player-fixed) {
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 40;
+    z-index: 65; /* サイドバー(51)・分割ボタン(50/52)より上 */
     background: transparent;
     /* 下端ピッタリ — 隙間なし */
 }
