@@ -2753,6 +2753,18 @@ mark.find-highlight-active {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 12px;
     color: var(--color-text-muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+.segment-time:hover {
+    color: var(--color-primary);
+    background: rgba(99, 102, 241, 0.08);
+    padding: 1px 3px;
+    margin: -1px -3px;
 }
 
 .segment-edited {

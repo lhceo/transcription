@@ -1172,13 +1172,15 @@
                             aria-label="ブックマーク済み">
                             <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                         </button>
-                        <span class="segment-time" data-start="{{ seg.start_seconds }}">
+                        <button type="button" class="segment-time" data-start="{{ seg.start_seconds }}"
+                                @click.stop="seekToTime({{ seg.start_seconds }})"
+                                title="クリックしてこの箇所から再生">
                             {% set ts = seg.start_seconds|int %}
                             {% set th = ts // 3600 %}
                             {% set tm = (ts % 3600) // 60 %}
                             {% set tsec = ts % 60 %}
                             {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
-                        </span>
+                        </button>
                         {% if seg.is_edited %}
                         <span class="seg-badge seg-badge-edited seg-badge-revertable"
                               data-edited="1"
@@ -3963,6 +3965,13 @@ function segmentsApp(transcriptId, historyNames) {
             if (audio.paused) {
                 audio.play().catch(() => { /* 再生開始拒否は無視 */ });
             }
+        },
+
+        seekToTime(seconds) {
+            const audio = document.querySelector('.audio-player-section audio');
+            if (!audio) return;
+            audio.currentTime = seconds;
+            if (audio.paused) audio.play().catch(() => {});
         },
 
         // v1.1: 音声プレイヤーの timeupdate イベントで同期ハイライトを更新する
