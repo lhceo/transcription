@@ -1666,7 +1666,7 @@
                                       @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value"
                                       :placeholder="_getUnknownPreviewText({{ seg.id }})"
                                       rows="3" @click.stop
-                                      @focus.stop="updatePresence({{ seg.id }})"
+                                      @focus.stop="_initDirectEditOnFocus({{ seg.id }}); updatePresence({{ seg.id }})"
                                       @blur.stop="updatePresence(null)"></textarea>
                         </div>
                         <div class="review-inline-actions">
@@ -4891,6 +4891,12 @@ function segmentsApp(transcriptId, historyNames) {
                 if (idx < d.fills.length) acc += d.fills[idx].trim() || '（？）';
                 return acc;
             }, '');
+        },
+
+        _initDirectEditOnFocus(segId) {
+            const d = this.reviewData[segId];
+            if (!d || d.editedText !== null) return;
+            d.editedText = this._getUnknownPreviewText(segId) || d.polishedText || '';
         },
 
         buildAndAcceptReview(segId) {
