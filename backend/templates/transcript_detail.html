@@ -1038,7 +1038,9 @@
         <button class="btn btn-primary btn-sm"
                 x-show="canPolish"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
-                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '残りを元のままにして保存')"></button>
+                :disabled="!diffReviewMode && pendingFlagCount() > 0"
+                :title="!diffReviewMode && pendingFlagCount() > 0 ? '⚠ 要確認 ' + pendingFlagCount() + ' 件を先に解決してください' : ''"
+                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '未確認を元文に戻して保存')"></button>
         <button class="btn btn-outline btn-sm"
                 @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()"
                 style="color:#64748b"
@@ -4869,7 +4871,17 @@ function segmentsApp(transcriptId, historyNames) {
             return Object.values(this.reviewData).filter(d => !d.done).length;
         },
 
-        acceptAllReview() {
+        async acceptAllReview() {
+            const pending = this.pendingFlagCount();
+            if (pending > 0) {
+                const ok = await window.showConfirm(
+                    '全採用は非推奨です',
+                    `⚠ 要確認箇所が ${pending} 件残っています。\n補完が必要な空欄が残ったまま採用されるため、文章の品質が下がる可能性があります。\n\n本当に全採用しますか？`,
+                    '全採用する（非推奨）',
+                    'キャンセル'
+                );
+                if (!ok) return;
+            }
             Object.values(this.reviewData).forEach(d => {
                 if (!d.done) {
                     if (d.state === 'diff') {
@@ -5201,6 +5213,13 @@ function segmentsApp(transcriptId, historyNames) {
 
         flagCount() {
             return this._flaggedSegIds.length;
+        },
+
+        pendingFlagCount() {
+            const flaggedIds = new Set(this._flaggedSegIds);
+            return Object.entries(this.reviewData).filter(([id, d]) => {
+                return !d.done && (d.state === 'unknown' || flaggedIds.has(parseInt(id)));
+            }).length;
         },
 
         flagNavDisplay() {
