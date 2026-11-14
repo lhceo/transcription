@@ -4723,6 +4723,12 @@ function segmentsApp(transcriptId, historyNames) {
             this.polishResumeState.show = false;
             localStorage.removeItem('noto_polish_job');
             this.enterReviewMode(r.suggestions || {}, r.flags || {});
+            if (r.failed_batches && r.failed_batches > 0) {
+                setTimeout(() => window.showToast(
+                    `⚠ 整文の一部（${r.failed_batches}バッチ）が処理できませんでした。後半のセグメントが整文されていない可能性があります。`,
+                    'warning', 8000
+                ), 500);
+            }
         },
 
         enterReviewMode(suggestions, flags = {}) {
@@ -7134,6 +7140,12 @@ function polishModal() {
                 this.totalChanged = Object.keys(this.suggestions).length;
                 this.unknownCount = Object.values(this.suggestions).filter(t => t.includes('（？）')).length;
                 this.step = 'result';
+                if (data.failed_batches && data.failed_batches > 0) {
+                    setTimeout(() => window.showToast(
+                        `⚠ 整文の一部（${data.failed_batches}バッチ）が処理できませんでした。後半のセグメントが整文されていない可能性があります。`,
+                        'warning', 8000
+                    ), 1000);
+                }
             } catch (e) {
                 const msg = e.message || '';
                 console.error('[整文エラー詳細]', msg);

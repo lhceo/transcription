@@ -826,16 +826,20 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 
 
 # 出力トークン閾値: これを超えると分割処理に切り替える
-# フラグJSON（type/note/words）が1件あたり100〜300 tok になるため
+# フラグJSON（type/note/words）が1件あたり300〜500 tok になるため
 # テキスト推定値だけでは足りない。_PER_SEG_JSON_OVERHEAD で吸収する。
-_SAFE_OUTPUT_TOKENS = 2500
+_SAFE_OUTPUT_TOKENS = 1500
 # 1セグメントあたりの JSON 構造オーバーヘッド (tokens):
 # フラグなし: {"id":X,"text":"..."} ≈ 40 tok
-# フラグあり: + {"type":"...","note":"...","words":[...]} × N ≈ 100〜300 tok
-# 平均的に半数のセグメントにフラグがつくと仮定して 120 tok/seg で概算
-_PER_SEG_JSON_OVERHEAD = 120
+# フラグあり: + {"type":"...","note":"...","words":[...]} × N ≈ 300〜500 tok
+# 長い会議では後半ほどフラグが増える傾向があるため 300 tok/seg で保守的に概算
+_PER_SEG_JSON_OVERHEAD = 300
 # バッチ間のオーバーラップ（文脈保持のため前バッチ末尾を次バッチ先頭に重複させる）
 _OVERLAP_SEGMENTS = 5
+
+
+class _TruncatedBatchError(RuntimeError):
+    """max_tokens に達してレスポンスが途中で切れた場合に送出する。"""
 
 
 @dataclass
@@ -845,6 +849,7 @@ class PolishResult:
     input_tokens: int
     output_tokens: int
     cost_yen: float
+    failed_batches: int = 0       # トランケーション等で結果が取得できなかったバッチ数
 
 
 async def _run_polish_batch(
@@ -911,6 +916,13 @@ async def _run_polish_batch(
         raise
 
     raw = raw.strip()
+    # max_tokens に達した場合は JSON が途中で切れているため再試行を促す
+    if final_msg.stop_reason == "max_tokens":
+        logger.warning(
+            "整文バッチ: max_tokensに達しました (truncated). model=%s segs=%d max_tokens=%d",
+            model_id, len(segments), max_tokens,
+        )
+        raise _TruncatedBatchError(f"max_tokens={max_tokens} に達しました (segs={len(segments)})")
     try:
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         json_str = m.group(0) if m else raw
@@ -920,11 +932,53 @@ async def _run_polish_batch(
         logger.info("整文バッチ完了: segs_in=%d suggestions=%d raw_len=%d", len(segments), len(suggestions), len(raw))
         if len(suggestions) == 0 and len(segments) > 0:
             logger.warning("整文バッチ: 提案が空 (0件). raw先頭=%s", raw[:300])
+    except _TruncatedBatchError:
+        raise
     except Exception:
         logger.error("整文レスポンスのJSONパース失敗: %s", raw[:500])
         suggestions = {}
         flags = {}
     return suggestions, flags, final_msg.usage.input_tokens, final_msg.usage.output_tokens
+
+
+async def _run_polish_batch_with_split(
+    client,
+    segments: list[dict],
+    context_text: str,
+    model_id: str,
+    meeting_summary: str,
+    max_tokens: int,
+    _depth: int = 0,
+) -> tuple[dict[int, str], dict[int, list], int, int, int]:
+    """バッチ整文を実行し、max_tokens トランケーション時は半分に分割して再試行する。
+
+    Returns: (suggestions, flags, input_tokens, output_tokens, failed_batches)
+    """
+    if not segments:
+        return {}, {}, 0, 0, 0
+    try:
+        suggestions, flags, inp, out = await _run_polish_batch(
+            client, segments, context_text, model_id,
+            meeting_summary=meeting_summary, max_tokens=max_tokens,
+        )
+        return suggestions, flags, inp, out, 0
+    except _TruncatedBatchError:
+        if _depth >= 3 or len(segments) <= 2:
+            # これ以上分割できない → このバッチは失敗として記録
+            logger.error(
+                "整文バッチ: 分割後も max_tokens に達しました (depth=%d segs=%d). スキップします。",
+                _depth, len(segments),
+            )
+            return {}, {}, 0, 0, 1
+        mid = len(segments) // 2
+        logger.info("整文バッチ: truncated のため半分に分割して再試行 (depth=%d, segs=%d → %d+%d)", _depth, len(segments), mid, len(segments) - mid)
+        s1, f1, i1, o1, fail1 = await _run_polish_batch_with_split(
+            client, segments[:mid], context_text, model_id, meeting_summary, max_tokens, _depth + 1,
+        )
+        s2, f2, i2, o2, fail2 = await _run_polish_batch_with_split(
+            client, segments[mid:], context_text, model_id, meeting_summary, max_tokens, _depth + 1,
+        )
+        return {**s1, **s2}, {**f1, **f2}, i1 + i2, o1 + o2, fail1 + fail2
 
 
 async def run_polish(
@@ -969,12 +1023,13 @@ async def run_polish(
 
     total_input = 0
     total_output = 0
+    total_failed_batches = 0
     merged: dict[int, str] = {}
     merged_flags: dict[int, list[dict]] = {}
 
     if estimated_output <= _SAFE_OUTPUT_TOKENS:
-        # 一括送信
-        suggestions, flags, inp, out = await _run_polish_batch(
+        # 一括送信（truncated 時は自動分割）
+        suggestions, flags, inp, out, failed = await _run_polish_batch_with_split(
             client, segments, context_text, model_id, meeting_summary=meeting_summary,
             max_tokens=model_max_tokens,
         )
@@ -982,20 +1037,25 @@ async def run_polish(
         merged_flags.update(flags)
         total_input += inp
         total_output += out
+        total_failed_batches += failed
         if progress_callback:
             progress_callback(1, 1)
     else:
         # 必要最小限のバッチ数に分割
         n_batches = math.ceil(estimated_output / _SAFE_OUTPUT_TOKENS)
         batch_size = math.ceil(len(segments) / n_batches)
-        logger.info("整文 分割処理: %s バッチ (各 %s セグメント + オーバーラップ %s)", n_batches, batch_size, _OVERLAP_SEGMENTS)
+        # 実際にセグメントがある範囲のみ処理する
+        actual_batches = math.ceil(len(segments) / batch_size) if batch_size > 0 else 1
+        logger.info("整文 分割処理: %s バッチ (各 %s セグメント + オーバーラップ %s)", actual_batches, batch_size, _OVERLAP_SEGMENTS)
 
         # 前バッチの整文済み結果を保持（オーバーラップセグメントの text を差し替えるため）
         prev_suggestions: dict[int, str] = {}
 
-        for i in range(n_batches):
+        for i in range(actual_batches):
             own_start = i * batch_size
             own_end = min(len(segments), (i + 1) * batch_size)
+            if own_start >= len(segments):
+                break
             # オーバーラップ: 前バッチ末尾を先頭に重複させて文脈を保持
             fetch_start = max(0, own_start - _OVERLAP_SEGMENTS)
 
@@ -1008,10 +1068,12 @@ async def run_polish(
                 else:
                     batch_segs.append(s)
 
-            suggestions, batch_flags, inp, out = await _run_polish_batch(
+            # truncated 時は自動で半分に分割して再試行
+            suggestions, batch_flags, inp, out, failed = await _run_polish_batch_with_split(
                 client, batch_segs, context_text, model_id, meeting_summary=meeting_summary,
                 max_tokens=model_max_tokens,
             )
+            total_failed_batches += failed
 
             # オーバーラップ部分（前バッチが担当）は採用しない
             own_ids = {s["id"] for s in segments[own_start:own_end]}
@@ -1020,7 +1082,7 @@ async def run_polish(
                 if seg_id in own_ids:
                     merged[seg_id] = text
                     adopted += 1
-            if adopted == 0:
+            if adopted == 0 and not failed:
                 logger.warning("整文バッチ%d: own_ids=%d件に対して採用提案0件 (suggestions=%d件)", i, len(own_ids), len(suggestions))
             for seg_id, flag_list in batch_flags.items():
                 if seg_id in own_ids:
@@ -1032,7 +1094,7 @@ async def run_polish(
             total_input += inp
             total_output += out
             if progress_callback:
-                progress_callback(i + 1, n_batches)
+                progress_callback(i + 1, actual_batches)
 
     # 原文と実質同一の提案を除去：句読点の全半角差のみ等はユーザーに見せない
     seg_text_map = {s["id"]: s["text"] for s in segments}
@@ -1054,10 +1116,13 @@ async def run_polish(
     }
 
     cost = actual_cost_yen(total_input, total_output, model_key)
+    if total_failed_batches > 0:
+        logger.warning("整文完了: %d バッチが max_tokens/エラーで結果なし (全体に影響する可能性あり)", total_failed_batches)
     return PolishResult(
         suggestions=merged,
         flags=merged_flags,
         input_tokens=total_input,
         output_tokens=total_output,
         cost_yen=cost,
+        failed_batches=total_failed_batches,
     )

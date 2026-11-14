@@ -1312,6 +1312,7 @@ async def _polish_bg_task(
             "output_tokens": result.output_tokens,
             "cost_yen": result.cost_yen,
             "model_key": model_key,
+            "failed_batches": result.failed_batches,
         }
         db = SessionLocal()
         try:
