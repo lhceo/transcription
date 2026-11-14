@@ -4775,6 +4775,13 @@ function segmentsApp(transcriptId, historyNames) {
                 };
             });
 
+            // unknown セグメントのeditedTextを即時初期化してチップ欄を非表示にする
+            Object.entries(this.reviewData).forEach(([id, d]) => {
+                if (d.state === 'unknown') {
+                    d.editedText = this._getUnknownPreviewText(parseInt(id)) || d.polishedText || '';
+                }
+            });
+
             const count = Object.keys(this.reviewData).length;
             if (count === 0) {
                 window.showToast('整文完了しましたが、変更箇所がありませんでした。', 'info');
@@ -4865,7 +4872,15 @@ function segmentsApp(transcriptId, historyNames) {
                         fillSuggestions = rMatches.map(m => m[1] || '');
                         fills = d.fills || fillSuggestions.slice();
                     }
-                    this.reviewData[intId] = { ...d, parts, fills, fillSuggestions, activeFillIdx: null, preview: null, showOriginal: d.showOriginal || false, editedText: d.editedText || null };
+                    let initEditedText = d.editedText || null;
+                    if (d.state === 'unknown' && !initEditedText && parts) {
+                        initEditedText = parts.reduce((acc, part, idx) => {
+                            acc += part;
+                            if (idx < (fills || []).length) acc += (fills[idx] || '').trim() || '（？）';
+                            return acc;
+                        }, '') || d.polishedText || '';
+                    }
+                    this.reviewData[intId] = { ...d, parts, fills, fillSuggestions, activeFillIdx: null, preview: null, showOriginal: d.showOriginal || false, editedText: initEditedText };
                 }
                 this.diffReviewMode = diff || false;
                 this.reviewMode = true;
