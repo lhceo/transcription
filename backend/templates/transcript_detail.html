@@ -2089,6 +2089,12 @@
                         予想コスト: <strong x-text="'約 ¥' + estimate.costs[modelKey]"></strong>
                         <span class="text-muted" style="font-size:12px"> / <span x-text="estimate.segment_count"></span>セグメント</span>
                     </div>
+                    <template x-if="estimate.polished_count > 0">
+                        <label class="polish-only-unpolished-toggle">
+                            <input type="checkbox" x-model="onlyUnpolished" @change="toggleOnlyUnpolished()">
+                            <span>採用済みを除く（未採用の <span x-text="estimate.unpolished_count"></span> セグメントのみ整文）</span>
+                        </label>
+                    </template>
                 </div>
             </template>
             <div class="polish-modal-actions">
@@ -3915,7 +3921,7 @@ function segmentsApp(transcriptId, historyNames) {
                     e.preventDefault(); seekBy(-3);
                 } else if (e.key === 'ArrowRight') {
                     e.preventDefault(); seekBy(+3);
-                } else if (e.key === 'Escape' && this.editMode) {
+                } else if (e.key === 'Escape' && (this.editMode || this.reviewMode)) {
                     e.preventDefault(); togglePlay();
                 } else if (e.key === ']') {
                     e.preventDefault(); this.navQuality(1);
@@ -6998,6 +7004,7 @@ function polishModal() {
         loading: false,
         saving: false,
         modelKey: 'haiku',
+        onlyUnpolished: false,
         estimate: null,
         pickupWords: [],   // [{word, meaning}]
         suggestions: {},   // {segId: polishedText}
@@ -7043,13 +7050,7 @@ function polishModal() {
                 return;
             }
             this.step = 'confirm';
-            this.loading = true;
-            this.estimate = null;
-            try {
-                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/estimate');
-                if (res.ok) this.estimate = await res.json();
-            } catch (e) { /* ignore */ }
-            this.loading = false;
+            await this._loadEstimate();
         },
 
         close() {
@@ -7058,13 +7059,23 @@ function polishModal() {
 
         async continueToConfirm() {
             this.step = 'confirm';
+            await this._loadEstimate();
+        },
+
+        async _loadEstimate() {
             this.loading = true;
             this.estimate = null;
             try {
-                const res = await fetch('/api/transcripts/' + transcriptId + '/polish/estimate');
+                const url = '/api/transcripts/' + transcriptId + '/polish/estimate'
+                    + (this.onlyUnpolished ? '?only_unpolished=true' : '');
+                const res = await fetch(url);
                 if (res.ok) this.estimate = await res.json();
             } catch (e) { /* ignore */ }
             this.loading = false;
+        },
+
+        async toggleOnlyUnpolished() {
+            await this._loadEstimate();
         },
 
         doAction(action) {
@@ -7122,7 +7133,7 @@ function polishModal() {
                 const startRes = await fetch('/api/transcripts/' + transcriptId + '/polish/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model_key: this.modelKey, extra_vocabulary: extra }),
+                    body: JSON.stringify({ model_key: this.modelKey, extra_vocabulary: extra, only_unpolished: this.onlyUnpolished }),
                 });
                 if (!startRes.ok) {
                     const errJson = await startRes.json().catch(() => ({}));

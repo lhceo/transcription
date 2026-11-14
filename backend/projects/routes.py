@@ -917,6 +917,7 @@ class PolishPickupRequest(BaseModel):
 class PolishRunRequest(BaseModel):
     model_key: str = "haiku"
     extra_vocabulary: list[dict] | None = None  # ピックアップ後に追加登録した語句
+    only_unpolished: bool = False  # True の場合、is_polished=False のセグメントのみ対象
 
 
 class PolishAcceptRequest(BaseModel):
@@ -1113,6 +1114,7 @@ async def polish_estimate(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     model_key: str = "haiku",
+    only_unpolished: bool = False,
 ) -> JSONResponse:
     """整文の予想コスト・コンテキスト充実度を返す。"""
     transcript = _get_transcript_or_404(transcript_id, user["id"], db)
@@ -1123,6 +1125,8 @@ async def polish_estimate(
         .where(Segment.transcript_id == transcript_id)
         .order_by(Segment.order_index)
     ))
+    if only_unpolished:
+        segments = [s for s in segments if not s.is_polished]
     full_text = "\n".join(s.text_content for s in segments)
 
     context_text = _build_transcript_context(transcript, db)
@@ -1191,8 +1195,18 @@ async def polish_estimate(
     ]
     context_score = sum(1 for c in context_items if c["ok"])
 
+    # 採用済みセグメント数（only_unpolished モード表示用）
+    all_segments_for_count = list(db.scalars(
+        select(Segment).where(Segment.transcript_id == transcript_id)
+    ))
+    polished_count = sum(1 for s in all_segments_for_count if s.is_polished)
+    total_count = len(all_segments_for_count)
+
     return JSONResponse({
         "segment_count": len(segments),
+        "total_segment_count": total_count,
+        "polished_count": polished_count,
+        "unpolished_count": total_count - polished_count,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "costs": costs,
@@ -1412,6 +1426,13 @@ async def polish_run(
     ))
     if not segments:
         raise HTTPException(status_code=400, detail="セグメントがありません")
+
+    # 未採用セグメントのみモードの場合、is_polished=False のものだけに絞る
+    if body.only_unpolished:
+        segments = [s for s in segments if not s.is_polished]
+        if not segments:
+            raise HTTPException(status_code=400, detail="採用済みでないセグメントがありません（すべて採用済みです）")
+        logger.info("未採用のみ整文: transcript_id=%s 対象=%d件", transcript_id, len(segments))
 
     context_text = _build_transcript_context(transcript, db)
 

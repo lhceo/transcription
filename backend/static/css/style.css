@@ -7402,7 +7402,21 @@ textarea.form-input-sm {
 .polish-model-name { font-weight: 600; font-size: 14px; }
 .polish-model-desc { font-size: 12px; color: var(--color-text-muted); flex: 1; }
 .polish-model-cost { font-size: 13px; font-weight: 600; color: #6366f1; }
-.polish-cost-line { font-size: 14px; margin-bottom: 16px; }
+.polish-cost-line { font-size: 14px; margin-bottom: 12px; }
+
+.polish-only-unpolished-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 8px 12px;
+    background: var(--color-bg-hover);
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+.polish-only-unpolished-toggle input[type="checkbox"] { cursor: pointer; }
 
 .polish-modal-actions {
     display: flex;
