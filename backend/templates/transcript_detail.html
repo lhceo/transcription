@@ -1038,9 +1038,9 @@
         <button class="btn btn-primary btn-sm"
                 x-show="canPolish"
                 @click="diffReviewMode ? applyDiffReview() : applyReview()"
-                :disabled="!diffReviewMode && pendingFlagCount() > 0"
-                :title="!diffReviewMode && pendingFlagCount() > 0 ? '⚠ 要確認 ' + pendingFlagCount() + ' 件を先に解決してください' : ''"
-                x-text="pendingReviewCount() === 0 ? '完了・保存' : (diffReviewMode ? '残りも整文を採用して保存' : '未確認を元文に戻して保存')"></button>
+                :disabled="!diffReviewMode && pendingReviewCount() > 0"
+                :title="!diffReviewMode && pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件を確認してください' : ''"
+                x-text="diffReviewMode ? (pendingReviewCount() === 0 ? '完了・保存' : '残りも整文を採用して保存') : '完了・保存'"></button>
         <button class="btn btn-outline btn-sm"
                 @click="diffReviewMode ? enterEditModeFromReview() : enterEditModeFromFirstReview()"
                 style="color:#64748b"
