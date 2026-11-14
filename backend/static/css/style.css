@@ -4218,7 +4218,7 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
 }
 .bookmark-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 8px 14px;
     border-bottom: 1px solid var(--color-border);
@@ -4253,12 +4253,13 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     background: none;
     resize: none;
     min-height: 22px;
+    max-height: 200px;
     line-height: 1.4;
     transition: border-color .15s, background .15s;
     font-family: inherit;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 .bookmark-item-memo:focus {
     outline: none;

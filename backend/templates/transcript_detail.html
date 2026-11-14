@@ -1762,14 +1762,17 @@
                         <template x-for="bm in bookmarks" :key="bm.segId">
                             <li class="bookmark-item">
                                 <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
-                                <input type="text"
+                                <textarea
                                     class="bookmark-item-memo"
+                                    rows="1"
                                     :value="bm.memo"
                                     placeholder="メモ（任意）"
                                     @change="saveBookmarkMemo(bm, $event.target.value)"
-                                    @keydown.enter="if (!$event.isComposing && !$event.target._composing) { $event.preventDefault(); $event.target.blur(); }"
+                                    @input="$event.target.style.height='auto'; $event.target.style.height=$event.target.scrollHeight+'px'"
+                                    x-init="$nextTick(() => { $el.style.height='auto'; $el.style.height=$el.scrollHeight+'px'; })"
+                                    @keydown.enter.prevent="if (!$event.isComposing && !$event.target._composing) $event.target.blur()"
                                     @compositionstart="$event.target._composing = true"
-                                    @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)">
+                                    @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"></textarea>
                                 <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 </button>
