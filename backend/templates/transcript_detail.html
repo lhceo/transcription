@@ -5284,13 +5284,16 @@ function segmentsApp(transcriptId, historyNames) {
             await Promise.all(skipPromises);
 
             const accepted_texts = {};
+            const skip_ids = [];
             Object.entries(this.reviewData).forEach(([id, d]) => {
                 if (d.done === 'accepted') {
                     accepted_texts[parseInt(id)] = d.polishedText || '';
+                } else if (d.done === 'skipped') {
+                    skip_ids.push(parseInt(id));
                 }
             });
 
-            if (Object.keys(accepted_texts).length === 0) {
+            if (Object.keys(accepted_texts).length === 0 && skip_ids.length === 0) {
                 window.showToast('採用された変更はありません。レビューを終了します。', 'info');
                 this.reviewMode = false;
                 this.reviewData = {};
@@ -5304,7 +5307,7 @@ function segmentsApp(transcriptId, historyNames) {
                 const res = await fetch(`/api/transcripts/${transcriptId}/polish/accept`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accepted_texts }),
+                    body: JSON.stringify({ accepted_texts, skip_ids }),
                 });
                 if (!res.ok) throw new Error(res.status);
                 this._clearReviewProgress();

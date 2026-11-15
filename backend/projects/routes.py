@@ -923,6 +923,7 @@ class PolishRunRequest(BaseModel):
 class PolishAcceptRequest(BaseModel):
     """セグメントごとの採否を受け取る。accepted_texts は {segment_id: text}。"""
     accepted_texts: dict[int, str]
+    skip_ids: list[int] = []  # スキップ（元のまま）セグメント: テキスト変更なし・is_polished=True
 
 
 class PolishRevertRequest(BaseModel):
@@ -1626,12 +1627,17 @@ async def polish_accept(
         seg = db.get(Segment, seg_id)
         if seg and seg.transcript_id == transcript_id:
             if seg.text_content != text:
-                # テキストが実際に変わった場合のみ整文済みとしてマーク
                 seg.pre_polish_text = seg.text_content
                 seg.text_content = text
                 seg.is_edited = True
-                seg.is_polished = True
-                updated += 1
+            seg.is_polished = True  # テキスト変更有無にかかわらず整文済みにマーク
+            updated += 1
+
+    # スキップ（元のまま）セグメントも is_polished=True にマーク（次回「未整文のみ」の対象外にする）
+    for seg_id in body.skip_ids:
+        seg = db.get(Segment, seg_id)
+        if seg and seg.transcript_id == transcript_id:
+            seg.is_polished = True
 
     # 採用完了 → pending_result をクリア（DBを節約 + 次回ロード時に復元されないようにする）
     from datetime import datetime, timezone, timedelta
