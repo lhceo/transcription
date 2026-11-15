@@ -1634,7 +1634,7 @@ async def polish_accept(
                 updated += 1
 
     # 採用完了 → pending_result をクリア（DBを節約 + 次回ロード時に復元されないようにする）
-    from datetime import timezone, timedelta
+    from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     stale_logs = db.scalars(
         select(PolishLog)
@@ -1704,7 +1704,7 @@ async def polish_dismiss(
 ) -> JSONResponse:
     """整文完了バナーを × で閉じたとき pending_result をクリアしてダッシュボードバッジを消す。"""
     _get_transcript_or_404(transcript_id, user["id"], db)
-    from datetime import timezone, timedelta
+    from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     # 完了済みログのクリア
     done_logs = db.scalars(
