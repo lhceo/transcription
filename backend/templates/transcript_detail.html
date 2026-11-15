@@ -1550,7 +1550,12 @@
                         </template>
                         {# 直接編集エリア #}
                         <div class="review-edit-section review-edit-direct">
-                            <span class="review-edit-label">整文後のテキストを編集してください</span>
+                            <div class="review-edit-header-row">
+                                <span class="review-edit-label">整文後のテキストを編集してください</span>
+                                <button class="review-compare-btn" type="button"
+                                        @click.stop="reviewData[{{ seg.id }}].showOriginal = !reviewData[{{ seg.id }}].showOriginal"
+                                        x-text="reviewData[{{ seg.id }}].showOriginal ? '比較を閉じる' : '元文と比較'"></button>
+                            </div>
                             <textarea class="review-edit-textarea"
                                       :value="reviewData[{{ seg.id }}].editedText ?? ''"
                                       @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value; _buildUnknownSegments()"
@@ -1558,6 +1563,12 @@
                                       rows="3" @click.stop
                                       @focus.stop="updatePresence({{ seg.id }})"
                                       @blur.stop="updatePresence(null)"></textarea>
+                        </div>
+                        {# 元の文字起こし（比較用） #}
+                        <div class="review-original-box review-original-collapsible"
+                             x-show="reviewData[{{ seg.id }}].showOriginal" style="display:none">
+                            <span class="review-original-label">元の文字起こし</span>
+                            <span x-text="reviewData[{{ seg.id }}]?.original || ''"></span>
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="skipAndSaveOriginal({{ seg.id }})">元のままにする</button>
