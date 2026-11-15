@@ -5290,6 +5290,7 @@ function segmentsApp(transcriptId, historyNames) {
                 });
                 if (!res.ok) throw new Error(res.status);
                 this._clearReviewProgress();
+                this.reviewMode = false;  // beforeunload で再保存されないように
                 window.showToast('保存しました。ページを更新します。');
                 setTimeout(() => location.reload(), 800);
             } catch (e) {
@@ -5363,6 +5364,7 @@ function segmentsApp(transcriptId, historyNames) {
                 });
                 if (!res.ok) throw new Error(res.status);
                 this._clearReviewProgress();
+                this.reviewMode = false;  // beforeunload で再保存されないように
                 window.showToast('保存しました。ページを更新します。');
                 setTimeout(() => location.reload(), 800);
             } catch (e) {
