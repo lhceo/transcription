@@ -1347,7 +1347,7 @@
                         <div class="segment-text-overlay" aria-hidden="true"><span class="overlay-played"></span><span class="overlay-current"></span><span class="overlay-remaining"></span></div>
                         <textarea
                             class="segment-text-edit"
-                            x-show="shouldShowTextarea({{ seg.id }}) && !reviewMode"
+                            x-show="shouldShowTextarea({{ seg.id }}) && (!reviewMode || !reviewData[{{ seg.id }}])"
                             x-cloak
                             data-segment-id="{{ seg.id }}"
                             @blur="onSegmentBlur($event)"
@@ -3142,8 +3142,12 @@ function segmentsApp(transcriptId, historyNames) {
                     clearTimeout(this._editInactivityTimer);
                 }
                 // 整文レビュー中に編集モードに切り替えようとした場合に警告（改善⑤）
+                // ただし reviewData に含まれないセグメントの直接編集は許可するため警告しない
                 if (this.editMode && this.reviewMode) {
-                    window.showToast('整文レビュー中です。「編集モードで続ける」ボタンを使うとレビュー結果を保持できます。', 'warning');
+                    const focused = this.focusedEditingSegmentId;
+                    if (focused && this.reviewData[focused]) {
+                        window.showToast('整文レビュー中です。「編集モードで続ける」ボタンを使うとレビュー結果を保持できます。', 'warning');
+                    }
                 }
             });
             // 個人別レビュー進捗: reviewData の変化を監視して自分の確認状況を記録（改善⑥）
