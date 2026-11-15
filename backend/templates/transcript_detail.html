@@ -1676,7 +1676,7 @@
                         </div>
                         <div class="review-inline-actions">
                             <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="skipAndSaveOriginal({{ seg.id }})">元のままにする</button>
-                            <button class="btn btn-sm btn-primary" @click.stop="_acceptAndSaveReviewSegment({{ seg.id }})">採用</button>
+                            <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
                         </div>
                     </div>
                     </template>
