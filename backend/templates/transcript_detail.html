@@ -1343,67 +1343,6 @@
                         @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
 
-                    {# 穴埋めUI（（？）含むセグメント・通常モード） #}
-                    {% if '（？）' in seg.text_content %}
-                    <template x-if="segFills[{{ seg.id }}] && !shouldShowTextarea({{ seg.id }}) && !reviewMode">
-                        <div class="fill-in-standalone-area">
-                            <div style="font-size:11px;color:#b45309;margin-bottom:8px;display:flex;align-items:center;gap:4px">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                聞き取れなかった箇所があります。補完してください：
-                            </div>
-                            <div class="fill-in-area">
-                                <template x-for="(part, idx) in segFills[{{ seg.id }}].parts" :key="'sf-{{ seg.id }}-' + idx">
-                                    <span>
-                                        <span x-text="part"></span>
-                                        <template x-if="idx < segFills[{{ seg.id }}].fills.length">
-                                            <span>
-                                                <template x-if="segFills[{{ seg.id }}].activeFillIdx !== idx">
-                                                    <button class="fill-chip"
-                                                            :class="{
-                                                                'fill-chip-filled': segFills[{{ seg.id }}].fills[idx],
-                                                                'fill-chip-ai': !segFills[{{ seg.id }}].fills[idx] && !!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]),
-                                                                'fill-chip-proper-noun': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun',
-                                                                'fill-chip-demonstrative': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative',
-                                                                'fill-chip-empty': !segFills[{{ seg.id }}].fills[idx] && !(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'generic',
-                                                            }"
-                                                            @click.stop="startSegFillEdit({{ seg.id }}, idx)">
-                                                        <span x-show="!segFills[{{ seg.id }}].fills[idx]" style="display:flex;align-items:center;gap:3px">
-                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                            <span x-show="!!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx])"
-                                                                  x-text="(segFills[{{ seg.id }}]?.fillSuggestions?.[idx] || '') + '？'"></span>
-                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun'">📛 固有名詞を確認</span>
-                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative'">🔵 指示語の対象を補完</span>
-                                                            <span x-show="!(segFills[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(segFills[{{ seg.id }}]?.parts?.[idx]) === 'generic'">補完してください</span>
-                                                        </span>
-                                                        <span x-show="!!segFills[{{ seg.id }}].fills[idx]" style="display:flex;align-items:center;gap:4px">
-                                                            <span x-text="segFills[{{ seg.id }}].fills[idx]"></span>
-                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                        </span>
-                                                    </button>
-                                                </template>
-                                                <template x-if="segFills[{{ seg.id }}].activeFillIdx === idx">
-                                                    <span class="fill-chip-input-wrap">
-                                                        <input class="fill-chip-input"
-                                                               :id="'sf-{{ seg.id }}-' + idx"
-                                                               x-model="segFills[{{ seg.id }}].fills[idx]"
-                                                               @blur.stop="stopSegFillEdit({{ seg.id }})"
-                                                               @keydown.enter.stop="if (!$event.isComposing) stopSegFillEdit({{ seg.id }})"
-                                                               @keydown.escape.stop="segFills[{{ seg.id }}].fills[idx] = ''; stopSegFillEdit({{ seg.id }})"
-                                                               @click.stop>
-                                                    </span>
-                                                </template>
-                                            </span>
-                                        </template>
-                                    </span>
-                                </template>
-                            </div>
-                            <div style="margin-top:8px;display:flex;gap:6px">
-                                <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="dismissSegFill({{ seg.id }})">後で</button>
-                                <button class="btn btn-sm btn-primary" @click.stop="saveSegFill({{ seg.id }}, $el.closest('.segment-card'))">確定して保存</button>
-                            </div>
-                        </div>
-                    </template>
-                    {% endif %}
 
                     {# 編集中オーバーレイカラオケ：textareaに背景ハイライトで再生位置を表示 #}
                     <div class="segment-text-overlay-wrap">
@@ -1588,7 +1527,7 @@
                     </div>
                     </template>
 
-                    {# unknown（？）補完 + 直接編集テキストエリア #}
+                    {# unknown（？）直接編集テキストエリア #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
                     <div>
                         {# AIフラグ（unknown でも表示） #}
@@ -1604,74 +1543,15 @@
                             </template>
                         </div>
                         </template>
-                        {# fill-in チップ（AIが補完を求める箇所） #}
-                        <div class="review-pending-header" x-show="reviewData[{{ seg.id }}].editedText === null">
-                            <span class="review-pending-badge unknown-badge">⚠ 要確認</span>
-                            <span style="font-size:11px;color:#92400e">チップをクリックして補完。わからない場合は「わかりません」で空欄のまま採用できます</span>
-                        </div>
-                        <div class="fill-in-area" x-show="reviewData[{{ seg.id }}].editedText === null">
-                            <template x-for="(part, idx) in reviewData[{{ seg.id }}]?.parts || []" :key="'p-{{ seg.id }}-' + idx">
-                                <span>
-                                    <span x-text="part"></span>
-                                    <template x-if="idx < (reviewData[{{ seg.id }}]?.fills?.length || 0)">
-                                        <span>
-                                            <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx !== idx">
-                                                <button class="fill-chip"
-                                                        :class="{
-                                                            'fill-chip-filled': reviewData[{{ seg.id }}]?.fills[idx],
-                                                            'fill-chip-ai': !reviewData[{{ seg.id }}]?.fills[idx] && !!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]),
-                                                            'fill-chip-proper-noun': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun',
-                                                            'fill-chip-demonstrative': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative',
-                                                            'fill-chip-empty': !reviewData[{{ seg.id }}]?.fills[idx] && !(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'generic',
-                                                        }"
-                                                        @click.stop="startFillEdit({{ seg.id }}, idx)">
-                                                    <span x-show="!reviewData[{{ seg.id }}]?.fills[idx]" style="display:flex;align-items:center;gap:3px">
-                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                        <span x-show="!!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx])"
-                                                              x-text="(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx] || '') + '？'"></span>
-                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'proper_noun'">📛 固有名詞を確認</span>
-                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'demonstrative'">🔵 指示語の対象を補完</span>
-                                                        <span x-show="!(reviewData[{{ seg.id }}]?.fillSuggestions?.[idx]) && _classifyFillContext(reviewData[{{ seg.id }}]?.parts?.[idx]) === 'generic'">補完してください</span>
-                                                    </span>
-                                                    <span x-show="!!reviewData[{{ seg.id }}]?.fills[idx]" style="display:flex;align-items:center;gap:4px">
-                                                        <span x-text="reviewData[{{ seg.id }}]?.fills[idx]"></span>
-                                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                    </span>
-                                                </button>
-                                            </template>
-                                            <template x-if="reviewData[{{ seg.id }}]?.activeFillIdx === idx">
-                                                <span class="fill-chip-input-wrap">
-                                                    <input class="fill-chip-input"
-                                                           :id="'fill-{{ seg.id }}-' + idx"
-                                                           x-model="reviewData[{{ seg.id }}].fills[idx]"
-                                                           @blur.stop="stopFillEdit({{ seg.id }})"
-                                                           @keydown.enter.stop="if (!$event.isComposing) stopFillEdit({{ seg.id }})"
-                                                           @keydown.escape.stop="reviewData[{{ seg.id }}].fills[idx] = ''; stopFillEdit({{ seg.id }})"
-                                                           @click.stop>
-                                                </span>
-                                            </template>
-                                        </span>
-                                    </template>
-                                </span>
-                            </template>
-                        </div>
-                        <div class="fill-skip-row" x-show="reviewData[{{ seg.id }}].editedText === null">
-                            <button class="btn btn-xs btn-ghost fill-skip-btn"
-                                    @click.stop="skipFillUnknown({{ seg.id }})"
-                                    title="（？）をすべて空欄にして採用">
-                                わかりません（空欄で採用）
-                            </button>
-                        </div>
-                        {# 直接編集エリア（チップ以外の箇所も修正できる） #}
+                        {# 直接編集エリア #}
                         <div class="review-edit-section review-edit-direct">
-                            <span class="review-edit-label"
-                                  x-text="reviewData[{{ seg.id }}].editedText === null ? 'または、テキストを直接編集することもできます' : '整文後のテキスト（直接編集中）'"></span>
+                            <span class="review-edit-label">整文後のテキストを編集してください</span>
                             <textarea class="review-edit-textarea"
                                       :value="reviewData[{{ seg.id }}].editedText ?? ''"
-                                      @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value"
+                                      @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value; _buildUnknownSegments()"
                                       :placeholder="_getUnknownPreviewText({{ seg.id }})"
                                       rows="3" @click.stop
-                                      @focus.stop="_initDirectEditOnFocus({{ seg.id }}); updatePresence({{ seg.id }})"
+                                      @focus.stop="updatePresence({{ seg.id }})"
                                       @blur.stop="updatePresence(null)"></textarea>
                         </div>
                         <div class="review-inline-actions">
@@ -1771,7 +1651,6 @@
                                     @change="saveBookmarkMemo(bm, $event.target.value)"
                                     @input="$event.target.style.height='auto'; $event.target.style.height=$event.target.scrollHeight+'px'"
                                     x-init="$nextTick(() => { $el.style.height='auto'; $el.style.height=$el.scrollHeight+'px'; })"
-                                    @keydown.enter.prevent="if (!$event.isComposing && !$event.target._composing) $event.target.blur()"
                                     @compositionstart="$event.target._composing = true"
                                     @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"></textarea>
                                 <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
@@ -3587,21 +3466,24 @@ function segmentsApp(transcriptId, historyNames) {
 
         _buildUnknownSegments() {
             const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            const _cardText = (card) => {
+                const segId = parseInt(card.dataset.segmentId, 10);
+                const rd = this.reviewData[segId];
+                if (rd && rd.editedText !== null && rd.editedText !== undefined) return rd.editedText;
+                const ta = card.querySelector('.segment-text-edit');
+                return ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
+            };
             const unknownCards = cards.filter(card => {
                     const segId = parseInt(card.dataset.segmentId, 10);
-                    if (this.resolvedUnknowns[segId]) return false;  // 解除済みはスキップ
-                    const ta = card.querySelector('.segment-text-edit');
-                    const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
-                    return text.includes('（？）');
+                    if (this.resolvedUnknowns[segId]) return false;
+                    return _cardText(card).includes('（？）');
                 });
             this.unknownSegments = unknownCards
                 .map(card => {
                     const segId = parseInt(card.dataset.segmentId, 10);
                     const startSec = parseFloat(card.dataset.startSeconds || '0');
                     const timeLabel = this._formatSeconds(startSec);
-                    const ta = card.querySelector('.segment-text-edit');
-                    const text = ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
-                    return { segId, timeLabel, excerpt: text };
+                    return { segId, timeLabel, excerpt: _cardText(card) };
                 });
             // 穴埋めUIを初期化（既に入力済みのものは保持、新規のみ追加）
             const newFills = {};
