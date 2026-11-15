@@ -1995,7 +1995,10 @@
             <template x-if="!loading">
                 <div>
                     <template x-if="pickupWords.length === 0">
-                        <p class="section-hint">未登録の固有名詞は見つかりませんでした。</p>
+                        <div class="pickup-empty-state">
+                            <p class="pickup-empty-title">辞書に未登録の固有名詞は見つかりませんでした</p>
+                            <p class="pickup-empty-desc">整文AIが文字起こし中の固有名詞（人名・会社名・製品名など）を確認しましたが、すべて辞書登録済み、または特に補足が必要な語句がありませんでした。このまま整文を実行できます。</p>
+                        </div>
                     </template>
                     <template x-if="pickupWords.length > 0">
                         <div>
