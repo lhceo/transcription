@@ -3488,6 +3488,11 @@ mark.find-highlight-active {
     display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
     font-size: 12px; color: #94a3b8;
 }
+.review-accepted-editable {
+    cursor: text; border-radius: 4px; padding: 2px 4px; margin: -2px -4px;
+    transition: background 0.15s;
+}
+.review-accepted-editable:hover { background: #f0fdf4; }
 .review-undo-btn {
     font-size: 11px; color: #64748b; background: none; border: none;
     cursor: pointer; text-decoration: underline; padding: 0;
