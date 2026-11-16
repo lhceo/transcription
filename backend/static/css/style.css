@@ -2453,6 +2453,27 @@ mark.find-highlight-active {
     animation: shortcut-btn-pulse 1.2s ease-in-out 3;
 }
 
+/* パンくずナビ内の「キー操作」ボタン: breadcrumb-link と同じ見た目に */
+.shortcut-help-btn--breadcrumb {
+    height: auto;
+    padding: 2px 4px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: normal;
+    color: var(--color-text-muted);
+    background: transparent;
+}
+.shortcut-help-btn--breadcrumb:hover {
+    color: var(--color-primary);
+    background: #eff6ff;
+    border-color: transparent;
+}
+.shortcut-help--breadcrumb .shortcut-help-popover {
+    right: auto;
+    left: 0;
+}
+
 /* ── 汎用「?」ヘルプボタン + ポップオーバー ── */
 .info-help-wrap {
     position: relative;
