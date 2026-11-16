@@ -1149,6 +1149,7 @@
                     data-comment="{{ seg.comment or '' }}"
                     style="margin-top: {{ mt }}"
                     :class="{
+                        'in-review-mode':       reviewMode,
                         'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
                         'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
                         'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,

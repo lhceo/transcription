@@ -3571,14 +3571,11 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .segment-card.review-accepted .segment-text-overlay-wrap,
 .segment-card.review-skipped .segment-text-overlay-wrap { display: none !important; }
 /* 整文レビュー中はアクションボタンを常時表示（ホバー不要） */
-.segment-card.review-pending-diff .segment-actions,
-.segment-card.review-pending-unknown .segment-actions,
-.segment-card.review-accepted .segment-actions,
-.segment-card.review-skipped .segment-actions {
+.segment-card.in-review-mode .segment-actions {
     opacity: 1;
     pointer-events: auto;
 }
-.segment-card[class*="review-"] .segment-header { pointer-events: auto; }
+.segment-card.in-review-mode .segment-header { pointer-events: auto; }
 
 /* スクロール追跡・3色状態（未読/スクロール済み/編集済み） */
 
