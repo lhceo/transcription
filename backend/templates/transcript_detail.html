@@ -1431,14 +1431,15 @@
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted' && !reviewData[{{ seg.id }}]?.editing"
                          class="segment-text review-accepted-editable"
                          x-text="reviewData[{{ seg.id }}]?.polishedText || ''"
-                         @dblclick.stop="reviewData[{{ seg.id }}].editing = true"
+                         @dblclick.stop="reviewData[{{ seg.id }}].editing = true; reviewData = {...reviewData}"
+                         title="ダブルクリックで編集（採用状態は維持）"
                          style="display:none"></div>
                     <textarea x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted' && reviewData[{{ seg.id }}]?.editing"
                               class="review-edit-textarea"
                               :value="reviewData[{{ seg.id }}]?.polishedText || ''"
                               @input.stop="reviewData[{{ seg.id }}].polishedText = $event.target.value"
-                              @blur.stop="reviewData[{{ seg.id }}].editing = false"
-                              @keydown.escape.stop="reviewData[{{ seg.id }}].editing = false"
+                              @blur.stop="reviewData[{{ seg.id }}].editing = false; reviewData = {...reviewData}"
+                              @keydown.escape.stop="reviewData[{{ seg.id }}].editing = false; reviewData = {...reviewData}"
                               x-effect="if (reviewData[{{ seg.id }}]?.editing) $nextTick(() => $el.focus())"
                               style="display:none"></textarea>
 
