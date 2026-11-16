@@ -2371,6 +2371,7 @@ function titleEditor() {
 }
 
 function segmentsApp(transcriptId, historyNames) {
+    const _bkmInFlight = new Set(); // Alpine リアクティブシステムの外に定義して Set のプロキシ問題を回避
     return {
         transcriptId: transcriptId,
         history: historyNames || [],
@@ -2472,7 +2473,7 @@ function segmentsApp(transcriptId, historyNames) {
         onlineUsers: [],       // [{user_id, name, picture_url, segment_id}] — 自分以外のオンラインユーザー
         _presenceInterval: null,
         _syncInterval: null,   // 共同編集テキスト同期インターバル
-        _bookmarkInFlight: new Set(),  // ブックマーク操作中のsegId（プレゼンス同期との競合防止）
+        // _bookmarkInFlight は segmentsApp クロージャ変数 _bkmInFlight を使用（N4: Alpine プロキシ回避）
         _segTs: {},            // {segId: updated_at timestamp} — 最後に確認した更新日時
         _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
@@ -2592,35 +2593,34 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── ブックマーク ─────────────────────────────────────────
         async toggleBookmark(segId, card) {
-            this._bookmarkInFlight.add(segId);
-            let res, data;
+            _bkmInFlight.add(segId);
             try {
-                res = await fetch(`/api/segments/${segId}/bookmark`, {
+                const res = await fetch(`/api/segments/${segId}/bookmark`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({}),
                 });
                 if (!res.ok) { window.showToast('ブックマークの更新に失敗しました', 'error'); return; }
-                data = await res.json();
+                const data = await res.json();
+                const indicator = card.querySelector('.segment-bookmark-indicator');
+                const btn = card.querySelector('.segment-bookmark-btn');
+                card.dataset.bookmarked = data.bookmarked ? '1' : '0';
+                if (indicator) indicator.style.display = data.bookmarked ? '' : 'none';
+                if (btn) {
+                    btn.classList.toggle('is-bookmarked', data.bookmarked);
+                    btn.title = btn.ariaLabel = data.bookmarked ? 'ブックマーク解除' : 'ブックマーク';
+                }
+                const startSeconds = parseFloat(card.dataset.startSeconds) || 0;
+                if (data.bookmarked) {
+                    const entry = { segId, startSeconds, memo: data.memo, timeLabel: this._formatSeconds(startSeconds) };
+                    this.bookmarks = [...this.bookmarks, entry].sort((a, b) => a.startSeconds - b.startSeconds);
+                } else {
+                    this.bookmarks = this.bookmarks.filter(b => b.segId !== segId);
+                }
+                this._renderBookmarkMarkers();
+                this._renderEditedMarkers();
             } finally {
-                this._bookmarkInFlight.delete(segId);
+                _bkmInFlight.delete(segId);
             }
-            const indicator = card.querySelector('.segment-bookmark-indicator');
-            const btn = card.querySelector('.segment-bookmark-btn');
-            card.dataset.bookmarked = data.bookmarked ? '1' : '0';
-            if (indicator) indicator.style.display = data.bookmarked ? '' : 'none';
-            if (btn) {
-                btn.classList.toggle('is-bookmarked', data.bookmarked);
-                btn.title = btn.ariaLabel = data.bookmarked ? 'ブックマーク解除' : 'ブックマーク';
-            }
-            const startSeconds = parseFloat(card.dataset.startSeconds) || 0;
-            if (data.bookmarked) {
-                const entry = { segId, startSeconds, memo: data.memo, timeLabel: this._formatSeconds(startSeconds) };
-                this.bookmarks = [...this.bookmarks, entry].sort((a, b) => a.startSeconds - b.startSeconds);
-            } else {
-                this.bookmarks = this.bookmarks.filter(b => b.segId !== segId);
-            }
-            this._renderBookmarkMarkers();
-            this._renderEditedMarkers();
         },
 
         async toggleBookmarkById(segId) {
@@ -2980,7 +2980,7 @@ function segmentsApp(transcriptId, historyNames) {
             // サーバーのブックマーク状態に合わせてローカル DOM と Alpine state を更新する
             document.querySelectorAll('.segment-card[data-segment-id]').forEach(card => {
                 const segId = parseInt(card.dataset.segmentId, 10);
-                if (this._bookmarkInFlight.has(segId)) return;  // 操作中は同期をスキップ
+                if (_bkmInFlight.has(segId)) return;  // 操作中は同期をスキップ
                 const serverBm = serverBookmarks[String(segId)];
                 const localBm = card.dataset.bookmarked === '1';
                 const isBm = !!serverBm;
@@ -6746,12 +6746,60 @@ function segmentsApp(transcriptId, historyNames) {
                 this.doRevert(newSeg.id, revertBar.closest('.segment-card'));
             });
 
+            // 整文レビュー UI（採用済み・スキップ済み状態。diff/unknown は分割直後には発生しない）
+            const reviewAcceptedWrap = document.createElement('div');
+            reviewAcceptedWrap.setAttribute('x-show', `reviewMode && reviewData[${newSeg.id}]?.done === 'accepted'`);
+            reviewAcceptedWrap.style.display = 'none';
+            reviewAcceptedWrap.innerHTML = `
+                <div class="review-accepted-bar">
+                    採用済み
+                    <span x-show="reviewedBy[${newSeg.id}]"
+                          class="review-by-badge review-by-badge--accepted"
+                          :title="(reviewedBy[${newSeg.id}]?.name || '') + ' が採用'"
+                          x-text="reviewedBy[${newSeg.id}]?.initials || ''"></span>
+                    <button class="review-undo-btn"
+                            @click.stop="reviewData[${newSeg.id}].done = null; reviewData = {...reviewData}; delete reviewedBy[${newSeg.id}]; reviewedBy = {...reviewedBy}">取り消し</button>
+                </div>
+                <div class="segment-text review-accepted-editable"
+                     x-show="!reviewData[${newSeg.id}]?.editing"
+                     x-text="reviewData[${newSeg.id}]?.polishedText || ''"
+                     @dblclick.stop="reviewData[${newSeg.id}].editing = true"
+                     style="display:none"></div>
+                <textarea class="review-edit-textarea"
+                          x-show="reviewData[${newSeg.id}]?.editing"
+                          :value="reviewData[${newSeg.id}]?.polishedText || ''"
+                          @input.stop="reviewData[${newSeg.id}].polishedText = $event.target.value"
+                          @blur.stop="reviewData[${newSeg.id}].editing = false"
+                          @keydown.escape.stop="reviewData[${newSeg.id}].editing = false"
+                          x-effect="if (reviewData[${newSeg.id}]?.editing) $nextTick(() => $el.focus())"
+                          style="display:none"></textarea>
+            `;
+
+            const reviewSkippedWrap = document.createElement('div');
+            reviewSkippedWrap.setAttribute('x-show', `reviewMode && reviewData[${newSeg.id}]?.done === 'skipped'`);
+            reviewSkippedWrap.style.display = 'none';
+            reviewSkippedWrap.innerHTML = `
+                <div class="review-skipped-bar">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    元のまま採用
+                    <span x-show="reviewedBy[${newSeg.id}]"
+                          class="review-by-badge review-by-badge--skipped"
+                          :title="(reviewedBy[${newSeg.id}]?.name || '') + ' が元のまま採用'"
+                          x-text="reviewedBy[${newSeg.id}]?.initials || ''"></span>
+                    <button class="review-undo-btn"
+                            @click.stop="reviewData[${newSeg.id}].done = null; reviewData = {...reviewData}; delete reviewedBy[${newSeg.id}]; reviewedBy = {...reviewedBy}">取り消し</button>
+                </div>
+                <div class="review-skipped-original" x-text="reviewData[${newSeg.id}]?.original || ''"></div>
+            `;
+
             li.appendChild(header);
             li.appendChild(progressWrap);
             li.appendChild(viewDiv);
             li.appendChild(overlayWrap);
             li.appendChild(splitBtn);
             li.appendChild(revertBar);
+            li.appendChild(reviewAcceptedWrap);
+            li.appendChild(reviewSkippedWrap);
             li.appendChild(commentWrap);
             li.appendChild(commentEditWrap);
 

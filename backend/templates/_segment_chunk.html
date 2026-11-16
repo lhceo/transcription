@@ -329,7 +329,19 @@
                   x-text="reviewedBy[{{ seg.id }}]?.initials || ''"></span>
             <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; reviewData = {...reviewData}; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
         </div>
-        <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted'" class="segment-text" x-text="reviewData[{{ seg.id }}]?.polishedText || ''" style="display:none"></div>
+        <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted' && !reviewData[{{ seg.id }}]?.editing"
+             class="segment-text review-accepted-editable"
+             x-text="reviewData[{{ seg.id }}]?.polishedText || ''"
+             @dblclick.stop="reviewData[{{ seg.id }}].editing = true"
+             style="display:none"></div>
+        <textarea x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted' && reviewData[{{ seg.id }}]?.editing"
+                  class="review-edit-textarea"
+                  :value="reviewData[{{ seg.id }}]?.polishedText || ''"
+                  @input.stop="reviewData[{{ seg.id }}].polishedText = $event.target.value"
+                  @blur.stop="reviewData[{{ seg.id }}].editing = false"
+                  @keydown.escape.stop="reviewData[{{ seg.id }}].editing = false"
+                  x-effect="if (reviewData[{{ seg.id }}]?.editing) $nextTick(() => $el.focus())"
+                  style="display:none"></textarea>
 
         {# スキップ済み #}
         <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped'" x-cloak style="display:none">
