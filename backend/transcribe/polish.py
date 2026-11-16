@@ -6,6 +6,7 @@ Claude API を使って粗い音声認識テキストを正確に整える。
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import logging
@@ -852,6 +853,14 @@ class PolishResult:
     failed_batches: int = 0       # トランケーション等で結果が取得できなかったバッチ数
 
 
+_RETRY_DELAYS = [3, 10, 30]  # レート制限・サーバーエラー時のリトライ間隔(秒)
+
+
+def _is_retryable(e: Exception) -> bool:
+    status = getattr(e, 'status_code', None)
+    return status in (429, 500, 502, 503, 504) or isinstance(e, (ConnectionError, TimeoutError))
+
+
 async def _run_polish_batch(
     client,
     segments: list[dict],
@@ -884,36 +893,48 @@ async def _run_polish_batch(
         segments_json=segments_json,
     )
     logger.info("整文バッチ開始: model=%s segs=%d prompt_chars=%d", model_id, len(segments), len(prompt))
-    try:
-        # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
-        async with client.messages.stream(
-            model=model_id,
-            max_tokens=max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": POLISH_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": prompt,
-                            "cache_control": {"type": "ephemeral"},
-                        }
-                    ],
-                }
-            ],
-        ) as stream:
-            raw = await stream.get_final_text()
-            final_msg = await stream.get_final_message()
-    except Exception as e:
-        logger.error("整文バッチAPI呼び出し失敗: type=%s err=%s", type(e).__name__, e, exc_info=True)
-        raise
+    raw = ""
+    final_msg = None
+    for attempt in range(len(_RETRY_DELAYS) + 1):
+        try:
+            # ストリーミングモードを使用: 長時間リクエストでもタイムアウトしない
+            async with client.messages.stream(
+                model=model_id,
+                max_tokens=max_tokens,
+                system=[
+                    {
+                        "type": "text",
+                        "text": POLISH_SYSTEM,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                ],
+            ) as stream:
+                raw = await stream.get_final_text()
+                final_msg = await stream.get_final_message()
+            break  # 成功
+        except Exception as e:
+            if _is_retryable(e) and attempt < len(_RETRY_DELAYS):
+                delay = _RETRY_DELAYS[attempt]
+                logger.warning(
+                    "整文バッチAPI失敗 (試行%d/%d, %d秒後リトライ): type=%s err=%s",
+                    attempt + 1, len(_RETRY_DELAYS) + 1, delay, type(e).__name__, e,
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error("整文バッチAPI呼び出し失敗: type=%s err=%s", type(e).__name__, e, exc_info=True)
+                raise
 
     raw = raw.strip()
     # max_tokens に達した場合は JSON が途中で切れているため再試行を促す
@@ -1029,15 +1050,19 @@ async def run_polish(
 
     if estimated_output <= _SAFE_OUTPUT_TOKENS:
         # 一括送信（truncated 時は自動分割）
-        suggestions, flags, inp, out, failed = await _run_polish_batch_with_split(
-            client, segments, context_text, model_id, meeting_summary=meeting_summary,
-            max_tokens=model_max_tokens,
-        )
-        merged.update(suggestions)
-        merged_flags.update(flags)
-        total_input += inp
-        total_output += out
-        total_failed_batches += failed
+        try:
+            suggestions, flags, inp, out, failed = await _run_polish_batch_with_split(
+                client, segments, context_text, model_id, meeting_summary=meeting_summary,
+                max_tokens=model_max_tokens,
+            )
+            merged.update(suggestions)
+            merged_flags.update(flags)
+            total_input += inp
+            total_output += out
+            total_failed_batches += failed
+        except Exception as e:
+            logger.error("整文一括処理エラー (全バッチ失敗): %s", e, exc_info=True)
+            total_failed_batches += 1
         if progress_callback:
             progress_callback(1, 1)
     else:
@@ -1068,12 +1093,22 @@ async def run_polish(
                 else:
                     batch_segs.append(s)
 
-            # truncated 時は自動で半分に分割して再試行
-            suggestions, batch_flags, inp, out, failed = await _run_polish_batch_with_split(
-                client, batch_segs, context_text, model_id, meeting_summary=meeting_summary,
-                max_tokens=model_max_tokens,
-            )
-            total_failed_batches += failed
+            # truncated 時は自動で半分に分割して再試行。それ以外の例外は記録してスキップ（後続バッチへ継続）
+            try:
+                suggestions, batch_flags, inp, out, failed = await _run_polish_batch_with_split(
+                    client, batch_segs, context_text, model_id, meeting_summary=meeting_summary,
+                    max_tokens=model_max_tokens,
+                )
+                total_failed_batches += failed
+            except Exception as e:
+                logger.error(
+                    "整文バッチ%d/%d: 予期しないエラー (スキップして継続): type=%s err=%s",
+                    i + 1, actual_batches, type(e).__name__, e, exc_info=True,
+                )
+                total_failed_batches += 1
+                if progress_callback:
+                    progress_callback(i + 1, actual_batches)
+                continue
 
             # オーバーラップ部分（前バッチが担当）は採用しない
             own_ids = {s["id"] for s in segments[own_start:own_end]}

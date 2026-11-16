@@ -1049,6 +1049,12 @@
         <span class="review-progress-hint" x-show="diffReviewMode && pendingReviewCount() > 0">
             グレー = あなたの文字起こし　／　青 = AIの整文案。1件ずつ採用するか元に戻すかを選んでください。
         </span>
+        <div class="review-flag-nav review-pending-nav" x-show="pendingReviewCount() > 0" x-cloak>
+            <span class="review-flag-nav-label" style="color:#f59e0b">📋 未確認</span>
+            <button class="review-flag-nav-btn" @click="navToPending(-1)" title="前の未確認">←</button>
+            <span class="review-flag-nav-count" x-text="pendingNavDisplay()"></span>
+            <button class="review-flag-nav-btn" @click="navToPending(1)" title="次の未確認">→</button>
+        </div>
         <div class="review-flag-nav" x-show="flagCount() > 0" x-cloak>
             <span class="review-flag-nav-label">⚠️ 要確認</span>
             <button class="review-flag-nav-btn" @click="navToFlag(-1)" title="前の要確認箇所">←</button>
@@ -2424,6 +2430,7 @@ function segmentsApp(transcriptId, historyNames) {
         flagWordInputs: {}, // { "segId_word": { active, value, registered } } — フラグ語句チップの入力状態
         _flaggedSegIds: [],  // 要確認ナビゲーター: フラグ付きsegId (DOM順)
         _flagNavIdx: 0,
+        _pendingNavIdx: 0,  // 未確認ナビゲーター
         revertConfirmSegId: null,
         revertConfirmType: null,
         revertConfirmBeforeText: '',
@@ -5179,6 +5186,29 @@ function segmentsApp(transcriptId, historyNames) {
             if (this._flaggedSegIds.length === 0) return;
             this._flagNavIdx = (this._flagNavIdx + delta + this._flaggedSegIds.length) % this._flaggedSegIds.length;
             const segId = this._flaggedSegIds[this._flagNavIdx];
+            const card = document.getElementById(`segment-${segId}`);
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        },
+
+        _getPendingSegIds() {
+            const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
+            return cards
+                .map(card => { const m = card.id.match(/segment-(\d+)/); return m ? parseInt(m[1]) : null; })
+                .filter(id => id !== null && this.reviewData[id] && !this.reviewData[id].done);
+        },
+
+        pendingNavDisplay() {
+            const ids = this._getPendingSegIds();
+            if (ids.length === 0) return '';
+            const idx = Math.min(this._pendingNavIdx, ids.length - 1);
+            return `${idx + 1} / ${ids.length}`;
+        },
+
+        navToPending(delta) {
+            const ids = this._getPendingSegIds();
+            if (ids.length === 0) return;
+            this._pendingNavIdx = (this._pendingNavIdx + delta + ids.length) % ids.length;
+            const segId = ids[this._pendingNavIdx];
             const card = document.getElementById(`segment-${segId}`);
             if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         },
