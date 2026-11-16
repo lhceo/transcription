@@ -709,7 +709,26 @@ async def admin_users_stats(
         for t in processing_jobs
     ]
 
-    return JSONResponse({"users": result, "processing_jobs": processing_jobs_info})
+    # 整文中ジョブ（デプロイ安全チェック用）
+    from backend.projects.routes import get_active_polish_jobs
+    active_polish = get_active_polish_jobs()
+    polish_jobs_info = []
+    for job in active_polish:
+        t_id = job.get("transcript_id")
+        transcript = db.scalar(select(Transcript).where(Transcript.id == t_id)) if t_id else None
+        owner = db.scalar(select(User).where(User.id == transcript.user_id)) if transcript else None
+        # ユーザー名をresultから引く（すでにロード済み）
+        user_name = owner.name if owner else "不明"
+        polish_jobs_info.append({
+            "job_id": job["job_id"],
+            "transcript_id": t_id,
+            "transcript_name": (transcript.original_filename or f"#{t_id}") if transcript else f"#{t_id}",
+            "user_name": user_name,
+            "batch_done": job["batch_done"],
+            "batch_total": job["batch_total"],
+        })
+
+    return JSONResponse({"users": result, "processing_jobs": processing_jobs_info, "polish_jobs": polish_jobs_info})
 
 
 @app.get("/api/admin/disk-status")

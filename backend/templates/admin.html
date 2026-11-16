@@ -74,7 +74,22 @@
                             <span>　·　文字起こし処理中 <strong x-text="processingJobs.length + '件'"></strong>（デプロイすると中断されます）</span>
                         </template>
                         <template x-if="processingJobs.length === 0">
-                            <span>　·　処理中ジョブなし</span>
+                            <span>　·　文字起こし処理中ジョブなし</span>
+                        </template>
+                        <template x-if="polishJobs.length > 0">
+                            <div style="margin-top:6px">
+                                <span style="color:#d97706;font-weight:600">整文中 <strong x-text="polishJobs.length + '件'"></strong>（デプロイするとキャンセルされます）</span>
+                                <template x-for="j in polishJobs" :key="j.job_id">
+                                    <div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;padding-left:8px">
+                                        <span x-text="j.user_name"></span>
+                                        · <span x-text="j.transcript_name"></span>
+                                        · <span x-text="j.batch_done + '/' + j.batch_total + 'バッチ'"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="polishJobs.length === 0">
+                            <span>　·　整文中ジョブなし</span>
                         </template>
                     </div>
                 </div>

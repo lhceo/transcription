@@ -307,6 +307,21 @@ async def create_standalone_project(
     return JSONResponse({"id": proj.id, "name": proj.name}, status_code=201)
 
 
+def get_active_polish_jobs() -> list[dict]:
+    """現在実行中の整文ジョブ一覧（インメモリ）。管理者向け。"""
+    result = []
+    for job_id, job in _polish_jobs.items():
+        if job.get("status") == "running":
+            result.append({
+                "job_id": job_id,
+                "transcript_id": job.get("transcript_id"),
+                "batch_done": job.get("batch_done", 0),
+                "batch_total": job.get("batch_total", 0),
+                "started_at": job.get("started_at"),
+            })
+    return result
+
+
 def get_polish_status_map(transcript_ids: list[int], db: Session) -> dict[int, str]:
     """transcript_id → 'running' | 'done' のマップを返す。ダッシュボード・プロジェクトページのバッジ表示用。"""
     from datetime import datetime, timedelta, timezone

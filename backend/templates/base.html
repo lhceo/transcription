@@ -537,6 +537,7 @@
             loading: false,
             users: [],
             processingJobs: [],
+            polishJobs: [],
             maintenance: false,
             maintenanceLoading: false,
             initPage() {
@@ -557,6 +558,7 @@
                     const data = await res.json();
                     this.users = data.users;
                     this.processingJobs = data.processing_jobs || [];
+                    this.polishJobs = data.polish_jobs || [];
                 } catch (e) {
                     window.showToast('利用状況の取得に失敗しました', 'error');
                 } finally {
@@ -644,7 +646,7 @@
                 return this.users.filter(u => this.isOnline(u));
             },
             isSafeToDeploy() {
-                return this.onlineUsers().length === 0 && this.processingJobs.length === 0;
+                return this.onlineUsers().length === 0 && this.processingJobs.length === 0 && this.polishJobs.length === 0;
             },
         };
     }
