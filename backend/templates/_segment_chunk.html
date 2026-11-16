@@ -26,10 +26,12 @@
         data-comment="{{ seg.comment or '' }}"
         style="margin-top: {{ mt }}"
         :class="{
+            'in-review-mode':       reviewMode,
             'review-accepted':      reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted',
             'review-skipped':       reviewMode && reviewData[{{ seg.id }}]?.done === 'skipped',
             'review-pending-diff':  reviewMode && reviewData[{{ seg.id }}]?.state === 'diff' && !reviewData[{{ seg.id }}]?.done,
             'review-pending-unknown': reviewMode && reviewData[{{ seg.id }}]?.state === 'unknown' && !reviewData[{{ seg.id }}]?.done,
+            'seg-save-error':       saveFailedSegs[{{ seg.id }}],
             'seg-presence-active':  presenceData[{{ seg.id }}] && presenceData[{{ seg.id }}].length > 0
         }">
         <header class="segment-header">
@@ -54,13 +56,15 @@
                 aria-label="ブックマーク済み">
                 <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
             </button>
-            <span class="segment-time" data-start="{{ seg.start_seconds }}">
+            <button type="button" class="segment-time" data-start="{{ seg.start_seconds }}"
+                    @click.stop="seekToTime({{ seg.start_seconds }})"
+                    title="クリックしてこの箇所から再生">
                 {% set ts = seg.start_seconds|int %}
                 {% set th = ts // 3600 %}
                 {% set tm = (ts % 3600) // 60 %}
                 {% set tsec = ts % 60 %}
                 {% if th > 0 %}{{ "%02d:%02d:%02d"|format(th, tm, tsec) }}{% else %}{{ "%02d:%02d"|format(tm, tsec) }}{% endif %}
-            </span>
+            </button>
             {% if seg.is_edited %}
             <span class="seg-badge seg-badge-edited seg-badge-revertable"
                   data-edited="1"
