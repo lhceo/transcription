@@ -1344,7 +1344,6 @@
                     <div
                         class="segment-text segment-text-original"
                         x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}]) && !segFills[{{ seg.id }}]"
-                        :style="(reviewMode && reviewData[{{ seg.id }}]?.done) ? 'display:none' : ''"
                         @click="seekToSegmentFromEvent($event)"
                         @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
@@ -3527,6 +3526,7 @@ function segmentsApp(transcriptId, historyNames) {
             const _cardText = (card) => {
                 const segId = parseInt(card.dataset.segmentId, 10);
                 const rd = this.reviewData[segId];
+                if (rd && rd.done === 'accepted' && rd.polishedText) return rd.polishedText;
                 if (rd && rd.editedText !== null && rd.editedText !== undefined) return rd.editedText;
                 const ta = card.querySelector('.segment-text-edit');
                 return ta ? ta.value : (card.querySelector('.segment-text-remaining')?.textContent || '');
@@ -4918,6 +4918,7 @@ function segmentsApp(transcriptId, historyNames) {
             if (!d) return;
             d.done = 'accepted';
             this.reviewData = { ...this.reviewData }; // x-if 再評価を強制
+            this._buildUnknownSegments(); // 採用後に要確認リストを更新
             const text = d.polishedText || '';
             try {
                 await fetch(`/api/transcripts/${this.transcriptId}/polish/accept-one`, {
