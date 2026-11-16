@@ -5191,10 +5191,21 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         _getPendingSegIds() {
+            // reviewData のキー（文字列）から done が未設定のものを取得
+            const pendingIds = Object.keys(this.reviewData)
+                .filter(id => this.reviewData[id] && !this.reviewData[id].done)
+                .map(id => parseInt(id));
+            if (pendingIds.length === 0) return [];
+            // DOM 順に並べ直す
             const cards = Array.from(document.querySelectorAll('#segment-list .segment-card'));
-            return cards
-                .map(card => { const m = card.id.match(/segment-(\d+)/); return m ? parseInt(m[1]) : null; })
-                .filter(id => id !== null && this.reviewData[id] && !this.reviewData[id].done);
+            const domOrder = new Map();
+            cards.forEach((card, idx) => {
+                const m = card.id.match(/segment-(\d+)/);
+                if (m) domOrder.set(parseInt(m[1]), idx);
+            });
+            return pendingIds
+                .filter(id => domOrder.has(id))
+                .sort((a, b) => (domOrder.get(a) ?? 0) - (domOrder.get(b) ?? 0));
         },
 
         pendingNavDisplay() {
