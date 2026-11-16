@@ -26,7 +26,7 @@ from backend.auth import router as auth_router
 from backend.auth.dependencies import AdminUser, CurrentUser, _RedirectToLogin
 from backend.config import APP_VERSION, load_settings
 from backend.db import get_db
-from backend.db.models import PolishLog, SpeakerHistory, Transcript, TranscriptShare, User
+from backend.db.models import PolishLog, Segment, SpeakerHistory, Transcript, TranscriptShare, User
 from backend.projects import router as projects_router
 from backend.transcribe import router as transcribe_router
 from sqlalchemy import delete, select
@@ -893,6 +893,53 @@ async def clear_speaker_history(
     db.commit()
     logger.info("話者履歴クリア by %s: %d 件削除 (target_user_id=%s)", user["email"], count, user_id)
     return JSONResponse({"deleted": count})
+
+
+@app.get("/api/admin/transcripts/{transcript_id}/polish-status")
+async def admin_transcript_polish_status(
+    transcript_id: int,
+    user: AdminUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    """管理者専用: 指定トランスクリプトのセグメントごとの整文状態を返す。
+    整文済み(is_polished=True)のセグメントとそうでないセグメントの分布を確認するために使用。
+    """
+    transcript = db.get(Transcript, transcript_id)
+    if transcript is None:
+        raise HTTPException(status_code=404, detail="トランスクリプトが見つかりません")
+
+    segments = list(db.scalars(
+        select(Segment)
+        .where(Segment.transcript_id == transcript_id)
+        .order_by(Segment.order_index)
+    ))
+
+    def fmt_time(secs: float) -> str:
+        h = int(secs // 3600)
+        m = int((secs % 3600) // 60)
+        s = int(secs % 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+
+    polished = [s for s in segments if s.is_polished]
+    not_polished = [s for s in segments if not s.is_polished]
+
+    # 未整文セグメントの先頭10件（時刻付き）
+    not_polished_sample = [
+        {"id": s.id, "start": fmt_time(s.start_seconds), "text": s.text_content[:60]}
+        for s in not_polished[:10]
+    ]
+    # 整文済みの最後のセグメント
+    last_polished = polished[-1] if polished else None
+
+    return JSONResponse({
+        "transcript_id": transcript_id,
+        "total": len(segments),
+        "polished_count": len(polished),
+        "not_polished_count": len(not_polished),
+        "last_polished_start": fmt_time(last_polished.start_seconds) if last_polished else None,
+        "last_polished_text": last_polished.text_content[:80] if last_polished else None,
+        "not_polished_sample": not_polished_sample,
+    })
 
 
 @app.get("/admin/users/{target_user_id}", response_class=HTMLResponse)

@@ -2223,10 +2223,16 @@ function audioPlayer(transcriptId) {
             const track = document.querySelector('.player-timeline-track');
             if (!track) return;
             const rect = track.getBoundingClientRect();
+            if (rect.width === 0) return;
             const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             const audio = this.$refs.audioEl;
-            if (audio && this.duration > 0) {
-                audio.currentTime = ratio * this.duration;
+            if (!audio) return;
+            // this.duration が未設定の場合は audio.duration を直接参照
+            const dur = (this.duration > 0) ? this.duration
+                : (!isNaN(audio.duration) && isFinite(audio.duration) ? audio.duration : 0);
+            if (dur > 0) {
+                audio.currentTime = ratio * dur;
+                if (!this.duration) this.duration = dur;
             }
         },
 
@@ -5167,7 +5173,10 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         flagCount() {
-            return this._flaggedSegIds.length;
+            // 採用済み・スキップ済みを除いた未確認の要確認のみカウント
+            return this._flaggedSegIds.filter(id =>
+                this.reviewData[id] && !this.reviewData[id].done
+            ).length;
         },
 
         pendingFlagCount() {
@@ -5178,14 +5187,17 @@ function segmentsApp(transcriptId, historyNames) {
         },
 
         flagNavDisplay() {
-            if (this._flaggedSegIds.length === 0) return '';
-            return `${this._flagNavIdx + 1} / ${this._flaggedSegIds.length}`;
+            const active = this._flaggedSegIds.filter(id => this.reviewData[id] && !this.reviewData[id].done);
+            if (active.length === 0) return '';
+            const idx = Math.min(this._flagNavIdx, active.length - 1);
+            return `${idx + 1} / ${active.length}`;
         },
 
         navToFlag(delta) {
-            if (this._flaggedSegIds.length === 0) return;
-            this._flagNavIdx = (this._flagNavIdx + delta + this._flaggedSegIds.length) % this._flaggedSegIds.length;
-            const segId = this._flaggedSegIds[this._flagNavIdx];
+            const active = this._flaggedSegIds.filter(id => this.reviewData[id] && !this.reviewData[id].done);
+            if (active.length === 0) return;
+            this._flagNavIdx = (this._flagNavIdx + delta + active.length) % active.length;
+            const segId = active[this._flagNavIdx];
             const card = document.getElementById(`segment-${segId}`);
             if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         },
