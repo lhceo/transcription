@@ -136,7 +136,7 @@
                 </span>
             </template>
             {# ホバーアクション（コメント・ブックマーク・原文に戻す・ゴミ箱） #}
-            <div class="segment-actions" x-show="!reviewMode">
+            <div class="segment-actions">
                 <button type="button"
                     class="segment-action-btn segment-comment-btn" :class="{'has-comment': segComments[{{ seg.id }}]}"
                     data-segment-id="{{ seg.id }}"
