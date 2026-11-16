@@ -3270,14 +3270,25 @@ async def export_to_google_docs(
                     "Content-Type": f"multipart/related; boundary={boundary}",
                 },
             )
-        if res.status_code == 401:
+        logger.info("Google Drive API: status=%s", res.status_code)
+        if res.status_code in (401, 403):
+            # 401: トークン無効、403: スコープ不足 or Drive API 未有効化
+            try:
+                err_msg = res.json().get("error", {}).get("message", "")
+            except Exception:
+                err_msg = res.text[:200]
+            logger.warning("Google Drive API 認証エラー: %s %s", res.status_code, err_msg)
             raise HTTPException(
                 status_code=401,
-                detail={"code": "GOOGLE_AUTH_REQUIRED", "message": "Google への再ログインが必要です"},
+                detail={"code": "GOOGLE_AUTH_REQUIRED", "message": f"Google Drive へのアクセスが拒否されました（{err_msg}）。ログアウト後に再度ログインしてください。"},
             )
         if not res.is_success:
-            logger.error("Google Drive API エラー: %s %s", res.status_code, res.text)
-            raise HTTPException(status_code=502, detail={"code": "GOOGLE_API_ERROR", "message": "Google Drive への作成に失敗しました"})
+            try:
+                err_msg = res.json().get("error", {}).get("message", res.text[:200])
+            except Exception:
+                err_msg = res.text[:200]
+            logger.error("Google Drive API エラー: %s %s", res.status_code, err_msg)
+            raise HTTPException(status_code=502, detail={"code": "GOOGLE_API_ERROR", "message": f"Google Drive エラー（{res.status_code}）: {err_msg}"})
         data = res.json()
         return JSONResponse({"url": data["webViewLink"], "title": doc_title})
     except httpx.TimeoutException:

@@ -755,12 +755,13 @@
                     try {
                         const res = await fetch(`/api/transcripts/{{ transcript.id }}/export/google-docs?include_vocab=${this.includeVocab}&include_meta=${this.includeMeta}`, { method: 'POST' });
                         if (res.status === 401) {
-                            window.showToast('Google Drive を使用するには再ログインが必要です。ログアウト後に再度ログインしてください。', 'warning', 6000);
+                            const data = await res.json().catch(() => ({}));
+                            window.showToast(data.detail?.message || 'Google Drive を使用するには再ログインが必要です。ログアウト後に再度ログインしてください。', 'warning', 8000);
                             return;
                         }
                         if (!res.ok) {
                             const data = await res.json().catch(() => ({}));
-                            window.showToast(data.detail?.message || 'Google Drive へのエクスポートに失敗しました', 'error');
+                            window.showToast(data.detail?.message || 'Google Drive へのエクスポートに失敗しました', 'error', 8000);
                             return;
                         }
                         const { url, title } = await res.json();
