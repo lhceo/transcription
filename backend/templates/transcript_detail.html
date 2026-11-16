@@ -3683,6 +3683,8 @@ function segmentsApp(transcriptId, historyNames) {
             card.style.outline = '2px solid #f59e0b';
             setTimeout(() => {
                 card.style.outline = '';
+                // 整文レビュー中は編集モードに入らない（元テキスト表示・dimming防止）
+                if (this.reviewMode) return;
                 if (!this.editMode) this.editMode = true;
                 const ta = card.querySelector('.segment-text-edit');
                 if (ta) {
@@ -3731,6 +3733,8 @@ function segmentsApp(transcriptId, historyNames) {
             // スマホでは @dblclick を起点とする編集モード入りを無効化
             // (v1.0.3 と同方針、iOS の拡大ジェスチャー衝突回避)
             if (window.matchMedia('(max-width: 640px)').matches) return;
+            // 整文レビュー中は編集モードへの遷移を防ぐ
+            if (this.reviewMode) return;
             const target = event.currentTarget || event.target;
             const card = target.closest ? target.closest('.segment-card') : null;
             if (!card) return;
@@ -4222,8 +4226,8 @@ function segmentsApp(transcriptId, historyNames) {
             audio.currentTime = seekTo;
             if (audio.paused) audio.play().catch(() => {});
 
-            // 編集モードでなければ通常通り編集モードに入る
-            if (!this.editMode) this.enterEditModeForSegment(e);
+            // 編集モードでなければ通常通り編集モードに入る（レビューモード中は除く）
+            if (!this.editMode && !this.reviewMode) this.enterEditModeForSegment(e);
         },
 
         seekFromTextareaDblClick(e) {
@@ -4252,13 +4256,15 @@ function segmentsApp(transcriptId, historyNames) {
             document.querySelectorAll('#segment-list .segment-card').forEach(card => {
                 const cardId = parseInt(card.dataset.segmentId, 10);
                 const isEditingThis = this.editMode && cardId === this.focusedEditingSegmentId;
+                // レビューモード中はreviewDataがあるセグメントの元テキストを非表示に保つ
+                const hiddenByReview = this.reviewMode && !!this.reviewData[cardId];
                 const textDiv = card.querySelector('.segment-text');
                 const textarea = card.querySelector('.segment-text-edit');
                 const overlayWrap = card.querySelector('.segment-text-overlay-wrap');
                 const overlay = card.querySelector('.segment-text-overlay');
                 const splitBtn = card.querySelector('.segment-split-btn');
                 const progressWrap = card.querySelector('.segment-progress-wrap');
-                if (textDiv) textDiv.style.display = isEditingThis ? 'none' : '';
+                if (textDiv) textDiv.style.display = isEditingThis ? 'none' : (hiddenByReview ? 'none' : '');
                 if (textarea) textarea.style.display = isEditingThis ? '' : 'none';
                 // オーバーレイ: 編集中のみ有効。非編集時はリセット
                 if (overlay) {

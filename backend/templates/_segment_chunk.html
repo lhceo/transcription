@@ -197,7 +197,7 @@
 
         {# v1.1 Option C インラインエディタ #}
         <div
-            class="segment-text"
+            class="segment-text segment-text-original"
             x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}]) && !segFills[{{ seg.id }}]"
             @click="seekToSegmentFromEvent($event)"
             @dblclick="seekFromTextDblClick($event)"
