@@ -1459,9 +1459,8 @@
                     {# diff: 整文テキストを主役に、元文は折りたたみ #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'diff' && !reviewData[{{ seg.id }}].done">
                     <div>
-                        {# AIフラグ（副次情報として上部に表示） #}
-                        <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
-                        <div class="review-flag-list">
+                        {# AIフラグ（副次情報として上部に表示）— x-if から x-show に変更して Alpine v3 の x-if ネスト問題を回避 #}
+                        <div class="review-flag-list" x-show="reviewData[{{ seg.id }}]?.flags?.length > 0" x-cloak style="display:none">
                             <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
                                 <div class="review-flag-row">
                                     <span class="review-flag-badge"
@@ -1521,7 +1520,6 @@
                                 </div>
                             </template>
                         </div>
-                        </template>
                         {# 整文後テキスト（主役：常に先に表示・直接編集可） #}
                         <div class="review-edit-section review-edit-primary">
                             <div class="review-edit-header-row">
@@ -1555,9 +1553,8 @@
                     {# unknown（？）直接編集テキストエリア #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
                     <div>
-                        {# AIフラグ（要確認の内容を表示） #}
-                        <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
-                        <div class="review-flag-list">
+                        {# AIフラグ（要確認の内容を表示）— x-if から x-show に変更して Alpine v3 の x-if ネスト問題を回避 #}
+                        <div class="review-flag-list" x-show="reviewData[{{ seg.id }}]?.flags?.length > 0" x-cloak style="display:none">
                             <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
                                 <div class="review-flag-row">
                                     <span class="review-flag-badge"
@@ -1567,7 +1564,6 @@
                                 </div>
                             </template>
                         </div>
-                        </template>
                         {# 整文後テキスト（直接編集可） #}
                         <div class="review-edit-section review-edit-primary">
                             <div class="review-edit-header-row">
@@ -2476,6 +2472,7 @@ function segmentsApp(transcriptId, historyNames) {
         onlineUsers: [],       // [{user_id, name, picture_url, segment_id}] — 自分以外のオンラインユーザー
         _presenceInterval: null,
         _syncInterval: null,   // 共同編集テキスト同期インターバル
+        _bookmarkInFlight: new Set(),  // ブックマーク操作中のsegId（プレゼンス同期との競合防止）
         _segTs: {},            // {segId: updated_at timestamp} — 最後に確認した更新日時
         _editInactivityTimer: null,
         reviewedSegments: {},  // {segment_id: {reviewer_name, reviewer_picture, reviewed_at}}
@@ -2595,12 +2592,18 @@ function segmentsApp(transcriptId, historyNames) {
 
         // ── ブックマーク ─────────────────────────────────────────
         async toggleBookmark(segId, card) {
-            const res = await fetch(`/api/segments/${segId}/bookmark`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({}),
-            });
-            if (!res.ok) { window.showToast('ブックマークの更新に失敗しました', 'error'); return; }
-            const data = await res.json();
+            this._bookmarkInFlight.add(segId);
+            let res, data;
+            try {
+                res = await fetch(`/api/segments/${segId}/bookmark`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({}),
+                });
+                if (!res.ok) { window.showToast('ブックマークの更新に失敗しました', 'error'); return; }
+                data = await res.json();
+            } finally {
+                this._bookmarkInFlight.delete(segId);
+            }
             const indicator = card.querySelector('.segment-bookmark-indicator');
             const btn = card.querySelector('.segment-bookmark-btn');
             card.dataset.bookmarked = data.bookmarked ? '1' : '0';
@@ -2977,6 +2980,7 @@ function segmentsApp(transcriptId, historyNames) {
             // サーバーのブックマーク状態に合わせてローカル DOM と Alpine state を更新する
             document.querySelectorAll('.segment-card[data-segment-id]').forEach(card => {
                 const segId = parseInt(card.dataset.segmentId, 10);
+                if (this._bookmarkInFlight.has(segId)) return;  // 操作中は同期をスキップ
                 const serverBm = serverBookmarks[String(segId)];
                 const localBm = card.dataset.bookmarked === '1';
                 const isBm = !!serverBm;
@@ -2990,7 +2994,7 @@ function segmentsApp(transcriptId, historyNames) {
                     btn.title = btn.ariaLabel = isBm ? 'ブックマーク解除' : 'ブックマーク';
                 }
             });
-            // Alpine bookmarks 配列をサーバー状態で再構築
+            // Alpine bookmarks 配列をサーバー状態で再構築（操作中のセグメントは現状維持）
             const newBookmarks = [];
             for (const [k, bm] of Object.entries(serverBookmarks)) {
                 newBookmarks.push({
@@ -2999,6 +3003,12 @@ function segmentsApp(transcriptId, historyNames) {
                     memo: bm.memo,
                     timeLabel: this._formatSeconds(bm.start_seconds),
                 });
+            }
+            // 操作中（in-flight）のセグメントは現在のローカル状態を維持
+            for (const bm of this.bookmarks) {
+                if (this._bookmarkInFlight.has(bm.segId) && !newBookmarks.some(b => b.segId === bm.segId)) {
+                    newBookmarks.push(bm);
+                }
             }
             newBookmarks.sort((a, b) => a.startSeconds - b.startSeconds);
             this.bookmarks = newBookmarks;
@@ -6482,10 +6492,13 @@ function segmentsApp(transcriptId, historyNames) {
             badgeText.textContent = effectiveName;
             badge.appendChild(badgeText);
 
-            const time = document.createElement('span');
+            const time = document.createElement('button');
+            time.type = 'button';
             time.className = 'segment-time';
             time.dataset.start = String(newSeg.start_seconds);
+            time.title = 'クリックしてこの箇所から再生';
             time.textContent = this.formatTime(newSeg.start_seconds);
+            time.addEventListener('click', (e) => { e.stopPropagation(); this.seekToTime(newSeg.start_seconds); });
 
             const edited = document.createElement('span');
             edited.className = 'seg-badge seg-badge-edited seg-badge-revertable';
