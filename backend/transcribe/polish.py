@@ -829,7 +829,7 @@ speakerフィールドの話者名・会社・役職・役割をコンテキス�
 # 出力トークン閾値: これを超えると分割処理に切り替える
 # フラグJSON（type/note/words）が1件あたり300〜500 tok になるため
 # テキスト推定値だけでは足りない。_PER_SEG_JSON_OVERHEAD で吸収する。
-_SAFE_OUTPUT_TOKENS = 1500
+_SAFE_OUTPUT_TOKENS = 4000
 # 1セグメントあたりの JSON 構造オーバーヘッド (tokens):
 # フラグなし: {"id":X,"text":"..."} ≈ 40 tok
 # フラグあり: + {"type":"...","note":"...","words":[...]} × N ≈ 300〜500 tok
@@ -853,7 +853,7 @@ class PolishResult:
     failed_batches: int = 0       # トランケーション等で結果が取得できなかったバッチ数
 
 
-_RETRY_DELAYS = [3, 10, 30]  # レート制限・サーバーエラー時のリトライ間隔(秒)
+_RETRY_DELAYS = [5, 15, 60]  # レート制限・サーバーエラー時のリトライ間隔(秒)
 
 
 def _is_retryable(e: Exception) -> bool:
@@ -1077,6 +1077,8 @@ async def run_polish(
         prev_suggestions: dict[int, str] = {}
 
         for i in range(actual_batches):
+            if i > 0:
+                await asyncio.sleep(1.5)  # レート制限を避けるバッチ間インターバル
             own_start = i * batch_size
             own_end = min(len(segments), (i + 1) * batch_size)
             if own_start >= len(segments):
