@@ -1425,7 +1425,7 @@
                               class="review-by-badge review-by-badge--accepted"
                               :title="(reviewedBy[{{ seg.id }}]?.name || '') + ' が採用'"
                               x-text="reviewedBy[{{ seg.id }}]?.initials || ''"></span>
-                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
+                        <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; reviewData = {...reviewData}; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
                     </div>
                     <div x-show="reviewMode && reviewData[{{ seg.id }}]?.done === 'accepted' && !reviewData[{{ seg.id }}]?.editing"
                          class="segment-text review-accepted-editable"
@@ -1450,7 +1450,7 @@
                                   class="review-by-badge review-by-badge--skipped"
                                   :title="(reviewedBy[{{ seg.id }}]?.name || '') + ' が元のまま採用'"
                                   x-text="reviewedBy[{{ seg.id }}]?.initials || ''"></span>
-                            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
+                            <button class="review-undo-btn" @click.stop="reviewData[{{ seg.id }}].done = null; reviewData = {...reviewData}; delete reviewedBy[{{ seg.id }}]; reviewedBy = {...reviewedBy}">取り消し</button>
                         </div>
                         <div class="review-skipped-original" x-text="reviewData[{{ seg.id }}]?.original || ''"></div>
                     </div>
@@ -4855,6 +4855,7 @@ function segmentsApp(transcriptId, historyNames) {
                     }
                 }
             });
+            this.reviewData = { ...this.reviewData };
             this._saveReviewProgress();
         },
 
@@ -4899,6 +4900,7 @@ function segmentsApp(transcriptId, historyNames) {
             const d = this.reviewData[segId];
             if (!d) return;
             d.done = 'accepted';
+            this.reviewData = { ...this.reviewData }; // x-if 再評価を強制
             const text = d.polishedText || '';
             try {
                 await fetch(`/api/transcripts/${this.transcriptId}/polish/accept-one`, {
@@ -4925,6 +4927,7 @@ function segmentsApp(transcriptId, historyNames) {
             });
             d.polishedText = result.trim();
             d.done = 'accepted';
+            this.reviewData = { ...this.reviewData };
         },
 
         // ── コンテキスト分類ヘルパー ──────────────────────────────────────────
@@ -4944,6 +4947,7 @@ function segmentsApp(transcriptId, historyNames) {
             const d = this.reviewData[segId];
             if (!d) return;
             d.done = 'skipped';
+            this.reviewData = { ...this.reviewData }; // x-if 再評価を強制
             if (d.original) {
                 try {
                     await fetch(`/api/segments/${segId}`, {
@@ -5132,6 +5136,7 @@ function segmentsApp(transcriptId, historyNames) {
                     // ここでは自動採用せず、明示的に採用したものだけ保存する
                 }
             });
+            if (autoAccepted > 0) this.reviewData = { ...this.reviewData };
 
             const accepted_texts = {};
             Object.entries(this.reviewData).forEach(([id, d]) => {
@@ -5337,6 +5342,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         async applyReview() {
             Object.values(this.reviewData).forEach(d => { if (!d.done) d.done = 'skipped'; });
+            this.reviewData = { ...this.reviewData };
 
             // 一括スキップされたセグメントの元テキストをDBに即時保存（他ユーザーへも反映）
             const skipPromises = Object.entries(this.reviewData)
@@ -5433,6 +5439,7 @@ function segmentsApp(transcriptId, historyNames) {
 
         async applyDiffReview() {
             Object.values(this.reviewData).forEach(d => { if (!d.done) d.done = 'accepted'; });
+            this.reviewData = { ...this.reviewData };
             const revertIds = Object.entries(this.reviewData)
                 .filter(([, d]) => d.done === 'skipped')
                 .map(([id]) => parseInt(id));
