@@ -3733,8 +3733,9 @@ function segmentsApp(transcriptId, historyNames) {
             // スマホでは @dblclick を起点とする編集モード入りを無効化
             // (v1.0.3 と同方針、iOS の拡大ジェスチャー衝突回避)
             if (window.matchMedia('(max-width: 640px)').matches) return;
-            // 整文レビュー中は編集モードへの遷移を防ぐ
-            if (this.reviewMode) return;
+            // 整文レビュー中かつ reviewData があるセグメントは整文後(編集可)で編集するため編集モードへの遷移を防ぐ
+            const eventCard = (event.currentTarget || event.target)?.closest?.('.segment-card');
+            if (this.reviewMode && eventCard && this.reviewData[parseInt(eventCard.dataset.segmentId, 10)]) return;
             const target = event.currentTarget || event.target;
             const card = target.closest ? target.closest('.segment-card') : null;
             if (!card) return;
@@ -4226,8 +4227,8 @@ function segmentsApp(transcriptId, historyNames) {
             audio.currentTime = seekTo;
             if (audio.paused) audio.play().catch(() => {});
 
-            // 編集モードでなければ通常通り編集モードに入る（レビューモード中は除く）
-            if (!this.editMode && !this.reviewMode) this.enterEditModeForSegment(e);
+            // 編集モードでなければ通常通り編集モードに入る（整文レビュー中かつ reviewData あり の場合は除く）
+            if (!this.editMode) this.enterEditModeForSegment(e);
         },
 
         seekFromTextareaDblClick(e) {
