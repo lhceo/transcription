@@ -1127,7 +1127,7 @@
         </div>
     {% else %}
         <ol class="segment-list" id="segment-list"
-            :class="{ 'segment-list-editing': editMode, 'segment-list-focus': editMode && focusedEditingSegmentId !== null }">
+            :class="{ 'segment-list-editing': editMode, 'segment-list-focus': editMode && focusedEditingSegmentId !== null, 'review-mode-active': reviewMode }">
             {% for seg in segments[:200] %}
                 {% set effective_name = seg.display_name or speaker_name_map.get(seg.speaker_label) or seg.speaker_label %}
                 {% set color_idx = name_to_color.get(effective_name, loop.index0 % 8) %}
@@ -6454,7 +6454,7 @@ function segmentsApp(transcriptId, historyNames) {
             const effectiveName = (prevCard.querySelector('.speaker-badge-text')?.textContent || newSeg.speaker_label).trim();
 
             const li = document.createElement('li');
-            li.className = 'segment-card';
+            li.className = 'segment-card' + (this.reviewMode ? ' in-review-mode' : '');
             li.style.marginTop = '8px'; // 分割時は直前と同一話者なので同一話者間隔
             li.id = `segment-${newSeg.id}`;
             li.dataset.segmentId = String(newSeg.id);
