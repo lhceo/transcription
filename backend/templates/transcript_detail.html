@@ -285,6 +285,20 @@
         </span>
 
         <div class="player-controls-center">
+            {# 10秒戻る #}
+            <button
+                type="button"
+                class="player-skip-btn player-skip-btn--10"
+                @click="seekBy(-10)"
+                title="10秒戻る"
+                aria-label="10秒戻る"
+            >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="player-skip-icon">
+                    <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+                </svg>
+                <span class="player-skip-label">10s</span>
+            </button>
+
             {# 3秒戻る #}
             <button
                 type="button"
@@ -328,6 +342,20 @@
                 aria-label="3秒進む"
             >
                 <span class="player-skip-label">3s</span>
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="player-skip-icon">
+                    <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
+                </svg>
+            </button>
+
+            {# 10秒進む #}
+            <button
+                type="button"
+                class="player-skip-btn player-skip-btn--10"
+                @click="seekBy(10)"
+                title="10秒進む"
+                aria-label="10秒進む"
+            >
+                <span class="player-skip-label">10s</span>
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="player-skip-icon">
                     <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
                 </svg>
