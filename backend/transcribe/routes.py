@@ -3170,6 +3170,120 @@ async def export_transcript(
     )
 
 
+@router.post("/api/transcripts/{transcript_id}/export/google-docs")
+async def export_to_google_docs(
+    request: Request,
+    transcript_id: int,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    include_vocab: bool = True,
+    include_meta: bool = True,
+) -> JSONResponse:
+    """Google Drive に Google Doc として書き起こしを作成し、URL を返す。"""
+    import httpx
+    import json
+    import time
+
+    settings = load_settings()
+    transcript = db.get(Transcript, transcript_id)
+    is_admin = user["email"].lower() == settings.admin_email
+    if transcript is None or transcript.deleted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    if not is_admin and not _can_access(transcript, user["id"], db):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+
+    # Google アクセストークンの取得・有効期限チェック
+    access_token: str = request.session.get("google_access_token", "")
+    expires_at: int = request.session.get("google_token_expires_at", 0)
+    if not access_token or (expires_at and time.time() > expires_at - 60):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "GOOGLE_AUTH_REQUIRED", "message": "Google への再ログインが必要です"},
+        )
+
+    # エクスポート用テキストを生成（TXT と同じ内容）
+    segments = list(
+        db.scalars(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.order_index)
+        )
+    )
+    speakers = list(
+        db.scalars(select(Speaker).where(Speaker.transcript_id == transcript_id))
+    )
+    name_map = {s.speaker_label: s.display_name for s in speakers}
+
+    vocab_items: list[dict] = []
+    if include_vocab:
+        if transcript.project_id:
+            proj_vocab = list(db.scalars(
+                select(ProjectVocabulary)
+                .where(ProjectVocabulary.project_id == transcript.project_id)
+                .order_by(ProjectVocabulary.id)
+            ))
+            vocab_items.extend({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""} for v in proj_vocab)
+        transcript_vocab = list(db.scalars(
+            select(TranscriptVocabulary)
+            .where(TranscriptVocabulary.transcript_id == transcript_id)
+            .order_by(TranscriptVocabulary.id)
+        ))
+        existing_words = {v["word"].lower() for v in vocab_items}
+        for v in transcript_vocab:
+            if v.word.lower() not in existing_words:
+                vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
+                existing_words.add(v.word.lower())
+        user_vocab = list(db.scalars(
+            select(UserVocabulary).where(UserVocabulary.user_id == user["id"]).order_by(UserVocabulary.id)
+        ))
+        for v in user_vocab:
+            if v.word.lower() not in existing_words:
+                vocab_items.append({"word": v.word, "reading": v.reading or "", "meaning": v.meaning or ""})
+        full_text = " ".join(s.text_content or "" for s in segments)
+        vocab_items = [v for v in vocab_items if v["word"] and v["word"] in full_text]
+
+    meta_lines = _build_meta_block(transcript, speakers if include_meta else None, segments if include_meta else None) if include_meta else None
+    txt_content = _build_export_txt(segments, name_map, vocab_items or None, meta_lines, None, None)
+
+    # Google Drive multipart upload で Google Doc に変換
+    import os
+    raw_name = transcript_display_name(transcript)
+    doc_title = os.path.splitext(raw_name)[0] or "文字起こし"
+
+    boundary = "noto_gdocs_boundary_xK9mP"
+    metadata = json.dumps({"name": doc_title, "mimeType": "application/vnd.google-apps.document"}).encode("utf-8")
+    body = (
+        f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".encode()
+        + metadata
+        + f"\r\n--{boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n".encode()
+        + txt_content.encode("utf-8")
+        + f"\r\n--{boundary}--".encode()
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+                content=body,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": f"multipart/related; boundary={boundary}",
+                },
+            )
+        if res.status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "GOOGLE_AUTH_REQUIRED", "message": "Google への再ログインが必要です"},
+            )
+        if not res.is_success:
+            logger.error("Google Drive API エラー: %s %s", res.status_code, res.text)
+            raise HTTPException(status_code=502, detail={"code": "GOOGLE_API_ERROR", "message": "Google Drive への作成に失敗しました"})
+        data = res.json()
+        return JSONResponse({"url": data["webViewLink"], "title": doc_title})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail={"code": "TIMEOUT", "message": "Google Drive への接続がタイムアウトしました"})
+
+
 def _urlencode_filename(name: str) -> str:
     from urllib.parse import quote
 

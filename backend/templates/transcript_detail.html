@@ -728,6 +728,7 @@
                 open: false,
                 includeVocab: true,
                 includeMeta: true,
+                gdocsLoading: false,
                 init() { window.addEventListener('open-export-menu', () => { this.open = true; }); },
                 async doExport(fmt) {
                     const params = new URLSearchParams({
@@ -747,6 +748,29 @@
                     }
                     this.open = false;
                     window.dispatchEvent(new CustomEvent('open-quality-gate', { detail: { url } }));
+                },
+                async doGoogleDocs() {
+                    this.gdocsLoading = true;
+                    this.open = false;
+                    try {
+                        const res = await fetch(`/api/transcripts/{{ transcript.id }}/export/google-docs?include_vocab=${this.includeVocab}&include_meta=${this.includeMeta}`, { method: 'POST' });
+                        if (res.status === 401) {
+                            window.showToast('Google Drive を使用するには再ログインが必要です。ログアウト後に再度ログインしてください。', 'warning', 6000);
+                            return;
+                        }
+                        if (!res.ok) {
+                            const data = await res.json().catch(() => ({}));
+                            window.showToast(data.detail?.message || 'Google Drive へのエクスポートに失敗しました', 'error');
+                            return;
+                        }
+                        const { url, title } = await res.json();
+                        window.open(url, '_blank', 'noopener');
+                        window.showToast(`「${title}」を Google ドライブに作成しました`);
+                    } catch (e) {
+                        window.showToast('Google Drive へのエクスポートに失敗しました', 'error');
+                    } finally {
+                        this.gdocsLoading = false;
+                    }
                 }
             }" @click.outside="open = false">
                 <button type="button" class="btn btn-secondary-outline" @click="open = !open" :aria-expanded="open">エクスポート ▾</button>
@@ -772,14 +796,13 @@
                     <button type="button" class="export-option" @click="doExport('json')">
                         <strong>JSON</strong><span>構造化データ（再利用向け）</span>
                     </button>
-                    <div class="export-option export-option-coming-soon">
+                    <button type="button" class="export-option" @click.stop="doGoogleDocs()" :disabled="gdocsLoading">
                         <strong>
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:3px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="#4285F4"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="none"/></svg>
-                            Google ドキュメント
-                            <span class="export-coming-soon-badge">近日公開</span>
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:3px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="#4285F4" opacity=".3"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round"/></svg>
+                            <span x-text="gdocsLoading ? '作成中…' : 'Google ドキュメント'"></span>
                         </strong>
-                        <span>Workspace に直接エクスポート</span>
-                    </div>
+                        <span>Google Drive に直接エクスポート</span>
+                    </button>
                 </div>
             </div>
             {# ショートカットヘルプ #}

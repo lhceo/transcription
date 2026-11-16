@@ -151,6 +151,9 @@ async def auth_google_callback(request: Request) -> RedirectResponse:
         "picture": picture,
         "sub": sub,
     }
+    # Google Drive API 用アクセストークンを保存（Google Docs エクスポートで使用）
+    request.session["google_access_token"] = token.get("access_token", "")
+    request.session["google_token_expires_at"] = int(token.get("expires_at") or 0)
 
     logger.info("ログイン成功: %s", email)
     return RedirectResponse(url="/", status_code=302)

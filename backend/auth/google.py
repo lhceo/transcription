@@ -28,7 +28,8 @@ if _settings.has_google_oauth:
         client_kwargs={
             # openid: ID トークンを返してもらう（メール・名前の取得に必要）
             # email / profile: メールアドレスとプロフィール情報
-            "scope": "openid email profile",
+            # drive.file: このアプリが作成したファイルの作成・管理（Google Docs エクスポート用）
+            "scope": "openid email profile https://www.googleapis.com/auth/drive.file",
             # PKCE: モダンな OAuth 2.0 ベストプラクティス
             "code_challenge_method": "S256",
         },
