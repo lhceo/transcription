@@ -1343,6 +1343,7 @@
                     <div
                         class="segment-text segment-text-original"
                         x-show="!shouldShowTextarea({{ seg.id }}) && !(reviewMode && reviewData[{{ seg.id }}]) && !segFills[{{ seg.id }}]"
+                        :style="(reviewMode && reviewData[{{ seg.id }}]?.done) ? 'display:none' : ''"
                         @click="seekToSegmentFromEvent($event)"
                         @dblclick="seekFromTextDblClick($event)"
                     ><span class="segment-text-progress"></span><span class="segment-text-remaining">{{ seg.text_content }}</span></div>
@@ -1553,7 +1554,7 @@
                     {# unknown（？）直接編集テキストエリア #}
                     <template x-if="reviewMode && reviewData[{{ seg.id }}] && reviewData[{{ seg.id }}].state === 'unknown' && !reviewData[{{ seg.id }}].done">
                     <div>
-                        {# AIフラグ（unknown でも表示） #}
+                        {# AIフラグ（要確認の内容を表示） #}
                         <template x-if="reviewData[{{ seg.id }}]?.flags?.length > 0">
                         <div class="review-flag-list">
                             <template x-for="flag in reviewData[{{ seg.id }}].flags" :key="flag.type + '{{ seg.id }}'">
@@ -1566,19 +1567,17 @@
                             </template>
                         </div>
                         </template>
-                        {# 直接編集エリア #}
-                        <div class="review-edit-section review-edit-direct">
+                        {# 整文後テキスト（直接編集可） #}
+                        <div class="review-edit-section review-edit-primary">
                             <div class="review-edit-header-row">
-                                <span class="review-edit-label">整文後のテキストを編集してください</span>
+                                <span class="review-edit-label">整文後のテキスト（編集して採用）</span>
                                 <button class="review-compare-btn" type="button"
                                         @click.stop="reviewData[{{ seg.id }}].showOriginal = !reviewData[{{ seg.id }}].showOriginal"
                                         x-text="reviewData[{{ seg.id }}].showOriginal ? '比較を閉じる' : '元文と比較'"></button>
                             </div>
-                            <textarea class="review-edit-textarea"
-                                      :value="reviewData[{{ seg.id }}].editedText ?? ''"
-                                      @input.stop="reviewData[{{ seg.id }}].editedText = $event.target.value; _buildUnknownSegments()"
-                                      :placeholder="_getUnknownPreviewText({{ seg.id }})"
-                                      rows="3" @click.stop
+                            <textarea class="review-edit-textarea review-edit-textarea-primary"
+                                      x-model="reviewData[{{ seg.id }}].polishedText"
+                                      rows="4" @click.stop
                                       @focus.stop="updatePresence({{ seg.id }})"
                                       @blur.stop="updatePresence(null)"></textarea>
                         </div>
@@ -1589,8 +1588,11 @@
                             <span x-text="reviewData[{{ seg.id }}]?.original || ''"></span>
                         </div>
                         <div class="review-inline-actions">
-                            <button class="btn btn-sm btn-outline" style="color:#64748b" @click.stop="skipAndSaveOriginal({{ seg.id }})">元のままにする</button>
-                            <button class="btn btn-sm btn-primary" @click.stop="buildAndAcceptReview({{ seg.id }})">採用</button>
+                            <button class="btn btn-sm btn-outline" style="color:#64748b"
+                                    x-text="diffReviewMode ? '元に戻す' : '元のままにする'"
+                                    @click.stop="skipAndSaveOriginal({{ seg.id }})"></button>
+                            <button class="btn btn-sm btn-primary"
+                                    @click.stop="_acceptAndSaveReviewSegment({{ seg.id }})">採用</button>
                         </div>
                     </div>
                     </template>
