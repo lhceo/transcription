@@ -3851,9 +3851,9 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 /* ポップオーバーを左上に開く */
 .shortcut-help-popover--fixed-nav {
     top: auto;
-    bottom: calc(100% + 8px);
+    bottom: 0;
     right: auto;
-    left: 0;
+    left: calc(100% + 12px);
 }
 /* プレイヤーバー右端の外側に配置。player-inner = 80% / max 800px なので
    右端 = 50% + min(40%, 400px)。角丸正方形 */
