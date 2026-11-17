@@ -1634,7 +1634,7 @@ body:has(.audio-player-fixed) {
 
 .history-sort-select {
     font-size: 12px;
-    padding: 4px 8px;
+    padding: 4px 28px 4px 10px;
     border: 1px solid var(--color-border);
     border-radius: 6px;
     background: var(--color-surface);
@@ -2969,20 +2969,27 @@ mark.find-highlight-active {
 }
 .comment-list { list-style: none; padding: 0 0 4px; margin: 0; }
 .comment-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--color-border);
     transition: background .1s;
 }
 .comment-item:hover { background: #fffbeb; }
-.comment-item .bookmark-item-remove { flex-shrink: 0; margin-top: 2px; }
+.comment-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.comment-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
 .comment-item-time {
     font-size: 11px;
     font-weight: 600;
     color: #f59e0b;
-    margin-bottom: 4px;
 }
 .comment-item-text {
     font-size: 12px;
@@ -3022,10 +3029,8 @@ mark.find-highlight-active {
 
 /* コメント → プロジェクト辞書登録ボタン */
 .comment-pv-btn {
-    flex-shrink: 0;
     width: 22px;
     height: 22px;
-    margin-top: 2px;
     border: 1px solid var(--color-border);
     border-radius: 4px;
     background: none;
@@ -4334,15 +4339,16 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
     margin: 0;
 }
 .bookmark-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
     padding: 8px 14px;
     border-bottom: 1px solid var(--color-border);
-    min-width: 0;
-    overflow: hidden;
 }
 .bookmark-item:last-child { border-bottom: none; }
+.bookmark-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
 .bookmark-item-time {
     flex-shrink: 0;
     font-size: 12px;
@@ -4359,9 +4365,8 @@ body:has(.audio-player-fixed) .sidebar-panel-content {
 }
 .bookmark-item-time:hover { background: #dbeafe; }
 .bookmark-item-memo {
-    flex: 1;
-    min-width: 0;
-    width: 0;
+    width: 100%;
+    box-sizing: border-box;
     font-size: 12px;
     color: var(--color-text-muted);
     border: 1px solid transparent;

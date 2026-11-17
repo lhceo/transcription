@@ -1651,7 +1651,12 @@
                     <ul class="bookmark-list">
                         <template x-for="bm in bookmarks" :key="bm.segId">
                             <li class="bookmark-item">
-                                <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                                <div class="bookmark-item-header">
+                                    <button type="button" class="bookmark-item-time" @click="jumpToBookmark(bm)" x-text="bm.timeLabel" title="クリックでジャンプ"></button>
+                                    <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                </div>
                                 <textarea
                                     class="bookmark-item-memo"
                                     rows="1"
@@ -1662,9 +1667,6 @@
                                     x-init="$nextTick(() => { $el.style.height='auto'; $el.style.height=$el.scrollHeight+'px'; })"
                                     @compositionstart="$event.target._composing = true"
                                     @compositionend="setTimeout(() => { $event.target._composing = false; }, 0)"></textarea>
-                                <button type="button" class="bookmark-item-remove" @click="toggleBookmarkById(bm.segId)" title="解除" aria-label="ブックマーク解除">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                </button>
                             </li>
                         </template>
                     </ul>
@@ -1696,8 +1698,26 @@
                 <ul class="comment-list">
                     <template x-for="c in segmentComments" :key="c.segId">
                         <li class="comment-item" x-data="{ collapsed: true, pvForm: false, pvWord: '', pvMeaning: '', pvSaving: false }">
-                            <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="flex:1;min-width:0;cursor:pointer">
+                            <div class="comment-item-header">
                                 <div class="comment-item-time" x-text="c.timeLabel"></div>
+                                <div class="comment-item-actions">
+                                    {# プロジェクト辞書登録ボタン（プロジェクト所属時のみ） #}
+                                    <template x-if="(window.__TRANSCRIPT_INIT || {}).projectId">
+                                        <button type="button"
+                                                class="comment-pv-btn"
+                                                :class="pvForm ? 'is-open' : ''"
+                                                @click.stop="pvForm = !pvForm; if (pvForm) { pvWord = ''; pvMeaning = c.comment; }"
+                                                title="プロジェクト辞書に登録"
+                                                aria-label="プロジェクト辞書に登録">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M2 6h16v2H2zm0 4h16v2H2zm0 4h10v2H2zm14 0v3h-3v2h3v3h2v-3h3v-2h-3v-3z"/></svg>
+                                        </button>
+                                    </template>
+                                    <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="comment-item-body" @click="jumpToSegmentForComment(c.segId)" style="cursor:pointer">
                                 <div class="comment-item-text" :class="collapsed ? 'is-collapsed' : ''" x-text="c.comment"></div>
                                 <template x-if="c.comment && c.comment.length > 60">
                                     <button type="button" class="comment-item-toggle"
@@ -1706,20 +1726,6 @@
                                 </template>
                                 <div class="comment-item-excerpt" x-text="c.excerpt"></div>
                             </div>
-                            {# プロジェクト辞書登録ボタン（プロジェクト所属時のみ） #}
-                            <template x-if="(window.__TRANSCRIPT_INIT || {}).projectId">
-                                <button type="button"
-                                        class="comment-pv-btn"
-                                        :class="pvForm ? 'is-open' : ''"
-                                        @click.stop="pvForm = !pvForm; if (pvForm) { pvWord = ''; pvMeaning = c.comment; }"
-                                        title="プロジェクト辞書に登録"
-                                        aria-label="プロジェクト辞書に登録">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M2 6h16v2H2zm0 4h16v2H2zm0 4h10v2H2zm14 0v3h-3v2h3v3h2v-3h3v-2h-3v-3z"/></svg>
-                                </button>
-                            </template>
-                            <button type="button" class="bookmark-item-remove" @click.stop="deleteComment(c.segId, null)" title="削除" aria-label="コメントを削除">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
                             {# インライン登録フォーム #}
                             <template x-if="pvForm">
                                 <div class="comment-pv-form" @click.stop>
