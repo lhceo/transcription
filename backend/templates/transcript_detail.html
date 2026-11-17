@@ -420,20 +420,6 @@
                 <option value="1.75">1.75x</option>
                 <option value="2">2x</option>
             </select>
-            <div class="audio-delete-wrap">
-                <button
-                    type="button"
-                    class="audio-delete-btn"
-                    @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
-                    title="ページトップに戻る"
-                    aria-label="ページトップに戻る"
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <polyline points="18 15 12 9 6 15"></polyline>
-                    </svg>
-                </button>
-                <span class="audio-delete-label">トップへ</span>
-            </div>
         </div>
     </div>
     </div>{# /player-inner #}
@@ -1975,6 +1961,16 @@
         </svg>
         <span class="back-btn-label">{{ breadcrumb_project.name ~ 'へ' if breadcrumb_project else 'プロジェクト一覧' }}</span>
     </a>
+
+    {# ── トップへ戻るボタン（右下固定） ── #}
+    <button type="button" class="back-icon-btn back-icon-btn-scroll-top"
+        @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
+        title="ページトップに戻る" aria-label="ページトップに戻る">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+        <span class="back-btn-label back-btn-label--left">トップへ</span>
+    </button>
 
     {# ── 縦型進捗バー（編集モード中のみ、右端固定） ── #}
     <div class="vert-progress" x-show="editMode" x-cloak style="display:none" title="確認進捗">

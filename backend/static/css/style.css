@@ -3815,6 +3815,7 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .back-icon-btn svg  { width: 20px; height: 20px; flex-shrink: 0; }
 .back-icon-btn-home    { bottom: 88px;  left: 16px; }
 .back-icon-btn-project { bottom: 140px; left: 16px; }
+.back-icon-btn-scroll-top { bottom: 88px; right: 16px; left: auto; }
 
 /* ホバーラベル（ボタン右側にスライドイン） */
 .back-btn-label {
@@ -3829,6 +3830,16 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 }
 .back-icon-btn:hover .back-btn-label {
     opacity: 1; transform: translateY(-50%) translateX(0);
+}
+
+/* 右側固定ボタン用ラベル（ボタン左側にスライドイン） */
+.back-btn-label--left {
+    left: auto;
+    right: calc(100% + 10px);
+    transform: translateY(-50%) translateX(4px);
+}
+.back-icon-btn:hover .back-btn-label--left {
+    transform: translateY(-50%) translateX(0);
 }
 
 /* ── 縦型進捗バー（右端固定、編集モード中のみ） ────────── */
