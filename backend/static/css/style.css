@@ -3038,7 +3038,7 @@ mark.find-highlight-active {
     border-color: var(--color-primary);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
-.comment-pv-btn svg { width: 14px; height: 14px; }
+.comment-pv-btn svg { width: 16px; height: 16px; }
 
 /* インライン登録フォーム（li 内で flex-wrap して下に展開） */
 .comment-item {
