@@ -858,7 +858,7 @@
         </span>
         <span class="polish-history-count">{{ polished_count }}件変更</span>
         <div class="polish-history-actions">
-            <button type="button" class="polish-history-btn" @click="openDiffReview()">差分を確認</button>
+            <button type="button" class="polish-history-btn" @click="openDiffReview()">整文前と比較する</button>
             <button type="button" class="polish-history-btn polish-history-btn-revert" @click="confirmRevertAll()">整文を全て元に戻す</button>
         </div>
     </div>
@@ -1048,7 +1048,7 @@
     <div class="review-progress-bar" x-show="reviewMode" x-cloak style="display:none"
          :class="pendingReviewCount() === 0 ? 'review-done' : ''">
         <span class="review-progress-label"
-              x-text="pendingReviewCount() === 0 ? '✓ レビュー完了' : (diffReviewMode ? '差分確認中' : '整文レビュー中')"></span>
+              x-text="pendingReviewCount() === 0 ? '✓ レビュー完了' : (diffReviewMode ? '比較確認中' : '整文レビュー中')"></span>
         <span class="review-progress-count" :class="pendingReviewCount() > 0 ? 'is-pending' : ''"
               x-text="pendingReviewCount() > 0 ? '残り ' + pendingReviewCount() + ' 件 / ' + reviewTotalCount() + ' 件' : ''"></span>
         <span class="review-my-count"
