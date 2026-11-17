@@ -1224,6 +1224,10 @@ body:has(.audio-player-fixed) {
     .player-right-controls {
         min-width: auto;
     }
+
+    .back-icon-btn-scroll-top {
+        display: none;
+    }
 }
 
 .history-item-actions {
@@ -3815,7 +3819,14 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .back-icon-btn svg  { width: 20px; height: 20px; flex-shrink: 0; }
 .back-icon-btn-home    { bottom: 88px;  left: 16px; }
 .back-icon-btn-project { bottom: 140px; left: 16px; }
-.back-icon-btn-scroll-top { bottom: 88px; right: 16px; left: auto; }
+/* プレイヤーバー右端の外側に配置。player-inner = 80% / max 800px なので
+   右端 = 50% + min(40%, 400px)。角丸正方形 */
+.back-icon-btn-scroll-top {
+    bottom: 14px;
+    left: calc(50% + min(40%, 400px) + 12px);
+    right: auto;
+    border-radius: 10px;
+}
 
 /* ホバーラベル（ボタン右側にスライドイン） */
 .back-btn-label {
