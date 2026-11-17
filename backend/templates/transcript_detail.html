@@ -57,47 +57,6 @@
             </svg>
             <span>ホーム</span>
         </a>
-        <span class="breadcrumb-sep" aria-hidden="true">›</span>
-        {# キーボードショートカットヘルプ #}
-        <div class="shortcut-help shortcut-help--breadcrumb" x-data="{ open: false }" @click.outside="open = false"
-             x-init="
-                if (!localStorage.getItem('noto-shortcut-seen')) {
-                    $el.querySelector('.shortcut-help-btn').classList.add('is-new');
-                    setTimeout(() => {
-                        $el.querySelector('.shortcut-help-btn').classList.remove('is-new');
-                        localStorage.setItem('noto-shortcut-seen', '1');
-                    }, 4000);
-                }
-             ">
-            <button type="button" class="shortcut-help-btn shortcut-help-btn--breadcrumb" @click="open = !open; localStorage.setItem('noto-shortcut-seen','1'); $el.classList.remove('is-new')" :aria-expanded="open" title="キーボードショートカット一覧">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;flex-shrink:0"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
-                <span>キー操作</span>
-            </button>
-            <div class="shortcut-help-popover" x-show="open" x-cloak>
-                <h4>キーボードショートカット</h4>
-                <p class="shortcut-group-label">通常閲覧中</p>
-                <ul class="shortcut-list">
-                    <li><span>再生 / 停止</span><kbd>Space</kbd></li>
-                    <li><span>3秒戻る</span><kbd>←</kbd></li>
-                    <li><span>3秒進む</span><kbd>→</kbd></li>
-                    <li><span>次の要確認箇所</span><kbd>]</kbd></li>
-                    <li><span>前の要確認箇所</span><kbd>[</kbd></li>
-                </ul>
-                <p class="shortcut-group-label">セグメント編集中</p>
-                <ul class="shortcut-list">
-                    <li><span>再生 / 停止</span><kbd>Escape</kbd></li>
-                    <li><span>取り消す</span><kbd>⌘Z</kbd></li>
-                    <li><span>やり直す</span><kbd>⌘⇧Z</kbd></li>
-                    <li><span>ここで分割</span><kbd>⇧↵</kbd></li>
-                </ul>
-                <p class="shortcut-group-label">どちらでも — MacBook メディアキー</p>
-                <ul class="shortcut-list">
-                    <li><span>3秒戻る</span><kbd>F7</kbd></li>
-                    <li><span>再生 / 停止</span><kbd>F8</kbd></li>
-                    <li><span>3秒進む</span><kbd>F9</kbd></li>
-                </ul>
-            </div>
-        </div>
         {% if breadcrumb_project %}
         <span class="breadcrumb-sep" aria-hidden="true">›</span>
         <a href="/projects/{{ breadcrumb_project.id }}" class="breadcrumb-link">{{ breadcrumb_project.name }}</a>
@@ -1954,6 +1913,48 @@
         </svg>
         <span class="back-btn-label">ダッシュボードへ</span>
     </a>
+    {# ── キーボードショートカット（左下固定、ホームとプロジェクトの間） ── #}
+    <div class="shortcut-help shortcut-help--fixed-nav" x-data="{ open: false }" @click.outside="open = false"
+         x-init="
+            if (!localStorage.getItem('noto-shortcut-seen')) {
+                $el.querySelector('.shortcut-fixed-btn').classList.add('is-new');
+                setTimeout(() => {
+                    $el.querySelector('.shortcut-fixed-btn').classList.remove('is-new');
+                    localStorage.setItem('noto-shortcut-seen', '1');
+                }, 4000);
+            }
+         ">
+        <button type="button" class="shortcut-fixed-btn"
+                @click="open = !open; localStorage.setItem('noto-shortcut-seen','1'); $el.classList.remove('is-new')"
+                :aria-expanded="open" title="キーボードショートカット一覧" aria-label="キーボードショートカット一覧">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+            <span class="back-btn-label">キー操作</span>
+        </button>
+        <div class="shortcut-help-popover shortcut-help-popover--fixed-nav" x-show="open" x-cloak>
+            <h4>キーボードショートカット</h4>
+            <p class="shortcut-group-label">通常閲覧中</p>
+            <ul class="shortcut-list">
+                <li><span>再生 / 停止</span><kbd>Space</kbd></li>
+                <li><span>3秒戻る</span><kbd>←</kbd></li>
+                <li><span>3秒進む</span><kbd>→</kbd></li>
+                <li><span>次の要確認箇所</span><kbd>]</kbd></li>
+                <li><span>前の要確認箇所</span><kbd>[</kbd></li>
+            </ul>
+            <p class="shortcut-group-label">セグメント編集中</p>
+            <ul class="shortcut-list">
+                <li><span>再生 / 停止</span><kbd>Escape</kbd></li>
+                <li><span>取り消す</span><kbd>⌘Z</kbd></li>
+                <li><span>やり直す</span><kbd>⌘⇧Z</kbd></li>
+                <li><span>ここで分割</span><kbd>⇧↵</kbd></li>
+            </ul>
+            <p class="shortcut-group-label">どちらでも — MacBook メディアキー</p>
+            <ul class="shortcut-list">
+                <li><span>3秒戻る</span><kbd>F7</kbd></li>
+                <li><span>再生 / 停止</span><kbd>F8</kbd></li>
+                <li><span>3秒進む</span><kbd>F9</kbd></li>
+            </ul>
+        </div>
+    </div>
     <a href="{{ '/projects/' ~ breadcrumb_project.id if breadcrumb_project else '/themes' }}"
        class="back-icon-btn back-icon-btn-project">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

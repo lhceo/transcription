@@ -3818,7 +3818,38 @@ details.polish-ref-detail[open] .polish-ref-summary::before {
 .back-icon-btn:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .2); transform: scale(1.06); }
 .back-icon-btn svg  { width: 20px; height: 20px; flex-shrink: 0; }
 .back-icon-btn-home    { bottom: 88px;  left: 16px; }
-.back-icon-btn-project { bottom: 140px; left: 16px; }
+.back-icon-btn-project { bottom: 192px; left: 16px; }
+
+/* キー操作ボタン（左下固定、ホームとプロジェクトの間） */
+.shortcut-help--fixed-nav {
+    position: fixed;
+    bottom: 140px;
+    left: 16px;
+    z-index: 200;
+    display: inline-flex;
+}
+.shortcut-fixed-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, .92);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+    cursor: pointer; color: var(--color-text);
+    backdrop-filter: blur(8px);
+    transition: box-shadow .15s, transform .1s;
+    position: relative;
+}
+.shortcut-fixed-btn:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .2); transform: scale(1.06); }
+.shortcut-fixed-btn svg  { width: 20px; height: 20px; flex-shrink: 0; }
+.shortcut-fixed-btn.is-new { animation: shortcut-btn-pulse 1.2s ease-in-out 3; }
+
+/* ポップオーバーを左上に開く */
+.shortcut-help-popover--fixed-nav {
+    top: auto;
+    bottom: calc(100% + 8px);
+    right: auto;
+    left: 0;
+}
 /* プレイヤーバー右端の外側に配置。player-inner = 80% / max 800px なので
    右端 = 50% + min(40%, 400px)。角丸正方形 */
 .back-icon-btn-scroll-top {
