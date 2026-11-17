@@ -3214,6 +3214,7 @@ mark.find-highlight-active {
     background: #f0f9ff; border-bottom: 1px solid #bae6fd;
     padding: 7px 16px; display: flex; align-items: center; gap: 10px;
     font-size: 12px; color: #0369a1;
+    margin-bottom: 12px;
 }
 .polish-history-icon { display: flex; align-items: center; gap: 4px; font-weight: 700; }
 .polish-history-count { color: #0284c7; }
